@@ -1,0 +1,484 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "soccer-photo-sorter"
+version = "0.1.0"
+description = "AI-powered soccer photo sorting system using computer vision and machine learning"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Soccer Photo Sorter Team", email = "team@soccerphotosorter.com"}
+]
+maintainers = [
+    {name = "Soccer Photo Sorter Team", email = "team@soccerphotosorter.com"}
+]
+keywords = [
+    "computer-vision", "ai", "photo-sorting", "soccer", "opencv", "face-recognition", 
+    "ocr", "image-processing", "cuda", "machine-learning"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Graphics :: Graphics Conversion",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Image Processing",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+requires-python = ">=3.8"
+dependencies = [
+    # Core image processing
+    "opencv-python>=4.8.0",
+    "opencv-contrib-python>=4.8.0",
+    "Pillow>=10.0.0",
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    
+    # Machine Learning and Deep Learning
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "torchaudio>=2.0.0",
+    "tensorflow>=2.13.0",
+    "tensorflow-gpu>=2.13.0; platform_machine == 'x86_64'",
+    
+    # Face recognition and detection
+    "face-recognition>=1.3.0",
+    "dlib>=19.24.0",
+    "mediapipe>=0.10.0",
+    "mtcnn>=0.1.1",
+    
+    # OCR and text recognition
+    "pytesseract>=0.3.10",
+    "easyocr>=1.7.0",
+    "paddleocr>=2.7.0",
+    
+    # Color analysis and processing
+    "scikit-image>=0.21.0",
+    "colorspacious>=1.1.2",
+    "colour-science>=0.4.3",
+    
+    # Data handling and utilities
+    "pandas>=2.0.0",
+    "matplotlib>=3.7.0",
+    "seaborn>=0.12.0",
+    "tqdm>=4.65.0",
+    "click>=8.1.0",
+    "rich>=13.0.0",
+    "typer>=0.9.0",
+    
+    # Configuration and logging
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
+    "toml>=0.10.2",
+    "python-dotenv>=1.0.0",
+    "loguru>=0.7.0",
+    
+    # File handling and path utilities
+    "pathlib2>=2.3.7; python_version < '3.4'",
+    "pathspec>=0.11.0",
+    "watchdog>=3.0.0",
+    
+    # Parallel processing and threading
+    "concurrent-futures>=3.1.1; python_version < '3.2'",
+    "joblib>=1.3.0",
+    "multiprocessing-logging>=0.3.4",
+    
+    # Memory and performance optimization
+    "psutil>=5.9.0",
+    "memory-profiler>=0.60.0",
+    "line-profiler>=4.1.0",
+    
+    # Testing and quality assurance
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.11.0",
+    "pytest-benchmark>=4.0.0",
+    "pytest-xdist>=3.3.0",
+    
+    # Code quality and formatting
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "mypy>=1.5.0",
+    "pre-commit>=3.3.0",
+    
+    # Documentation
+    "sphinx>=7.0.0",
+    "sphinx-rtd-theme>=1.3.0",
+    "myst-parser>=2.0.0",
+    "sphinx-autodoc-typehints>=1.24.0",
+    
+    # Development and debugging
+    "ipython>=8.14.0",
+    "jupyter>=1.0.0",
+    "notebook>=7.0.0",
+    "ipywidgets>=8.0.0",
+]
+
+[project.optional-dependencies]
+# CUDA support (recommended for GPU acceleration)
+cuda = [
+    "torch[cuda]>=2.0.0",
+    "torchvision[cuda]>=0.15.0",
+    "tensorflow-gpu>=2.13.0",
+    "cupy-cuda11x>=12.0.0; platform_machine == 'x86_64'",
+    "cupy-cuda12x>=12.0.0; platform_machine == 'x86_64'",
+    "numba[cuda]>=0.57.0",
+]
+
+# Development dependencies
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.11.0",
+    "pytest-benchmark>=4.0.0",
+    "pytest-xdist>=3.3.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "mypy>=1.5.0",
+    "pre-commit>=3.3.0",
+    "ipython>=8.14.0",
+    "jupyter>=1.0.0",
+    "notebook>=7.0.0",
+    "ipywidgets>=8.0.0",
+]
+
+# Documentation dependencies
+docs = [
+    "sphinx>=7.0.0",
+    "sphinx-rtd-theme>=1.3.0",
+    "myst-parser>=2.0.0",
+    "sphinx-autodoc-typehints>=1.24.0",
+    "sphinx-click>=5.0.0",
+    "sphinxcontrib-programoutput>=0.17",
+]
+
+# Performance profiling
+profiling = [
+    "memory-profiler>=0.60.0",
+    "line-profiler>=4.1.0",
+    "py-spy>=0.3.14",
+    "scalene>=1.5.0",
+]
+
+# Advanced ML models
+advanced-ml = [
+    "transformers>=4.30.0",
+    "huggingface-hub>=0.16.0",
+    "accelerate>=0.20.0",
+    "datasets>=2.13.0",
+    "evaluate>=0.4.0",
+    "optuna>=3.3.0",
+]
+
+# Web interface (future enhancement)
+web = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "jinja2>=3.1.0",
+    "aiofiles>=23.0.0",
+    "websockets>=11.0.0",
+]
+
+# All optional dependencies
+all = [
+    "soccer-photo-sorter[cuda,dev,docs,profiling,advanced-ml,web]"
+]
+
+[project.urls]
+Homepage = "https://github.com/your-org/soccer-photo-sorter"
+Documentation = "https://soccer-photo-sorter.readthedocs.io"
+Repository = "https://github.com/your-org/soccer-photo-sorter.git"
+Issues = "https://github.com/your-org/soccer-photo-sorter/issues"
+Changelog = "https://github.com/your-org/soccer-photo-sorter/blob/main/CHANGELOG.md"
+
+[project.scripts]
+soccer-photo-sorter = "soccer_photo_sorter.cli:main"
+jersey-color-sorter = "soccer_photo_sorter.color_sorter:main"
+jersey-number-sorter = "soccer_photo_sorter.number_sorter:main"
+face-sorter = "soccer_photo_sorter.face_sorter:main"
+
+[project.gui-scripts]
+soccer-photo-sorter-gui = "soccer_photo_sorter.gui:main"
+
+[tool.setuptools]
+packages = ["soccer_photo_sorter"]
+package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+"soccer_photo_sorter" = [
+    "config/*.json",
+    "config/*.yaml",
+    "models/*.pkl",
+    "models/*.h5",
+    "models/*.onnx",
+    "templates/*.html",
+    "static/*.css",
+    "static/*.js",
+    "static/*.png",
+    "static/*.jpg",
+]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["tests/*", "docs/*", "examples/*"]
+
+# Black configuration
+[tool.black]
+line-length = 88
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+  | docs
+  | examples
+)/
+'''
+
+# isort configuration
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["soccer_photo_sorter"]
+known_third_party = [
+    "opencv-python", "numpy", "torch", "tensorflow", "face_recognition",
+    "pytesseract", "pandas", "matplotlib", "click", "rich", "typer",
+    "pydantic", "loguru", "tqdm", "scikit-image", "pillow", "scipy"
+]
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+
+# MyPy configuration
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = [
+    "cv2.*",
+    "face_recognition.*",
+    "dlib.*",
+    "mediapipe.*",
+    "pytesseract.*",
+    "easyocr.*",
+    "paddleocr.*",
+    "skimage.*",
+    "sklearn.*",
+    "tensorflow.*",
+    "torch.*",
+    "torchvision.*",
+]
+ignore_missing_imports = true
+
+# Pytest configuration
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov=soccer_photo_sorter",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+    "--cov-fail-under=80",
+    "--benchmark-only",
+    "--benchmark-sort=mean",
+]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "cuda: marks tests that require CUDA",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+filterwarnings = [
+    "error",
+    "ignore::UserWarning",
+    "ignore::DeprecationWarning",
+]
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["src/soccer_photo_sorter"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__init__.py",
+    "*/conftest.py",
+    "*/setup.py",
+    "*/venv/*",
+    "*/env/*",
+    "*/build/*",
+    "*/dist/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+# Flake8 configuration
+[tool.flake8]
+max-line-length = 88
+extend-ignore = ["E203", "W503", "E501"]
+exclude = [
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    ".venv",
+    ".env",
+    "venv",
+    "env",
+    "docs",
+    "examples",
+]
+per-file-ignores = [
+    "__init__.py:F401",
+    "tests/*:S101",
+]
+
+# Bandit security linter
+[tool.bandit]
+exclude_dirs = ["tests", "docs", "examples"]
+skips = ["B101", "B601"]
+
+# Pre-commit configuration
+[tool.pre-commit]
+repos = [
+    {
+        repo = "https://github.com/pre-commit/pre-commit-hooks",
+        rev = "v4.4.0",
+        hooks = [
+            {id = "trailing-whitespace"},
+            {id = "end-of-file-fixer"},
+            {id = "check-yaml"},
+            {id = "check-added-large-files"},
+            {id = "check-merge-conflict"},
+            {id = "debug-statements"},
+        ],
+    },
+    {
+        repo = "https://github.com/psf/black",
+        rev = "23.7.0",
+        hooks = [{id = "black", language_version = "python3"}],
+    },
+    {
+        repo = "https://github.com/pycqa/isort",
+        rev = "5.12.0",
+        hooks = [{id = "isort"}],
+    },
+    {
+        repo = "https://github.com/pycqa/flake8",
+        rev = "6.0.0",
+        hooks = [{id = "flake8"}],
+    },
+    {
+        repo = "https://github.com/pre-commit/mirrors-mypy",
+        rev = "v1.5.1",
+        hooks = [
+            {id = "mypy", additional_dependencies = ["types-all"]},
+        ],
+    },
+]
+
+# Ruff configuration (alternative to flake8/isort)
+[tool.ruff]
+target-version = "py38"
+line-length = 88
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+]
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/*" = ["S101"]
+
+[tool.ruff.isort]
+known-first-party = ["soccer_photo_sorter"]
+
+# Pylint configuration
+[tool.pylint.messages_control]
+disable = [
+    "C0114", # missing-module-docstring
+    "C0116", # missing-function-docstring
+    "R0903", # too-few-public-methods
+    "R0913", # too-many-arguments
+    "W0613", # unused-argument
+]
+
+[tool.pylint.format]
+max-line-length = 88
+
+[tool.pylint.design]
+max-args = 10
+max-locals = 20
+max-returns = 6
+max-branches = 15
+max-statements = 60
+
+# Security scanning
+[tool.safety]
+output = "json"
+output-file = "safety-report.json"
+
+# Documentation
+[tool.sphinx]
+source-dir = "docs"
+build-dir = "docs/_build"
