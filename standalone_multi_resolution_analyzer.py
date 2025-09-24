@@ -207,15 +207,14 @@ class StandaloneAnalyzer:
         
         return best_res.resolution if best_res.success else None
     
-    def create_annotated_images(self, analysis: ImageAnalysis, output_dir: Path) -> None:
+    def create_annotated_images(self, analysis: ImageAnalysis, output_dir: Path, original_image_path: Path) -> None:
         """Create annotated images for visual evaluation."""
         logger.info(f"Creating annotated images for {analysis.filename}")
         
-        # Load original image
-        image_path = Path(analysis.filename)
-        original_image = cv2.imread(str(image_path))
+        # Load original image using the provided path
+        original_image = cv2.imread(str(original_image_path))
         if original_image is None:
-            logger.error(f"Failed to load image: {image_path}")
+            logger.error(f"Failed to load image: {original_image_path}")
             return
         
         # Create annotated images for each resolution
@@ -232,7 +231,7 @@ class StandaloneAnalyzer:
             faces = self.face_cascade.detectMultiScale(gray, 1.1, 4)
             self._draw_face_annotations(face_image, faces)
             
-            face_filename = f"{image_path.stem}_{result.resolution}_faces.jpg"
+            face_filename = f"{original_image_path.stem}_{result.resolution}_faces.jpg"
             cv2.imwrite(str(output_dir / "faces" / face_filename), face_image)
             
             # Create pose annotated image
@@ -241,7 +240,7 @@ class StandaloneAnalyzer:
             pose_results = self.pose_detector.process(rgb_image)
             self._draw_pose_annotations(pose_image, pose_results)
             
-            pose_filename = f"{image_path.stem}_{result.resolution}_poses.jpg"
+            pose_filename = f"{original_image_path.stem}_{result.resolution}_poses.jpg"
             cv2.imwrite(str(output_dir / "poses" / pose_filename), pose_image)
     
     def _draw_face_annotations(self, image: np.ndarray, faces: List[Tuple]) -> None:
@@ -328,7 +327,7 @@ def main(input_pattern: str, output_dir: str, num_images: int, verbose: bool):
         all_analyses.append(analysis)
         
         # Create annotated images
-        analyzer.create_annotated_images(analysis, output_path)
+        analyzer.create_annotated_images(analysis, output_path, image_path)
     
     # Save results
     results_data = {
