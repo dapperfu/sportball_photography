@@ -80,3 +80,10 @@
 - Save visualizations locally for analysis
 
 Remember: **This is a source code repository, not a data repository!**
+
+## 📊 Results Directory
+- All analysis results go in results/
+- Visualizations and annotated images in results/
+- JSON analysis data in results/
+- Never commit results/ directory
+- Keep analysis data local for evaluation

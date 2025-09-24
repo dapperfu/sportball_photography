@@ -153,3 +153,6 @@ htmlcov/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# Results directory (analysis data and visualizations)
+results/
