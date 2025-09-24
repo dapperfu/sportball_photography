@@ -1,0 +1,82 @@
+# Cursor AI Rules for Soccer Photo Sorter Project
+
+## 🚫 File Size Restrictions
+- **NEVER commit files larger than 500KB**
+- Source code should be small and well-structured
+- Large files indicate poor design or unnecessary data
+
+## 📁 File Management
+- **Images**: NEVER commit image files (*.jpg, *.png, *.JPG, *.PNG)
+- **Analysis Data**: Keep JSON results locally, don't commit large datasets
+- **Generated Files**: Add to .gitignore, don't commit
+- **Models**: Use external storage, not git
+
+## 🔧 Code Quality
+- All Python scripts MUST use full mypy typing
+- Follow numpy style documentation guidelines
+- Use virtual environment (venv) for all Python work
+- Never use system pip or install to system
+
+## 🎯 Project Structure
+- Source code goes in `src/soccer_photo_sorter/`
+- Tools go in `tools/` with logical subdirectories
+- Tests go in `tests/` with unit/integration separation
+- Results stay local, not in git
+
+## 🚨 Pre-commit Protection
+- Pre-commit hook enforces 500KB file size limit
+- Large files will be rejected automatically
+- Use `git rm --cached` to remove large files from tracking
+
+## 📊 Analysis Workflow
+- Generate analysis data locally
+- Keep annotated images for evaluation
+- Commit only source code and configuration
+- Use external storage for large datasets
+
+## 🔄 Git Workflow
+- Always follow commits with `git push`
+- Use detailed commit messages with technical attribution
+- Never commit large files or generated content
+- Keep repository clean and fast
+
+## ⚠️ Critical Rules
+1. **NO IMAGES IN GIT** - Use .gitignore
+2. **NO LARGE FILES** - 500KB maximum
+3. **NO GENERATED DATA** - Keep analysis results local
+4. **SOURCE CODE ONLY** - Clean, typed, documented code
+5. **VIRTUAL ENV** - Never use system Python packages
+
+## 🛠️ Development Standards
+- Use Click for CLI interfaces
+- Use tqdm for progress bars
+- Use loguru for logging
+- Use dataclasses for structured data
+- Use pathlib for file operations
+- Use numpy for numerical operations
+- Use OpenCV for image processing
+- Use MediaPipe for pose detection
+- Use face_recognition for face detection
+
+## 📝 Documentation
+- All functions must have docstrings
+- Use numpy style docstring format
+- Include type hints for all parameters
+- Document complex algorithms and decisions
+- Keep README.md updated with current features
+
+## 🧪 Testing
+- Write unit tests for core functionality
+- Test with small datasets first (--limit option)
+- Verify detection accuracy with annotated images
+- Test across multiple resolutions
+- Validate JSON serialization
+
+## 🎨 Visualization
+- Generate annotated images for evaluation
+- Use consistent color schemes
+- Include confidence scores
+- Show bounding boxes and landmarks
+- Save visualizations locally for analysis
+
+Remember: **This is a source code repository, not a data repository!**

@@ -1,0 +1,155 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Image files (NEVER commit images)
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.tif
+*.webp
+*.svg
+*.ico
+*.JPG
+*.JPEG
+*.PNG
+*.GIF
+*.BMP
+*.TIFF
+*.TIF
+*.WEBP
+*.SVG
+*.ICO
+
+# Video files
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.flv
+*.webm
+*.mkv
+*.MP4
+*.AVI
+*.MOV
+*.WMV
+*.FLV
+*.WEBM
+*.MKV
+
+# Audio files
+*.mp3
+*.wav
+*.flac
+*.aac
+*.ogg
+*.MP3
+*.WAV
+*.FLAC
+*.AAC
+*.OGG
+
+# Model files (large ML models)
+*.pt
+*.pth
+*.h5
+*.pkl
+*.pickle
+*.joblib
+*.onnx
+*.tflite
+*.pb
+
+# Data files
+*.csv
+*.json
+*.xml
+*.yaml
+*.yml
+*.parquet
+*.feather
+*.hdf5
+*.h5
+
+# Log files
+*.log
+*.out
+nohup.out
+
+# Results and output directories
+results/
+output/
+outputs/
+logs/
+temp/
+tmp/
+cache/
+
+# Test images and examples
+examples/
+test_images/
+sample_images/
+
+# Large directories that shouldn't be in git
+face_recognition_cache/
+pose_results/
+number_visualizations_all/
+sorted_test/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
