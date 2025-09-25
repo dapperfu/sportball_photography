@@ -110,7 +110,12 @@ def detect(ctx: click.Context,
     
     # Initialize face detector with same parameters as original
     import sys
-    sys.path.append('/projects/soccer_photo_sorter')
+    import os
+    # Add parent directory to path to import local face_detection module
+    parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+    
     from face_detection import FaceDetector
     detector = FaceDetector(
         border_padding=border_padding,
