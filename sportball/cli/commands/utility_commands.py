@@ -148,6 +148,139 @@ def delete_sidecars(ctx: click.Context, directory: Path, operation: Optional[str
 
 @utility_group.command()
 @click.pass_context
+def gpu_check(ctx: click.Context):
+    """
+    Check GPU acceleration status and capabilities.
+    
+    This command provides detailed information about GPU availability,
+    CUDA support, and acceleration capabilities for sportball operations.
+    """
+    
+    console.print("🔍 Checking GPU acceleration status...", style="blue")
+    
+    # Create GPU status table
+    gpu_table = Table(title="GPU Acceleration Status")
+    gpu_table.add_column("Component", style="cyan")
+    gpu_table.add_column("Status", style="green")
+    gpu_table.add_column("Details", style="yellow")
+    
+    # Check PyTorch availability
+    try:
+        import torch
+        gpu_table.add_row("PyTorch", "✅ Installed", f"Version {torch.__version__}")
+        
+        # Check CUDA availability
+        if torch.cuda.is_available():
+            gpu_table.add_row("CUDA Support", "✅ Available", f"Version {torch.version.cuda}")
+            
+            # Get GPU count and details
+            device_count = torch.cuda.device_count()
+            gpu_table.add_row("GPU Count", "✅ Available", f"{device_count} device(s)")
+            
+            # Get detailed GPU information
+            for i in range(device_count):
+                gpu_name = torch.cuda.get_device_name(i)
+                gpu_memory = torch.cuda.get_device_properties(i).total_memory
+                gpu_memory_gb = gpu_memory / (1024**3)
+                gpu_table.add_row(f"GPU {i}", "✅ Active", f"{gpu_name} ({gpu_memory_gb:.1f} GB)")
+            
+            # Test GPU functionality
+            try:
+                # Create a simple tensor on GPU
+                test_tensor = torch.randn(100, 100).cuda()
+                result = torch.mm(test_tensor, test_tensor.t())
+                gpu_table.add_row("GPU Operations", "✅ Working", "Tensor operations successful")
+                
+                # Test memory allocation
+                large_tensor = torch.randn(1000, 1000).cuda()
+                gpu_table.add_row("Memory Allocation", "✅ Working", "Large tensor allocation successful")
+                
+            except Exception as e:
+                gpu_table.add_row("GPU Operations", "❌ Failed", f"Error: {str(e)[:50]}...")
+                
+        else:
+            gpu_table.add_row("CUDA Support", "❌ Not Available", "CUDA not detected")
+            gpu_table.add_row("GPU Count", "❌ None", "No CUDA-capable GPUs found")
+            
+    except ImportError:
+        gpu_table.add_row("PyTorch", "❌ Not Installed", "PyTorch not available")
+        gpu_table.add_row("CUDA Support", "❌ Not Available", "PyTorch required for CUDA")
+    
+    # Check OpenCV GPU support
+    try:
+        import cv2
+        if cv2.cuda.getCudaEnabledDeviceCount() > 0:
+            gpu_table.add_row("OpenCV GPU", "✅ Available", f"{cv2.cuda.getCudaEnabledDeviceCount()} device(s)")
+        else:
+            gpu_table.add_row("OpenCV GPU", "❌ Not Available", "OpenCV compiled without CUDA")
+    except ImportError:
+        gpu_table.add_row("OpenCV GPU", "❌ Not Installed", "OpenCV not available")
+    except Exception as e:
+        gpu_table.add_row("OpenCV GPU", "❌ Error", f"Error checking: {str(e)[:30]}...")
+    
+    # Check ultralytics GPU support
+    try:
+        from ultralytics import YOLO
+        # Test if YOLO can use GPU
+        model = YOLO('yolov8n.pt')
+        if hasattr(model, 'device') and 'cuda' in str(model.device):
+            gpu_table.add_row("YOLO GPU", "✅ Available", "YOLO can use GPU acceleration")
+        else:
+            gpu_table.add_row("YOLO GPU", "⚠️  Limited", "YOLO may not use GPU optimally")
+    except ImportError:
+        gpu_table.add_row("YOLO GPU", "❌ Not Installed", "Ultralytics not available")
+    except Exception as e:
+        gpu_table.add_row("YOLO GPU", "❌ Error", f"Error checking: {str(e)[:30]}...")
+    
+    # Check face recognition GPU support
+    try:
+        import face_recognition
+        gpu_table.add_row("Face Recognition", "✅ Available", "Face recognition library loaded")
+        # Note: face_recognition doesn't have direct GPU support, but dlib might
+        try:
+            import dlib
+            gpu_table.add_row("Dlib GPU", "✅ Available", "Dlib library loaded")
+        except ImportError:
+            gpu_table.add_row("Dlib GPU", "❌ Not Installed", "Dlib not available")
+    except ImportError:
+        gpu_table.add_row("Face Recognition", "❌ Not Installed", "Face recognition not available")
+    
+    console.print(gpu_table)
+    
+    # Additional recommendations
+    console.print("\n📋 Recommendations:", style="blue")
+    
+    # Check if GPU is enabled in sportball config
+    core = get_core(ctx)
+    if core.enable_gpu:
+        console.print("✅ GPU acceleration is enabled in sportball configuration", style="green")
+    else:
+        console.print("⚠️  GPU acceleration is disabled in sportball configuration", style="yellow")
+        console.print("   Use --gpu flag to enable GPU acceleration", style="yellow")
+    
+    # Check for common issues
+    try:
+        import torch
+        if torch.cuda.is_available():
+            # Check for memory issues
+            for i in range(torch.cuda.device_count()):
+                props = torch.cuda.get_device_properties(i)
+                if props.total_memory < 2 * 1024**3:  # Less than 2GB
+                    console.print(f"⚠️  GPU {i} has limited memory ({props.total_memory / (1024**3):.1f} GB)", style="yellow")
+                    console.print("   Consider reducing batch sizes for large operations", style="yellow")
+    except ImportError:
+        pass
+    
+    # Performance tips
+    console.print("\n💡 Performance Tips:", style="blue")
+    console.print("• Use --gpu flag to enable GPU acceleration", style="white")
+    console.print("• Install CUDA-enabled PyTorch: pip install torch[cuda]", style="white")
+    console.print("• For OpenCV GPU support, install opencv-contrib-python", style="white")
+    console.print("• Monitor GPU memory usage during large operations", style="white")
+
+
+@utility_group.command()
+@click.pass_context
 def system_info(ctx: click.Context):
     """
     Show system information and sportball configuration.
