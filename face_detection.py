@@ -230,19 +230,32 @@ class FaceDetector:
         Returns:
             Detection result with face information
         """
-        # Check if JSON sidecar already exists
+        # Check if JSON sidecar already exists with face data
         json_path = image_path.parent / f"{image_path.stem}.json"
         if json_path.exists() and not force:
-            logger.info(f"Skipping {image_path.name} - JSON sidecar exists (use --force to override)")
-            return DetectionResult(
-                image_path=str(image_path),
-                image_width=0,
-                image_height=0,
-                faces_found=0,
-                detection_time=0.0,
-                detected_faces=[],
-                error="Skipped - JSON sidecar exists"
-            )
+            # Check if JSON contains actual face data
+            try:
+                with open(json_path, 'r') as f:
+                    data = json.load(f)
+                
+                # Check if this is our face detection data with faces
+                if ("Face_detector" in data and 
+                    "faces" in data["Face_detector"] and 
+                    len(data["Face_detector"]["faces"]) > 0):
+                    logger.info(f"Skipping {image_path.name} - JSON sidecar exists with {len(data['Face_detector']['faces'])} faces (use --force to override)")
+                    return DetectionResult(
+                        image_path=str(image_path),
+                        image_width=0,
+                        image_height=0,
+                        faces_found=0,
+                        detection_time=0.0,
+                        detected_faces=[],
+                        error="Skipped - JSON sidecar exists with face data"
+                    )
+            except (json.JSONDecodeError, KeyError, TypeError):
+                # JSON exists but is invalid or doesn't contain face data, continue processing
+                logger.debug(f"JSON sidecar exists but invalid/empty, reprocessing {image_path.name}")
+                pass
         
         logger.info(f"Detecting faces in {image_path.name}")
         
