@@ -207,6 +207,57 @@ class YOLOv8ObjectExtractor:
         
         return annotated_image
     
+    def _annotate_individual_object(self, object_image: np.ndarray, class_name: str, 
+                                   confidence: float, no_confidence: bool = False) -> np.ndarray:
+        """
+        Add annotation to an individual extracted object.
+        
+        Args:
+            object_image: The cropped object image
+            class_name: Name of the object class
+            confidence: Detection confidence score
+            no_confidence: Whether to exclude confidence from label
+            
+        Returns:
+            Annotated object image
+        """
+        # Create a copy to avoid modifying the original
+        annotated_image = object_image.copy()
+        
+        # Create label text
+        if no_confidence:
+            label = class_name
+        else:
+            label = f"{class_name} {confidence:.2f}"
+        
+        # Get text size for positioning
+        (text_width, text_height), baseline = cv2.getTextSize(
+            label, cv2.FONT_HERSHEY_SIMPLEX, self.font_scale, self.thickness
+        )
+        
+        # Position label at top-left corner of the object
+        label_x = 10
+        label_y = text_height + 10
+        
+        # Ensure label fits within image bounds
+        img_height, img_width = annotated_image.shape[:2]
+        if label_x + text_width > img_width:
+            label_x = img_width - text_width - 10
+        if label_y > img_height:
+            label_y = img_height - 10
+        
+        # Draw background rectangle for label
+        cv2.rectangle(annotated_image,
+                     (label_x, label_y - text_height - baseline),
+                     (label_x + text_width, label_y + baseline),
+                     (0, 0, 0), -1)  # Black background
+        
+        # Draw label text
+        cv2.putText(annotated_image, label, (label_x, label_y - baseline),
+                   cv2.FONT_HERSHEY_SIMPLEX, self.font_scale, (255, 255, 255), self.thickness)
+        
+        return annotated_image
+    
     def _mark_objects_extracted(self, json_path: Path, objects_count: int, annotated_image_path: Optional[str]) -> None:
         """
         Mark objects as extracted in the JSON sidecar file.
@@ -243,6 +294,7 @@ class YOLOv8ObjectExtractor:
     def extract_objects_from_image(self, image_path: Path, output_dir: Path, 
                                  create_annotated: bool = True, 
                                  create_individual: bool = True,
+                                 annotate_individual: bool = False,
                                  force: bool = False) -> ExtractionResult:
         """
         Extract objects from a single image using JSON sidecar data.
@@ -252,6 +304,7 @@ class YOLOv8ObjectExtractor:
             output_dir: Output directory for extracted objects
             create_annotated: Whether to create annotated image
             create_individual: Whether to create individual object files
+            annotate_individual: Whether to add labels to individual extracted objects
             force: Whether to force extraction even if objects already extracted
             
         Returns:
@@ -368,6 +421,13 @@ class YOLOv8ObjectExtractor:
                 # Extract individual object
                 if create_individual and crop_width > 0 and crop_height > 0:
                     object_image = image[crop_y:crop_y+crop_height, crop_x:crop_x+crop_width]
+                    
+                    # Add annotation to individual object if requested
+                    if annotate_individual:
+                        object_image = self._annotate_individual_object(
+                            object_image, class_name, confidence, no_confidence=False
+                        )
+                    
                     cv2.imwrite(str(object_path), object_image)
                     
                     individual_objects.append({
@@ -421,6 +481,7 @@ class YOLOv8ObjectExtractor:
     def extract_objects_from_directory(self, input_dir: Path, output_dir: Path,
                                      create_annotated: bool = True,
                                      create_individual: bool = True,
+                                     annotate_individual: bool = False,
                                      max_images: Optional[int] = None,
                                      force: bool = False,
                                      max_workers: Optional[int] = None) -> List[ExtractionResult]:
@@ -432,6 +493,7 @@ class YOLOv8ObjectExtractor:
             output_dir: Output directory for extracted objects
             create_annotated: Whether to create annotated images
             create_individual: Whether to create individual object files
+            annotate_individual: Whether to add labels to individual extracted objects
             max_images: Maximum number of images to process
             force: Whether to force extraction even if objects already extracted
             max_workers: Maximum number of parallel workers (default: CPU count)
@@ -481,7 +543,7 @@ class YOLOv8ObjectExtractor:
             # Submit all tasks
             future_to_image = {
                 executor.submit(self.extract_objects_from_image, image_path, output_dir, 
-                              create_annotated, create_individual, force): image_path 
+                              create_annotated, create_individual, annotate_individual, force): image_path 
                 for image_path in image_files
             }
             
@@ -610,13 +672,14 @@ class YOLOv8ObjectExtractor:
 @click.option('--no-confidence', is_flag=True, help='Exclude confidence scores from labels')
 @click.option('--no-annotated', is_flag=True, help='Skip creating annotated images')
 @click.option('--no-individual', is_flag=True, help='Skip creating individual object files')
+@click.option('--annotate-individual', is_flag=True, help='Add labels to individual extracted objects')
 @click.option('--max-images', '-m', default=None, type=int, help='Maximum number of images to process')
 @click.option('--force', is_flag=True, help='Force extraction even if objects already extracted')
 @click.option('--workers', '-w', default=None, type=int, help=f'Number of parallel workers (default: {os.cpu_count()})')
 @click.option('--verbose', '-v', count=True, help='Enable verbose logging (-v for info, -vv for debug)')
 def main(input_path: Path, output_dir: Path, annotation_style: str, font_scale: float, 
          thickness: int, no_confidence: bool, no_annotated: bool, no_individual: bool,
-         max_images: Optional[int], force: bool, workers: Optional[int], verbose: int):
+         annotate_individual: bool, max_images: Optional[int], force: bool, workers: Optional[int], verbose: int):
     """Extract objects from images using YOLOv8 detection data and create annotated images."""
     
     # Setup logging based on verbosity level
@@ -654,6 +717,7 @@ def main(input_path: Path, output_dir: Path, annotation_style: str, font_scale: 
             output_dir=output_dir,
             create_annotated=not no_annotated,
             create_individual=not no_individual,
+            annotate_individual=annotate_individual,
             force=force
         )
         results = [result]
@@ -664,6 +728,7 @@ def main(input_path: Path, output_dir: Path, annotation_style: str, font_scale: 
             output_dir=output_dir,
             create_annotated=not no_annotated,
             create_individual=not no_individual,
+            annotate_individual=annotate_individual,
             max_images=max_images,
             force=force,
             max_workers=workers
