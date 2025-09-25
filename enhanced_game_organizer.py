@@ -14,9 +14,11 @@ Author: Claude Sonnet 4 (claude-3-5-sonnet-20241022)
 Generated via Cursor IDE (cursor.sh) with AI assistance
 """
 
-import sys
-import time
+import os
 import shutil
+import sys
+import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -64,6 +66,7 @@ class EnhancedGameOrganizer:
         self.final_games: List[GameSession] = []
         self.max_workers = max_workers
         self.performance_metrics = {}
+        self.temp_dir = None
     
     def detect_games_parallel(self, 
                             input_dir: Path, 
@@ -245,7 +248,9 @@ class EnhancedGameOrganizer:
                                progress: Progress, 
                                task_id: int) -> Dict[str, Path]:
         """Create organized folders in parallel."""
-        output_dir = Path("/tmp")  # Temporary for this demo
+        # Create temporary directory that will be cleaned up automatically
+        self.temp_dir = tempfile.mkdtemp(prefix="game_organizer_")
+        output_dir = Path(self.temp_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         game_folders = {}
         
@@ -644,6 +649,19 @@ class EnhancedGameOrganizer:
         
         console.print(f"📊 Comprehensive report generated: {report_path}", style="green")
         return report_path
+    
+    def cleanup_temp_files(self):
+        """Clean up temporary files and directories."""
+        if self.temp_dir and Path(self.temp_dir).exists():
+            try:
+                shutil.rmtree(self.temp_dir)
+                console.print(f"🧹 Cleaned up temporary directory: {self.temp_dir}", style="blue")
+            except Exception as e:
+                console.print(f"⚠️  Warning: Could not clean up temp directory {self.temp_dir}: {e}", style="yellow")
+    
+    def __del__(self):
+        """Destructor to ensure cleanup on object deletion."""
+        self.cleanup_temp_files()
 
 
 @click.command()
@@ -802,6 +820,9 @@ def main(input: Path, output: Path, pattern: str, split_file: Optional[Path],
             # Display performance metrics
             organizer.display_performance_metrics()
         
+        # Clean up temporary files
+        organizer.cleanup_temp_files()
+        
         return 0
         
     except Exception as e:
@@ -809,6 +830,11 @@ def main(input: Path, output: Path, pattern: str, split_file: Optional[Path],
         if verbose:
             import traceback
             console.print(traceback.format_exc())
+        # Clean up temporary files even on error
+        try:
+            organizer.cleanup_temp_files()
+        except:
+            pass  # Ignore cleanup errors
         return 1
 
 
