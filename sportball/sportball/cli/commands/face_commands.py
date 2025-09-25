@@ -68,12 +68,12 @@ def detect(ctx: click.Context,
     core = get_core(ctx)
     
     # Initialize face detector with same parameters as original
-    from ...detectors.face import FaceDetector
+    import sys
+    sys.path.append('/projects/soccer_photo_sorter')
+    from face_detection import FaceDetector
     detector = FaceDetector(
         border_padding=border_padding,
-        use_gpu=gpu,
-        enable_gpu=gpu,
-        cache_enabled=True
+        use_gpu=gpu
     )
     
     console.print(f"🔍 Starting face detection with {border_padding*100:.0f}% border padding", style="blue")
