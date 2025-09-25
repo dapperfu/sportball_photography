@@ -12,6 +12,8 @@ Generated via Cursor IDE (cursor.sh) with AI assistance
 import json
 import logging
 import os
+import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Dict, List, Tuple, Any, Optional
@@ -20,6 +22,10 @@ import cv2
 import numpy as np
 from tqdm import tqdm
 from loguru import logger
+import sys
+
+# Disable loguru's default handler
+logger.remove()
 
 
 @dataclass
@@ -529,11 +535,37 @@ class FaceExtractor:
         # Create output directory
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Process images
+        # Process images in parallel
         results = []
-        for image_path in tqdm(image_files, desc="Extracting faces"):
-            result = self.extract_faces_from_image(image_path, output_dir)
-            results.append(result)
+        max_workers = min(4, len(image_files))  # Limit to 4 workers to avoid overwhelming system
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_image = {
+                executor.submit(self.extract_faces_from_image, image_path, output_dir): image_path 
+                for image_path in image_files
+            }
+            
+            # Process completed tasks with progress bar
+            for future in tqdm(as_completed(future_to_image), 
+                             total=len(image_files), 
+                             desc="Extracting faces"):
+                try:
+                    result = future.result()
+                    results.append(result)
+                except Exception as e:
+                    image_path = future_to_image[future]
+                    logger.error(f"Error processing {image_path}: {e}")
+                    # Create error result
+                    error_result = ExtractionResult(
+                        image_path=str(image_path),
+                        faces_found=0,
+                        faces_extracted=0,
+                        extraction_time=0.0,
+                        extracted_faces=[],
+                        error=str(e)
+                    )
+                    results.append(error_result)
         
         return results
     
@@ -615,13 +647,23 @@ class FaceExtractor:
 @click.argument('output_dir', type=str)
 @click.option('--border-padding', '-b', default=0.25, help='Border padding percentage (0.25 = 25%)')
 @click.option('--max-images', '-m', default=None, type=int, help='Maximum number of images to process')
-@click.option('--verbose', '-v', is_flag=True, help='Enable verbose logging')
-def main(input_pattern: str, output_dir: str, border_padding: float, max_images: Optional[int], verbose: bool):
+@click.option('--verbose', '-v', count=True, help='Enable verbose logging (-v for info, -vv for debug)')
+def main(input_pattern: str, output_dir: str, border_padding: float, max_images: Optional[int], verbose: int):
     """Extract faces from images with configurable border padding."""
     
-    # Setup logging
-    if verbose:
+    # Setup logging based on verbose level
+    # Always keep tqdm visible by using stdout for progress and stderr for messages
+    logger.remove()  # Remove all existing handlers first
+    
+    if verbose >= 2:  # -vv: debug level
         logger.add("face_extraction.log", level="DEBUG")
+        logger.add(sys.stderr, level="DEBUG", format="{time:HH:mm:ss} | {level} | {message}")
+    elif verbose >= 1:  # -v: info level
+        logger.add("face_extraction.log", level="INFO")
+        logger.add(sys.stderr, level="INFO", format="{time:HH:mm:ss} | {level} | {message}")
+    else:  # Default: completely silent
+        # Add a null handler to prevent any output
+        logger.add(lambda msg: None, level="DEBUG")
     
     # Create output directory
     output_path = Path(output_dir)
