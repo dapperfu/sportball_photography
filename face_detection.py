@@ -312,8 +312,8 @@ class FaceDetector:
                             error="Updating existing faces with missing encodings"
                         )
                     else:
-                        # Print skip message to stderr so it appears below tqdm
-                        print(f"Skipped: {image_path.name} - JSON sidecar exists with {len(data['Face_detector']['faces'])} faces (use --force to override)", file=sys.stderr)
+                        # Return skip message in result to print after progress bar update
+                        skip_message = f"Skipped: {image_path.name} - JSON sidecar exists with {len(data['Face_detector']['faces'])} faces (use --force to override)"
                         return DetectionResult(
                             image_path=str(image_path),
                             image_width=0,
@@ -321,7 +321,7 @@ class FaceDetector:
                             faces_found=0,
                             detection_time=0.0,
                             detected_faces=[],
-                            error="Skipped - JSON sidecar exists with face data"
+                            error=f"Skipped - {skip_message}"
                         )
             except (json.JSONDecodeError, KeyError, TypeError):
                 # JSON exists but is invalid or doesn't contain face data, continue processing
@@ -640,6 +640,11 @@ class FaceDetector:
                     })
                     progress_bar.update(1)
                     
+                    # Print skip messages after progress bar update
+                    if result.error and result.error.startswith("Skipped -"):
+                        skip_message = result.error.replace("Skipped - ", "")
+                        print(skip_message, file=sys.stderr)
+                    
                 except Exception as e:
                     logger.error(f"Error processing {image_path}: {e}")
                     error_result = DetectionResult(
@@ -701,6 +706,11 @@ class FaceDetector:
                         'Total Found': sum(r.faces_found for r in results)
                     })
                     progress_bar.update(1)
+                    
+                    # Print skip messages after progress bar update
+                    if result.error and result.error.startswith("Skipped -"):
+                        skip_message = result.error.replace("Skipped - ", "")
+                        print(skip_message, file=sys.stderr)
                         
                 except Exception as e:
                     image_path = future_to_image[future]
