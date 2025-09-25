@@ -199,19 +199,7 @@ class ObjectDetector:
         if not YOLO_AVAILABLE:
             raise ImportError("ultralytics package is required for YOLOv8 detection")
         
-        # Load YOLOv8 model
-        try:
-            # Suppress Ultralytics logging
-            import logging as std_logging
-            std_logging.getLogger('ultralytics').setLevel(std_logging.WARNING)
-            
-            self.model = YOLO(model_path)
-            logger.info(f"Loaded YOLOv8 model: {model_path}")
-        except Exception as e:
-            logger.error(f"Failed to load YOLOv8 model: {e}")
-            raise
-        
-        # Check for GPU support
+        # Check for GPU support first
         if self.enable_gpu:
             try:
                 # Check if CUDA is available
@@ -230,6 +218,34 @@ class ObjectDetector:
                 self.device = "cpu"
         else:
             self.device = "cpu"
+        
+        # Load YOLOv8 model with proper device configuration
+        try:
+            # Suppress Ultralytics logging
+            import logging as std_logging
+            std_logging.getLogger('ultralytics').setLevel(std_logging.WARNING)
+            
+            # Load model and move to appropriate device
+            self.model = YOLO(model_path)
+            
+            # Configure model for GPU if available
+            if self.enable_gpu and self.device == "cuda":
+                try:
+                    # Move model to GPU
+                    self.model.to(self.device)
+                    logger.info(f"YOLOv8 model moved to GPU: {self.device}")
+                except Exception as e:
+                    logger.warning(f"Failed to move YOLOv8 model to GPU: {e}")
+                    self.device = "cpu"
+                    self.model.to(self.device)
+            else:
+                self.model.to(self.device)
+                logger.info(f"YOLOv8 model using device: {self.device}")
+            
+            logger.info(f"Loaded YOLOv8 model: {model_path}")
+        except Exception as e:
+            logger.error(f"Failed to load YOLOv8 model: {e}")
+            raise
         
         # Create class name to ID mapping
         self.class_name_to_id = {name: class_id for class_id, name in COCO_CLASSES.items()}
