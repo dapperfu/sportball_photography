@@ -29,7 +29,6 @@ def main():
         min_game_duration_minutes=30,  # Minimum 30 minutes for a game
         min_gap_minutes=10,            # 10+ minute gap indicates new game
         min_photos_per_game=50,        # At least 50 photos per game
-        max_photos_per_game=2000       # Reasonable upper limit
     )
     
     # Create detector

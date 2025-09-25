@@ -68,7 +68,6 @@ python game_split_config.py --load my_config.json --apply --summary
     "max_gap_minutes": 5,
     "min_gap_minutes": 10,
     "min_photos_per_game": 50,
-    "max_photos_per_game": 2000
   },
   "automated_games": [
     {

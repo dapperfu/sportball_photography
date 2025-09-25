@@ -46,7 +46,6 @@ class GameDetectionConfig:
     max_gap_minutes: int = 5             # Maximum gap within a game
     min_gap_minutes: int = 10            # Minimum gap to separate games
     min_photos_per_game: int = 50        # Minimum photos per game
-    max_photos_per_game: int = 2000     # Maximum photos per game
     time_format: str = "%H%M%S"         # Time format in filename
 
 
@@ -327,7 +326,6 @@ class GameDetector:
                 'max_gap_minutes': self.config.max_gap_minutes,
                 'min_gap_minutes': self.config.min_gap_minutes,
                 'min_photos_per_game': self.config.min_photos_per_game,
-                'max_photos_per_game': self.config.max_photos_per_game
             },
             'summary': self.generate_game_summary(),
             'detailed_games': []

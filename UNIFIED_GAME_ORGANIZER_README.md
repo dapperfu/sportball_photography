@@ -99,7 +99,6 @@ python unified_game_organizer.py --input /keg/pictures/incoming/2025/09-Sep --ou
 - `min_gap_minutes`: Minimum gap to separate games (default: 10)
 - `max_gap_minutes`: Maximum gap within a game (default: 5)
 - `min_photos_per_game`: Minimum photos per game (default: 50)
-- `max_photos_per_game`: Maximum photos per game (default: 2000)
 
 ### **Output Options**
 - `create_symlinks`: Create symlinks (True) or copy files (False)

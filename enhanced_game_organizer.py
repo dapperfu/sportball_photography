@@ -615,7 +615,6 @@ class EnhancedGameOrganizer:
                 'min_game_duration_minutes': self.config.min_game_duration_minutes,
                 'min_gap_minutes': self.config.min_gap_minutes,
                 'min_photos_per_game': self.config.min_photos_per_game,
-                'max_photos_per_game': self.config.max_photos_per_game,
                 'parallel_workers': self.max_workers
             }
         }
@@ -785,7 +784,6 @@ def main(input: Path, output: Path, pattern: str, split_file: Optional[Path],
         min_game_duration_minutes=min_duration,
         min_gap_minutes=min_gap,
         min_photos_per_game=50,
-        max_photos_per_game=2000
     )
     
     # Create organizer

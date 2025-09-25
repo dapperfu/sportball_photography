@@ -130,7 +130,6 @@ class GameSplitConfigManager:
                 'max_gap_minutes': self.detector.config.max_gap_minutes,
                 'min_gap_minutes': self.detector.config.min_gap_minutes,
                 'min_photos_per_game': self.detector.config.min_photos_per_game,
-                'max_photos_per_game': self.detector.config.max_photos_per_game
             },
             automated_games=automated_games,
             manual_splits=[],  # Empty - ready for user to add
