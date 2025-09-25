@@ -625,9 +625,9 @@ def list_available_objects():
 @click.option('--max-images', '-n', default=None, type=int, help='Maximum number of images to process')
 @click.option('--gpu/--no-gpu', default=True, help='Use GPU acceleration if available')
 @click.option('--force', '-f', is_flag=True, help='Force detection even if JSON sidecar exists')
-@click.option('--verbose', '-v', is_flag=True, help='Enable verbose logging')
+@click.option('--verbose', '-v', count=True, help='Enable verbose logging (-v for info, -vv for debug)')
 def main(input_pattern: Optional[str], objects: Optional[str], list_objects: bool, border_padding: float, 
-         confidence: float, model: str, max_images: Optional[int], gpu: bool, force: bool, verbose: bool):
+         confidence: float, model: str, max_images: Optional[int], gpu: bool, force: bool, verbose: int):
     """Detect objects in images using YOLOv8 and save comprehensive data to JSON sidecar files."""
     
     # Handle --list option
@@ -641,9 +641,17 @@ def main(input_pattern: Optional[str], objects: Optional[str], list_objects: boo
         click.echo("Use --help for more information")
         return 1
     
-    # Setup logging
-    if verbose:
+    # Setup logging based on verbosity level
+    logger.remove()  # Remove default handler
+    
+    if verbose >= 2:
         logger.add("yolo_object_detection.log", level="DEBUG")
+        logger.add(lambda msg: print(msg), level="DEBUG")
+    elif verbose >= 1:
+        logger.add(lambda msg: print(msg), level="INFO")
+    else:
+        # Only show warnings and errors by default
+        logger.add(lambda msg: print(msg), level="WARNING")
     
     # Parse target objects
     target_objects = None

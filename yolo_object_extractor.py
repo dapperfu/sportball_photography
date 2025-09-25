@@ -563,6 +563,7 @@ class YOLOv8ObjectExtractor:
         
         # Save report
         report_path = output_dir / "extraction_report.json"
+        output_dir.mkdir(parents=True, exist_ok=True)
         with open(report_path, 'w') as f:
             json.dump(report_data, f, indent=2)
         
@@ -584,15 +585,23 @@ class YOLOv8ObjectExtractor:
 @click.option('--no-individual', is_flag=True, help='Skip creating individual object files')
 @click.option('--max-images', '-m', default=None, type=int, help='Maximum number of images to process')
 @click.option('--force', is_flag=True, help='Force extraction even if objects already extracted')
-@click.option('--verbose', '-v', is_flag=True, help='Enable verbose logging')
+@click.option('--verbose', '-v', count=True, help='Enable verbose logging (-v for info, -vv for debug)')
 def main(input_path: Path, output_dir: Path, annotation_style: str, font_scale: float, 
          thickness: int, no_confidence: bool, no_annotated: bool, no_individual: bool,
-         max_images: Optional[int], force: bool, verbose: bool):
+         max_images: Optional[int], force: bool, verbose: int):
     """Extract objects from images using YOLOv8 detection data and create annotated images."""
     
-    # Setup logging
-    if verbose:
+    # Setup logging based on verbosity level
+    logger.remove()  # Remove default handler
+    
+    if verbose >= 2:
         logger.add("yolo_object_extraction.log", level="DEBUG")
+        logger.add(lambda msg: print(msg), level="DEBUG")
+    elif verbose >= 1:
+        logger.add(lambda msg: print(msg), level="INFO")
+    else:
+        # Only show warnings and errors by default
+        logger.add(lambda msg: print(msg), level="WARNING")
     
     # Initialize extractor
     extractor = YOLOv8ObjectExtractor(
