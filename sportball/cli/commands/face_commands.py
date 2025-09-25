@@ -84,6 +84,10 @@ def face_group():
 @click.option('--verbose', '-v', 
               count=True, 
               help='Enable verbose logging (-v for info, -vv for debug)')
+@click.option('--batch-size', 'batch_size',
+              type=int,
+              default=8,
+              help='Batch size for processing multiple images (default: 8)')
 @click.pass_context
 def detect(ctx: click.Context, 
            input_pattern: str,
@@ -92,7 +96,8 @@ def detect(ctx: click.Context,
            gpu: bool,
            force: bool,
            no_recursive: bool,
-           verbose: int):
+           verbose: int,
+           batch_size: int):
     """
     Detect faces in images and save comprehensive data to JSON sidecar files.
     
@@ -108,21 +113,7 @@ def detect(ctx: click.Context,
     
     core = get_core(ctx)
     
-    # Initialize face detector using internal sportball detector
-    from ...detectors.face import FaceDetector
-    detector = FaceDetector(
-        enable_gpu=gpu,
-        cache_enabled=True,
-        confidence_threshold=0.5,
-        min_face_size=64
-    )
-    
-    console.print(f"🔍 Starting face detection with {border_padding*100:.0f}% border padding", style="blue")
-    
-    # Pre-scan phase: find all images and check for existing sidecars
-    console.print("📁 Scanning directory for images and existing sidecar files...", style="blue")
-    
-    # Find all image files (recursive by default)
+    # Find image files
     input_path = Path(input_pattern)
     recursive = not no_recursive
     
@@ -137,12 +128,6 @@ def detect(ctx: click.Context,
         else:
             image_files = list(Path('.').glob(input_pattern))
     
-    # Debug: show what we found
-    if verbose >= 2:
-        console.print(f"🔍 Debug: Found {len(image_files)} files", style="blue")
-        if image_files:
-            console.print(f"🔍 Debug: First few files: {[f.name for f in image_files[:3]]}", style="blue")
-    
     if not image_files:
         console.print("❌ No images found", style="red")
         return
@@ -153,136 +138,85 @@ def detect(ctx: click.Context,
     
     console.print(f"📊 Found {len(image_files)} images to analyze", style="blue")
     
-    # Parallel check for existing sidecar files
-    console.print("🔍 Checking for existing sidecar files...", style="blue")
-    
+    # Check for existing sidecar files
     skipped_files = []
     files_to_process = []
     
-    # Use parallel processing for sidecar file checking
-    max_workers = min(32, len(image_files))  # Limit workers to avoid overwhelming the system
+    for image_file in image_files:
+        image_file, should_skip = check_sidecar_file(image_file, force)
+        if should_skip:
+            skipped_files.append(image_file)
+        else:
+            files_to_process.append(image_file)
     
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all sidecar checks
-        future_to_file = {
-            executor.submit(check_sidecar_file, image_file, force): image_file 
-            for image_file in image_files
-        }
-        
-        # Process results as they complete
-        for future in as_completed(future_to_file):
-            image_file, should_skip = future.result()
-            if should_skip:
-                skipped_files.append(image_file)
-            else:
-                files_to_process.append(image_file)
-    
-    # Display pre-scan results
-    if skipped_files:
-        console.print(f"⏭️  Skipped {len(skipped_files)} images with existing face detection data", style="yellow")
-        console.print(f"💡 Use --force to reprocess all images", style="blue")
+    console.print(f"📊 Processing {len(files_to_process)} images ({len(skipped_files)} skipped)", style="blue")
     
     if not files_to_process:
-        console.print("✅ All images already have face detection data", style="green")
+        console.print("✅ All images already processed (use --force to reprocess)", style="green")
         return
     
-    console.print(f"🔄 Processing {len(files_to_process)} images...", style="blue")
+    console.print(f"🔍 Starting face detection with batch size {batch_size}...", style="blue")
     
-    # Process only the files that need processing
+    # Use core's batch processing for face detection
+    core = get_core(ctx)
+    
+    # Prepare detection parameters
+    detection_kwargs = {
+        'confidence': 0.5,
+        'min_faces': 1,
+        'face_size': 64,
+        'batch_size': batch_size
+    }
+    
+    # Perform batch detection
+    results_dict = core.detect_faces(files_to_process, **detection_kwargs)
+    
+    # Convert results to list format for compatibility
     results = []
     total_faces_found = 0
-    total_time = 0
+    total_time = 0.0
     
-    # Get workers parameter from context
-    max_workers = ctx.obj.get('workers')
-    if max_workers is None:
-        import os
-        max_workers = min(4, os.cpu_count() or 1)  # Default to 4 workers or CPU count
-    
-    # Use parallel processing if we have multiple files and workers > 1
-    if len(files_to_process) > 1 and max_workers > 1:
-        console.print(f"🔄 Using parallel processing with {max_workers} workers", style="blue")
-        
-        def process_single_image(image_file):
-            """Process a single image and return result."""
-            try:
-                # Create a new detector instance for each worker to avoid threading issues
-                from ...detectors.face import FaceDetector
-                worker_detector = FaceDetector(
-                    enable_gpu=gpu,
-                    cache_enabled=True,
-                    confidence_threshold=0.5,
-                    min_face_size=64
-                )
-                result = worker_detector.detect_faces(image_file)
-                return result, None
-            except Exception as e:
-                return None, e
-        
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TimeElapsedColumn(),
-            console=console
-        ) as progress:
-            
-            task = progress.add_task("Detecting faces...", total=len(files_to_process))
-            
-            # Use ThreadPoolExecutor with separate detector instances
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                # Submit all tasks
-                future_to_file = {
-                    executor.submit(process_single_image, image_file): image_file
-                    for image_file in files_to_process
-                }
-                
-                # Collect results as they complete
-                for future in as_completed(future_to_file):
-                    image_file = future_to_file[future]
-                    try:
-                        result, error = future.result()
-                        if error:
-                            console.print(f"❌ Error processing {image_file.name}: {error}", style="red")
-                        else:
-                            results.append(result)
-                            total_faces_found += result.face_count
-                            total_time += result.processing_time
-                            
-                            progress.update(task, advance=1, 
-                                           description=f"Detecting faces... ({result.face_count} faces in {Path(image_file).name})")
-                    except Exception as e:
-                        console.print(f"❌ Error processing {image_file.name}: {e}", style="red")
-                    
-                    progress.update(task, advance=1)
-    else:
-        # Sequential processing for single files or when workers = 1
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TimeElapsedColumn(),
-            console=console
-        ) as progress:
-            
-            task = progress.add_task("Detecting faces...", total=len(files_to_process))
-            
-            for image_file in files_to_process:
-                try:
-                    result = detector.detect_faces(image_file)
-                    results.append(result)
-                    total_faces_found += result.face_count
-                    total_time += result.processing_time
-                    
-                    progress.update(task, advance=1, 
-                                   description=f"Detecting faces... ({result.face_count} faces in {Path(image_file).name})")
-                    
-                except Exception as e:
-                    console.print(f"❌ Error processing {image_file.name}: {e}", style="red")
-                    progress.update(task, advance=1)
+    for image_file in files_to_process:
+        if str(image_file) in results_dict:
+            result = results_dict[str(image_file)]
+            results.append(result)
+            total_faces_found += result.face_count
+            total_time += result.processing_time
+        else:
+            # Handle missing results
+            from ...detectors.face import FaceDetectionResult
+            error_result = FaceDetectionResult(
+                faces=[],
+                face_count=0,
+                success=False,
+                processing_time=0.0,
+                error="No result returned"
+            )
+            results.append(error_result)
     
     # Display final results
     display_face_detection_results(results, len(files_to_process), total_faces_found, total_time, len(skipped_files))
+
+
+@face_group.command()
+@click.argument('input_path', type=click.Path(exists=True, path_type=Path))
+@click.option('--output', '-o',
+              type=click.Path(path_type=Path),
+              help='Output directory for extracted faces')
+@click.pass_context
+def extract(ctx: click.Context, input_path: Path, output: Optional[Path]):
+    """
+    Extract detected faces to separate images.
+    
+    INPUT_PATH should be a directory containing images with face detection sidecar files.
+    """
+    
+    core = get_core(ctx)
+    
+    console.print(f"✂️  Extracting faces from {input_path}...", style="blue")
+    
+    # TODO: Implement face extraction
+    console.print("Face extraction not yet implemented", style="yellow")
 
 
 def display_face_results(results: dict, extract_faces: bool, output_dir: Optional[Path]):
@@ -343,75 +277,6 @@ def display_face_detection_results(results, total_images: int, total_faces_found
     if skipped_count > 0:
         console.print(f"⏭️  {skipped_count} images skipped (existing sidecar data)", style="blue")
     
-    # Show any errors
-    error_count = sum(1 for result in results if result.error and not result.error.startswith("Skipped"))
-    if error_count > 0:
-        console.print(f"⚠️  {error_count} images had errors", style="yellow")
-
-
-@face_group.command()
-@click.argument('input_path', type=click.Path(exists=True, path_type=Path))
-@click.option('--output', '-o',
-              type=click.Path(path_type=Path),
-              required=True,
-              help='Output directory for clustered faces')
-@click.option('--threshold', '-t',
-              type=float,
-              default=0.6,
-              help='Clustering threshold (0.0-1.0)')
-@click.option('--min-cluster-size', 'min_cluster_size',
-              type=int,
-              default=2,
-              help='Minimum cluster size')
-@click.pass_context
-def cluster(ctx: click.Context, 
-            input_path: Path, 
-            output: Path, 
-            threshold: float,
-            min_cluster_size: int):
-    """
-    Cluster detected faces by similarity.
-    
-    INPUT_PATH should be a directory containing images with face detection sidecar files.
-    """
-    
-    core = get_core(ctx)
-    
-    console.print(f"🔗 Clustering faces from {input_path}...", style="blue")
-    
-    # TODO: Implement face clustering
-    console.print("Face clustering not yet implemented", style="yellow")
-
-
-@face_group.command()
-@click.argument('input_path', type=click.Path(exists=True, path_type=Path))
-@click.option('--output', '-o',
-              type=click.Path(path_type=Path),
-              required=True,
-              help='Output directory for extracted faces')
-@click.option('--face-size', 'face_size',
-              type=int,
-              default=64,
-              help='Size of extracted faces')
-@click.option('--padding', '-p',
-              type=int,
-              default=10,
-              help='Padding around face in pixels')
-@click.pass_context
-def extract(ctx: click.Context, 
-            input_path: Path, 
-            output: Path, 
-            face_size: int,
-            padding: int):
-    """
-    Extract detected faces from images.
-    
-    INPUT_PATH should be a directory containing images with face detection sidecar files.
-    """
-    
-    core = get_core(ctx)
-    
-    console.print(f"✂️  Extracting faces from {input_path}...", style="blue")
-    
-    # TODO: Implement face extraction
-    console.print("Face extraction not yet implemented", style="yellow")
+    # Show batch processing info
+    if total_images > 1:
+        console.print(f"🔄 Used batch processing for efficiency", style="blue")
