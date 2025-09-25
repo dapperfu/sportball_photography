@@ -18,6 +18,7 @@ from collections import defaultdict, Counter
 import json
 
 from ..utils import get_core
+from ...sidecar import Sidecar, OperationType
 
 console = Console()
 
@@ -88,230 +89,23 @@ def collect_sidecar_statistics(directory: Path,
                               operation_filter: Optional[str],
                               progress: Progress,
                               task_id: int) -> Dict[str, Any]:
-    """Collect comprehensive sidecar statistics."""
+    """Collect comprehensive sidecar statistics using the new Sidecar class."""
     
-    # Find all image files in the directory
-    image_extensions = ['.jpg', '.jpeg', '.png', '.tiff', '.bmp', '.webp']
-    all_image_files = []
-    
-    for ext in image_extensions:
-        all_image_files.extend(directory.glob(f'*{ext}'))
-        all_image_files.extend(directory.glob(f'*{ext.upper()}'))
-    
-    # Separate symlinks from regular files and collect sidecar files
-    symlink_info = {}
-    sidecar_files = []
-    
-    for image_file in all_image_files:
-        if image_file.is_symlink():
-            try:
-                # Resolve symlink
-                target_path = image_file.resolve()
-                
-                # Check for sidecar next to target
-                sidecar_path = target_path.with_suffix('.json')
-                if sidecar_path.exists():
-                    sidecar_files.append(sidecar_path)
-                
-                symlink_info[str(image_file)] = {
-                    'symlink_path': str(image_file),
-                    'target_path': str(target_path),
-                    'is_symlink': True,
-                    'broken': not target_path.exists()
-                }
-            except Exception as e:
-                symlink_info[str(image_file)] = {
-                    'symlink_path': str(image_file),
-                    'target_path': None,
-                    'is_symlink': True,
-                    'error': str(e)
-                }
-        else:
-            # Regular file - check for sidecar in same directory
-            sidecar_path = image_file.with_suffix('.json')
-            if sidecar_path.exists():
-                sidecar_files.append(sidecar_path)
-            
-            symlink_info[str(image_file)] = {
-                'symlink_path': str(image_file),
-                'target_path': str(image_file),
-                'is_symlink': False
-            }
-    
-    # Also look for pattern-based sidecars in the directory
-    sidecar_files.extend(directory.glob('*_*.json'))
-    
-    # Remove duplicates
-    sidecar_files = list(set(sidecar_files))
-    
-    progress.update(task_id, description=f"Found {len(all_image_files)} images ({len([f for f in symlink_info.values() if f['is_symlink']])} symlinks), {len(sidecar_files)} sidecar files")
-    
-    # Analyze sidecar files
-    operation_counts = Counter()
-    operation_details = defaultdict(list)
-    file_coverage = {}
-    processing_times = defaultdict(list)
-    success_rates = defaultdict(lambda: {'success': 0, 'total': 0})
-    data_sizes = defaultdict(list)
-    symlink_sidecar_mapping = {}
-    
-    for sidecar_file in sidecar_files:
+    # Convert operation filter to OperationType enum
+    operation_type_filter = None
+    if operation_filter:
         try:
-            with open(sidecar_file, 'r') as f:
-                data = json.load(f)
-            
-            # Extract operation type - check multiple possible structures
-            operation = 'unknown'
-            
-            # Check for sidecar_info structure
-            if 'sidecar_info' in data:
-                operation = data['sidecar_info'].get('operation_type', 'unknown')
-            # Check for Face_detector structure
-            elif 'Face_detector' in data:
-                operation = 'face_detection'
-            # Check for other detector structures
-            elif 'Object_detector' in data:
-                operation = 'object_detection'
-            elif 'Ball_detector' in data:
-                operation = 'ball_detection'
-            elif 'Quality_assessor' in data:
-                operation = 'quality_assessment'
-            elif 'Game_detector' in data:
-                operation = 'game_detection'
-            
-            # Apply filter if specified
-            if operation_filter and operation != operation_filter:
-                continue
-            
-            operation_counts[operation] += 1
-            
-            # Extract image name from sidecar filename
-            image_name = sidecar_file.stem.rsplit('_', 1)[0]
-            image_path = None
-            symlink_info_for_file = None
-            
-            # Find corresponding image file (could be symlink)
-            # First check in the current directory
-            for ext in image_extensions:
-                potential_image = directory / f"{image_name}{ext}"
-                if potential_image.exists():
-                    image_path = potential_image
-                    break
-            
-            # If not found in current directory, check if this sidecar is next to a target file
-            if not image_path:
-                sidecar_dir = sidecar_file.parent
-                for ext in image_extensions:
-                    potential_image = sidecar_dir / f"{image_name}{ext}"
-                    if potential_image.exists():
-                        # This sidecar is next to the actual file, find the corresponding symlink
-                        for symlink_path, symlink_data in symlink_info.items():
-                            if symlink_data.get('target_path') == str(potential_image):
-                                image_path = Path(symlink_data['symlink_path'])
-                                break
-                        if not image_path:
-                            # No symlink found, use the actual file
-                            image_path = potential_image
-                        break
-            
-            if image_path:
-                # Check if this is a symlink and get target info
-                if image_path.is_symlink():
-                    try:
-                        target_path = image_path.resolve()
-                        symlink_info_for_file = {
-                            'symlink_path': str(image_path),
-                            'target_path': str(target_path),
-                            'is_symlink': True,
-                            'broken': not target_path.exists()
-                        }
-                        # Use target path for coverage tracking
-                        file_coverage[str(target_path)] = operation
-                        symlink_sidecar_mapping[str(target_path)] = {
-                            'sidecar_file': str(sidecar_file),
-                            'symlink_path': str(image_path),
-                            'operation': operation
-                        }
-                    except Exception as e:
-                        symlink_info_for_file = {
-                            'symlink_path': str(image_path),
-                            'target_path': None,
-                            'is_symlink': True,
-                            'error': str(e)
-                        }
-                        file_coverage[str(image_path)] = operation
-                else:
-                    file_coverage[str(image_path)] = operation
-                
-                operation_details[operation].append({
-                    'sidecar_file': str(sidecar_file),
-                    'image_file': str(image_path),
-                    'file_size': sidecar_file.stat().st_size,
-                    'symlink_info': symlink_info_for_file
-                })
-            
-            # Extract processing time
-            processing_time = data.get('data', {}).get('processing_time')
-            if processing_time:
-                processing_times[operation].append(processing_time)
-            
-            # Extract success status
-            success = data.get('data', {}).get('success', True)
-            success_rates[operation]['total'] += 1
-            if success:
-                success_rates[operation]['success'] += 1
-            
-            # Extract data size info
-            data_size = len(str(data.get('data', {})))
-            data_sizes[operation].append(data_size)
-            
-        except Exception as e:
-            console.print(f"⚠️  Error reading {sidecar_file}: {e}", style="yellow")
+            operation_type_filter = OperationType(operation_filter)
+        except ValueError:
+            console.print(f"⚠️  Invalid operation filter: {operation_filter}", style="yellow")
     
-    # Calculate statistics
-    total_images = len(all_image_files)
-    total_sidecars = sum(operation_counts.values())
-    coverage_percentage = (total_sidecars / total_images * 100) if total_images > 0 else 0
+    # Use the new Sidecar class
+    sidecar_manager = Sidecar()
+    stats_data = sidecar_manager.get_statistics(directory, operation_type_filter)
     
-    # Calculate average processing times
-    avg_processing_times = {}
-    for operation, times in processing_times.items():
-        if times:
-            avg_processing_times[operation] = sum(times) / len(times)
+    progress.update(task_id, description=f"Found {stats_data['total_images']} images ({stats_data['symlink_count']} symlinks), {stats_data['total_sidecars']} sidecar files")
     
-    # Calculate success rates
-    success_rate_percentages = {}
-    for operation, rates in success_rates.items():
-        if rates['total'] > 0:
-            success_rate_percentages[operation] = (rates['success'] / rates['total']) * 100
-    
-    # Calculate average data sizes
-    avg_data_sizes = {}
-    for operation, sizes in data_sizes.items():
-        if sizes:
-            avg_data_sizes[operation] = sum(sizes) / len(sizes)
-    
-    # Calculate symlink statistics
-    symlink_count = len([f for f in symlink_info.values() if f['is_symlink']])
-    broken_symlinks = len([f for f in symlink_info.values() if f.get('broken', False)])
-    
-    return {
-        'directory': str(directory),
-        'total_images': total_images,
-        'total_sidecars': total_sidecars,
-        'coverage_percentage': coverage_percentage,
-        'operation_counts': dict(operation_counts),
-        'operation_details': dict(operation_details),
-        'file_coverage': file_coverage,
-        'avg_processing_times': avg_processing_times,
-        'success_rate_percentages': success_rate_percentages,
-        'avg_data_sizes': avg_data_sizes,
-        'filter_applied': operation_filter,
-        'symlink_info': symlink_info,
-        'symlink_count': symlink_count,
-        'broken_symlinks': broken_symlinks,
-        'symlink_sidecar_mapping': symlink_sidecar_mapping
-    }
+    return stats_data
 
 
 def display_table_stats(stats_data: Dict[str, Any]):
