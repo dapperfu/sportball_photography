@@ -213,6 +213,7 @@ class FaceDetector:
             Face encoding or None if not available
         """
         if not FACE_RECOGNITION_AVAILABLE:
+            logger.debug("Face recognition not available - skipping encoding")
             return None
         
         try:
@@ -223,6 +224,44 @@ class FaceDetector:
                 return encodings[0].tolist()
         except Exception as e:
             logger.debug(f"Failed to get face encoding: {e}")
+        
+        return None
+    
+    def get_face_encoding_from_original(self, image: np.ndarray, x: int, y: int, w: int, h: int) -> Optional[List[float]]:
+        """
+        Get face encoding for clustering from the original image using face_recognition.
+        Uses the known face location for faster processing.
+        
+        Args:
+            image: Original image (RGB format)
+            x, y, w, h: Face coordinates in original image
+            
+        Returns:
+            Face encoding or None if not available
+        """
+        if not FACE_RECOGNITION_AVAILABLE:
+            logger.debug("Face recognition not available - skipping encoding")
+            return None
+        
+        try:
+            # Convert our OpenCV coordinates to face_recognition format
+            # OpenCV: (x, y, width, height) - top-left corner
+            # face_recognition: (top, right, bottom, left) - all edges
+            top = y
+            right = x + w
+            bottom = y + h
+            left = x
+            
+            face_location = [(top, right, bottom, left)]
+            
+            # Get encoding directly using the known face location (much faster!)
+            encodings = face_recognition.face_encodings(image, face_location)
+            
+            if encodings:
+                return encodings[0].tolist()
+                
+        except Exception as e:
+            logger.debug(f"Failed to get face encoding from original: {e}")
         
         return None
     
@@ -339,8 +378,8 @@ class FaceDetector:
                 # Detect facial features
                 facial_features = self.detect_facial_features(face_region)
                 
-                # Get face encoding for clustering
-                face_encoding = self.get_face_encoding(face_region)
+                # Get face encoding for clustering from original image
+                face_encoding = self.get_face_encoding_from_original(image, orig_x, orig_y, orig_w, orig_h)
                 
                 # Create detected face object
                 detected_face = DetectedFace(
