@@ -71,21 +71,66 @@ class UnifiedGameOrganizer:
             print("❌ No games detected automatically")
             return {}
     
-    def add_manual_split(self, timestamp_str: str) -> bool:
+    def load_split_file(self, split_file: Path) -> bool:
         """
-        Add a manual split point.
+        Load manual splits from a text file.
         
         Args:
-            timestamp_str: Timestamp in format "HH:MM:SS" or "HHMMSS"
+            split_file: Path to text file with one timestamp per line
             
         Returns:
-            True if split was added successfully
+            True if splits were loaded successfully
         """
         if not self.splitter:
             print("❌ Run automated detection first")
             return False
         
-        return self.splitter.add_manual_split(timestamp_str)
+        try:
+            with open(split_file, 'r') as f:
+                for line_num, line in enumerate(f, 1):
+                    line = line.strip()
+                    
+                    # Skip empty lines and comments
+                    if not line or line.startswith('#'):
+                        continue
+                    
+                    # Remove inline comments
+                    if '#' in line:
+                        line = line.split('#')[0].strip()
+                    
+                    if not line:
+                        continue
+                    
+                    try:
+                        # Try parsing as HH:MM:SS first
+                        if ':' in line and len(line) <= 8:
+                            timestamp = datetime.strptime(line, "%H:%M:%S")
+                            # Convert to full datetime for September 20th, 2025
+                            full_timestamp = datetime(2025, 9, 20, timestamp.hour, timestamp.minute, timestamp.second)
+                            timestamp_str = full_timestamp.strftime("%H:%M:%S")
+                        # Try parsing as ISO format
+                        elif 'T' in line:
+                            timestamp = datetime.fromisoformat(line)
+                            timestamp_str = timestamp.strftime("%H:%M:%S")
+                        else:
+                            print(f"⚠️  Line {line_num}: Invalid timestamp format '{line}'")
+                            continue
+                        
+                        self.splitter.add_manual_split(timestamp_str)
+                        print(f"✅ Added split at {timestamp_str}")
+                        
+                    except ValueError as e:
+                        print(f"⚠️  Line {line_num}: Could not parse timestamp '{line}': {e}")
+            
+            print(f"📂 Loaded splits from {split_file}")
+            return True
+            
+        except FileNotFoundError:
+            print(f"❌ Split file not found: {split_file}")
+            return False
+        except Exception as e:
+            print(f"❌ Error loading split file: {e}")
+            return False
     
     def remove_manual_split(self, timestamp_str: str) -> bool:
         """
@@ -351,11 +396,8 @@ def main():
     parser.add_argument("--input", "-i", type=Path, required=True, help="Input directory")
     parser.add_argument("--output", "-o", type=Path, required=True, help="Output directory")
     parser.add_argument("--pattern", "-p", default="20250920_*", help="File pattern")
-    parser.add_argument("--add-split", "-a", help="Add split at timestamp (HH:MM:SS)")
-    parser.add_argument("--remove-split", "-r", help="Remove split at timestamp")
-    parser.add_argument("--list", "-l", action="store_true", help="List current splits")
+    parser.add_argument("--split-file", "-s", type=Path, help="Text file with manual splits (one timestamp per line)")
     parser.add_argument("--copy", action="store_true", help="Copy files instead of creating symlinks")
-    parser.add_argument("--interactive", action="store_true", help="Run interactive workflow")
     parser.add_argument("--min-duration", type=int, default=30, help="Minimum game duration (minutes)")
     parser.add_argument("--min-gap", type=int, default=10, help="Minimum gap to separate games (minutes)")
     
@@ -383,14 +425,8 @@ def main():
             return 1
         
         # Handle manual splits if specified
-        if args.add_split:
-            organizer.add_manual_split(args.add_split)
-        
-        if args.remove_split:
-            organizer.remove_manual_split(args.remove_split)
-        
-        if args.list:
-            organizer.list_manual_splits()
+        if args.split_file:
+            organizer.load_split_file(args.split_file)
         
         # Apply splits and create folders
         organizer.apply_manual_splits()
