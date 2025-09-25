@@ -138,7 +138,7 @@ def detect(ctx: click.Context,
             image_files = list(Path('.').glob(input_pattern))
     
     # Debug: show what we found
-    if verbose >= 1:
+    if verbose >= 2:
         console.print(f"🔍 Debug: Found {len(image_files)} files", style="blue")
         if image_files:
             console.print(f"🔍 Debug: First few files: {[f.name for f in image_files[:3]]}", style="blue")
