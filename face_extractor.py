@@ -11,6 +11,7 @@ Generated via Cursor IDE (cursor.sh) with AI assistance
 
 import json
 import logging
+import os
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Dict, List, Tuple, Any, Optional
@@ -88,19 +89,29 @@ class FaceExtractor:
         self.eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
         
         # Try to load nose and mouth cascades, but don't fail if they're not available
-        try:
-            self.nose_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_mcs_nose.xml')
-            if self.nose_cascade.empty():
+        # Note: These cascade files may not be available in all OpenCV installations
+        self.nose_cascade = None
+        self.mouth_cascade = None
+        
+        # Only try to load if the files exist
+        nose_path = cv2.data.haarcascades + 'haarcascade_mcs_nose.xml'
+        mouth_path = cv2.data.haarcascades + 'haarcascade_mcs_mouth.xml'
+        
+        if os.path.exists(nose_path):
+            try:
+                self.nose_cascade = cv2.CascadeClassifier(nose_path)
+                if self.nose_cascade.empty():
+                    self.nose_cascade = None
+            except:
                 self.nose_cascade = None
-        except:
-            self.nose_cascade = None
-            
-        try:
-            self.mouth_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_mcs_mouth.xml')
-            if self.mouth_cascade.empty():
+                
+        if os.path.exists(mouth_path):
+            try:
+                self.mouth_cascade = cv2.CascadeClassifier(mouth_path)
+                if self.mouth_cascade.empty():
+                    self.mouth_cascade = None
+            except:
                 self.mouth_cascade = None
-        except:
-            self.mouth_cascade = None
         
         logger.info(f"Initialized face extractor with {border_padding*100:.0f}% border padding")
     
@@ -295,22 +306,32 @@ class FaceExtractor:
         Extract faces from multiple images.
         
         Args:
-            image_pattern: Pattern to match image files
+            image_pattern: Pattern to match image files or directory path
             output_dir: Directory to save extracted faces
             max_images: Maximum number of images to process
             
         Returns:
             List of extraction results
         """
-        # Find images
-        if image_pattern.startswith('/'):
-            # Absolute path
-            parent_dir = Path(image_pattern).parent
-            pattern = Path(image_pattern).name
-            image_files = list(parent_dir.glob(pattern))
+        # Check if input is a directory
+        input_path = Path(image_pattern)
+        if input_path.is_dir():
+            # If it's a directory, find all image files in it
+            image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
+            image_files = []
+            for file_path in input_path.iterdir():
+                if file_path.is_file() and file_path.suffix.lower() in image_extensions:
+                    image_files.append(file_path)
         else:
-            # Relative path
-            image_files = list(Path('.').glob(image_pattern))
+            # Find images using pattern
+            if image_pattern.startswith('/'):
+                # Absolute path
+                parent_dir = Path(image_pattern).parent
+                pattern = Path(image_pattern).name
+                image_files = list(parent_dir.glob(pattern))
+            else:
+                # Relative path
+                image_files = list(Path('.').glob(image_pattern))
         
         if not image_files:
             logger.error(f"No images found matching pattern: {image_pattern}")
@@ -368,8 +389,10 @@ class FaceExtractor:
             f.write(f"**Images Processed**: {total_images}\n")
             f.write(f"**Faces Found**: {total_faces_found}\n")
             f.write(f"**Faces Extracted**: {total_faces_extracted}\n")
-            f.write(f"**Success Rate**: {total_faces_extracted/total_faces_found*100:.1f}%\n")
-            f.write(f"**Average Faces per Image**: {total_faces_found/total_images:.1f}\n")
+            success_rate = (total_faces_extracted/total_faces_found*100) if total_faces_found > 0 else 0.0
+            avg_faces = (total_faces_found/total_images) if total_images > 0 else 0.0
+            f.write(f"**Success Rate**: {success_rate:.1f}%\n")
+            f.write(f"**Average Faces per Image**: {avg_faces:.1f}\n")
             f.write(f"**Total Processing Time**: {total_time:.2f}s\n")
             f.write(f"**Average Time per Image**: {total_time/total_images:.2f}s\n\n")
             
