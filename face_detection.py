@@ -149,6 +149,9 @@ class FaceDetector:
         features = []
         gray_face = cv2.cvtColor(face_region, cv2.COLOR_BGR2GRAY)
         
+        # Temporarily suppress OpenCV output for feature detection
+        cv2.setLogLevel(0)  # LOG_LEVEL_SILENT = 0
+        
         # Detect eyes
         if self.eye_cascade:
             eyes = self.eye_cascade.detectMultiScale(gray_face, 1.1, 3)
@@ -192,6 +195,9 @@ class FaceDetector:
                     confidence=0.8
                 )
                 features.append(feature)
+        
+        # Restore normal logging
+        cv2.setLogLevel(4)  # LOG_LEVEL_INFO = 4
         
         return features
     
@@ -293,10 +299,15 @@ class FaceDetector:
         else:
             scale_factor = 1.0  # No scaling needed
         
-        # Detect faces
+        # Detect faces (suppress OpenCV output to avoid interrupting tqdm)
         start_time = cv2.getTickCount()
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        # Temporarily suppress OpenCV output
+        cv2.setLogLevel(0)  # LOG_LEVEL_SILENT = 0
         faces = self.face_cascade.detectMultiScale(gray, 1.1, 4)
+        cv2.setLogLevel(4)  # LOG_LEVEL_INFO = 4, restore normal logging
+        
         detection_time = (cv2.getTickCount() - start_time) / cv2.getTickFrequency()
         
         detected_faces = []
@@ -364,7 +375,8 @@ class FaceDetector:
     
     def create_detection_json(self, image_path: Path, detection_result: DetectionResult) -> None:
         """
-        Create JSON sidecar file for an image with all detection data.
+        Create or update JSON sidecar file for an image with all detection data.
+        Merges with existing data to preserve information from other tools.
         
         Args:
             image_path: Path to the original image
@@ -372,26 +384,40 @@ class FaceDetector:
         """
         from datetime import datetime
         
-        # Create JSON data structure for this image
-        image_data = {
-            "Face_detector": {
-                "metadata": {
-                    "extraction_timestamp": datetime.now().isoformat(),
-                    "tool_version": "1.0.0",
-                    "border_padding_percentage": self.border_padding * 100,
-                    "total_faces_found": detection_result.faces_found,
-                    "image_path": str(image_path),
-                    "image_dimensions": {
-                        "width": detection_result.image_width,
-                        "height": detection_result.image_height
-                    },
-                    "detection_time_seconds": detection_result.detection_time,
-                    "gpu_enabled": self.use_gpu,
-                    "face_recognition_available": FACE_RECOGNITION_AVAILABLE
-                },
-                "faces": []
-            }
+        json_path = image_path.parent / f"{image_path.stem}.json"
+        
+        # Load existing data if file exists
+        existing_data = {}
+        if json_path.exists():
+            try:
+                with open(json_path, 'r') as f:
+                    existing_data = json.load(f)
+            except (json.JSONDecodeError, KeyError, TypeError):
+                # If existing file is invalid, start fresh
+                existing_data = {}
+        
+        # Create or update Face_detector section
+        if "Face_detector" not in existing_data:
+            existing_data["Face_detector"] = {}
+        
+        # Update metadata
+        existing_data["Face_detector"]["metadata"] = {
+            "extraction_timestamp": datetime.now().isoformat(),
+            "tool_version": "1.0.0",
+            "border_padding_percentage": self.border_padding * 100,
+            "total_faces_found": detection_result.faces_found,
+            "image_path": str(image_path),
+            "image_dimensions": {
+                "width": detection_result.image_width,
+                "height": detection_result.image_height
+            },
+            "detection_time_seconds": detection_result.detection_time,
+            "gpu_enabled": self.use_gpu,
+            "face_recognition_available": FACE_RECOGNITION_AVAILABLE
         }
+        
+        # Update faces data
+        existing_data["Face_detector"]["faces"] = []
         
         # Add each detected face to the JSON
         for face in detection_result.detected_faces:
@@ -430,17 +456,13 @@ class FaceDetector:
                 }
                 face_data["facial_features"].append(feature_data)
             
-            image_data["Face_detector"]["faces"].append(face_data)
+            existing_data["Face_detector"]["faces"].append(face_data)
         
-        # Create JSON filename based on the image filename
-        json_filename = f"{image_path.stem}.json"
-        json_path = image_path.parent / json_filename
-        
-        # Save JSON file
+        # Save merged JSON file
         with open(json_path, 'w') as f:
-            json.dump(image_data, f, indent=2, cls=NumpyEncoder)
+            json.dump(existing_data, f, indent=2, cls=NumpyEncoder)
         
-        logger.debug(f"Detection JSON sidecar saved: {json_filename}")
+        logger.debug(f"Detection JSON sidecar saved/updated: {json_path.name}")
     
     def detect_faces_in_images(self, image_pattern: str, max_images: Optional[int] = None, force: bool = False) -> List[DetectionResult]:
         """
@@ -503,10 +525,9 @@ class FaceDetector:
                     result = future.result()
                     results.append(result)
                     
-                    # Create JSON sidecar if faces were found
-                    if result.detected_faces:
-                        image_path = future_to_image[future]
-                        self.create_detection_json(image_path, result)
+                    # Always create/update JSON sidecar (even if no faces found)
+                    image_path = future_to_image[future]
+                    self.create_detection_json(image_path, result)
                         
                 except Exception as e:
                     image_path = future_to_image[future]
