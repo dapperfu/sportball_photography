@@ -14,9 +14,9 @@ Author: Claude Sonnet 4 (claude-3-5-sonnet-20241022)
 Generated via Cursor IDE (cursor.sh) with AI assistance
 """
 
-import shutil
 import sys
 import time
+import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -260,8 +260,8 @@ class EnhancedGameOrganizer:
                 for photo_path in game.photo_files:
                     symlink_path = game_folder / photo_path.name
                     if symlink_path.exists():
-                        symlink_path.unlink()  # Remove existing symlink
-                    futures.append(executor.submit(symlink_path.symlink_to, photo_path))
+                        symlink_path.unlink()  # Remove existing symlink/file
+                    futures.append(executor.submit(self._create_symlink_safe, symlink_path, photo_path))
                 
                 # Wait for all symlinks to be created
                 for future in as_completed(futures):
@@ -278,6 +278,31 @@ class EnhancedGameOrganizer:
                 progress.advance(task_id)
         
         return game_folders
+    
+    def _create_symlink_safe(self, symlink_path: Path, target_path: Path) -> bool:
+        """
+        Safely create a symlink, handling existing files/symlinks.
+        
+        Args:
+            symlink_path: Path where symlink should be created
+            target_path: Path that symlink should point to
+            
+        Returns:
+            True if symlink was created successfully
+        """
+        try:
+            # Remove existing file/symlink if it exists
+            if symlink_path.exists():
+                symlink_path.unlink()
+            
+            # Create the symlink
+            symlink_path.symlink_to(target_path)
+            return True
+            
+        except Exception as e:
+            # Log the error but don't fail the entire process
+            logger.warning(f"Failed to create symlink {symlink_path} -> {target_path}: {e}")
+            return False
     
     def create_organized_folders(self, output_dir: Path, create_symlinks: bool = True, use_final_games: bool = True) -> Dict[str, Path]:
         """
@@ -315,9 +340,7 @@ class EnhancedGameOrganizer:
             for photo_path in game.photo_files:
                 if create_symlinks:
                     symlink_path = game_folder / photo_path.name
-                    if symlink_path.exists():
-                        symlink_path.unlink()  # Remove existing symlink
-                    symlink_path.symlink_to(photo_path)
+                    self._create_symlink_safe(symlink_path, photo_path)
                 else:
                     dest_path = game_folder / photo_path.name
                     if dest_path.exists():
@@ -339,6 +362,77 @@ class EnhancedGameOrganizer:
         
         return sorted(list(dates))
     
+    def load_split_file(self, split_file_path: Path) -> bool:
+        """
+        Load manual splits from a text file.
+        
+        Args:
+            split_file_path: Path to the split file
+            
+        Returns:
+            True if splits were loaded successfully
+        """
+        if not self.splitter:
+            console.print("❌ No splitter available. Run detection first.", style="red")
+            return False
+        
+        try:
+            with open(split_file_path, 'r') as f:
+                lines = f.readlines()
+            
+            splits_loaded = 0
+            for line_num, line in enumerate(lines, 1):
+                line = line.strip()
+                
+                # Skip empty lines and comments
+                if not line or line.startswith('#'):
+                    continue
+                
+                try:
+                    # Parse timestamp - handle both formats
+                    if ' ' in line:
+                        # Format: "YYYY-MM-DD HH:MM:SS"
+                        timestamp = datetime.strptime(line, "%Y-%m-%d %H:%M:%S")
+                    elif ':' in line:
+                        # Format: "HH:MM:SS" - assume current detected date
+                        time_part = datetime.strptime(line, "%H:%M:%S")
+                        # Use the first detected date from the games
+                        if self.detector.games:
+                            first_game_date = self.detector.games[0].start_time.date()
+                            timestamp = datetime.combine(first_game_date, time_part.time())
+                        else:
+                            # Fallback to September 20th, 2025
+                            timestamp = datetime(2025, 9, 20, time_part.hour, time_part.minute, time_part.second)
+                    else:
+                        # Format: "HHMMSS" - assume current detected date
+                        time_part = datetime.strptime(line, "%H%M%S")
+                        if self.detector.games:
+                            first_game_date = self.detector.games[0].start_time.date()
+                            timestamp = datetime.combine(first_game_date, time_part.time())
+                        else:
+                            # Fallback to September 20th, 2025
+                            timestamp = datetime(2025, 9, 20, time_part.hour, time_part.minute, time_part.second)
+                    
+                    self.splitter.manual_splits.append(timestamp)
+                    splits_loaded += 1
+                    
+                except ValueError as e:
+                    console.print(f"⚠️  Invalid timestamp format on line {line_num}: '{line}' - {e}", style="yellow")
+                    continue
+            
+            # Sort splits
+            self.splitter.manual_splits.sort()
+            
+            console.print(f"✅ Loaded {splits_loaded} manual splits from {split_file_path}", style="green")
+            return True
+            
+        except FileNotFoundError:
+            console.print(f"❌ Split file not found: {split_file_path}", style="red")
+            return False
+        except Exception as e:
+            console.print(f"❌ Error loading split file: {e}", style="red")
+            return False
+    
     def apply_manual_splits(self) -> bool:
         """
         Apply manual splits to the detected games.
@@ -358,7 +452,7 @@ class EnhancedGameOrganizer:
         console.print(f"🔧 Applying {len(self.splitter.manual_splits)} manual splits...", style="blue")
         
         try:
-            self.final_games = self.splitter.apply_manual_splits(self.detector.games)
+            self.final_games = self.splitter.apply_manual_splits()
             console.print(f"✅ Applied manual splits. Final games: {len(self.final_games)}", style="green")
             return True
         except Exception as e:
@@ -480,6 +574,76 @@ class EnhancedGameOrganizer:
         metrics_table.add_row("Photos/Second", f"{self.performance_metrics['photos_processed']/self.performance_metrics['total_time']:.1f}")
         
         console.print(metrics_table)
+    
+    def generate_comprehensive_report(self, output_dir: Path) -> Path:
+        """
+        Generate a comprehensive report of the game organization.
+        
+        Args:
+            output_dir: Output directory for the report
+            
+        Returns:
+            Path to the generated report file
+        """
+        report_path = output_dir / "comprehensive_game_report.json"
+        
+        # Ensure output directory exists
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate comprehensive report data
+        report_data = {
+            'summary': {
+                'total_games': len(self.final_games),
+                'total_photos': sum(game.photo_count for game in self.final_games),
+                'detection_method': 'automated_with_manual_splits' if self.splitter and self.splitter.manual_splits else 'automated_only',
+                'manual_splits_applied': len(self.splitter.manual_splits) if self.splitter else 0,
+                'generated_at': datetime.now().isoformat()
+            },
+            'games': [],
+            'performance': self.performance_metrics,
+            'configuration': {
+                'min_game_duration_minutes': self.config.min_game_duration_minutes,
+                'min_gap_minutes': self.config.min_gap_minutes,
+                'min_photos_per_game': self.config.min_photos_per_game,
+                'max_photos_per_game': self.config.max_photos_per_game,
+                'parallel_workers': self.max_workers
+            }
+        }
+        
+        # Add detailed game information
+        for game in self.final_games:
+            duration_minutes = (game.end_time - game.start_time).total_seconds() / 60
+            
+            game_info = {
+                'game_id': game.game_id,
+                'start_time': game.start_time.isoformat(),
+                'end_time': game.end_time.isoformat(),
+                'start_time_formatted': game.start_time.strftime('%H:%M:%S'),
+                'end_time_formatted': game.end_time.strftime('%H:%M:%S'),
+                'duration_minutes': round(duration_minutes, 1),
+                'photo_count': game.photo_count,
+                'gap_before_minutes': round(game.gap_before / 60, 1) if game.gap_before else None,
+                'gap_after_minutes': round(game.gap_after / 60, 1) if game.gap_after else None,
+                'photo_files': [str(photo_path) for photo_path in game.photo_files]
+            }
+            
+            report_data['games'].append(game_info)
+        
+        # Add manual splits information if available
+        if self.splitter and self.splitter.manual_splits:
+            report_data['manual_splits'] = {
+                'count': len(self.splitter.manual_splits),
+                'timestamps': [split.isoformat() for split in self.splitter.manual_splits],
+                'timestamps_formatted': [split.strftime('%H:%M:%S') for split in self.splitter.manual_splits]
+            }
+        
+        # Write report to file
+        import json
+        with open(report_path, 'w') as f:
+            json.dump(report_data, f, indent=2)
+        
+        console.print(f"📊 Comprehensive report generated: {report_path}", style="green")
+        return report_path
 
 
 @click.command()
