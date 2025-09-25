@@ -206,9 +206,43 @@ class YOLOv8ObjectExtractor:
         
         return annotated_image
     
+    def _mark_objects_extracted(self, json_path: Path, objects_count: int, annotated_image_path: Optional[str]) -> None:
+        """
+        Mark objects as extracted in the JSON sidecar file.
+        
+        Args:
+            json_path: Path to the JSON sidecar file
+            objects_count: Number of objects extracted
+            annotated_image_path: Path to the annotated image (if created)
+        """
+        try:
+            # Load existing JSON data
+            with open(json_path, 'r') as f:
+                json_data = json.load(f)
+            
+            # Add extraction metadata to YOLOv8 section
+            if 'yolov8' in json_data:
+                from datetime import datetime
+                json_data['yolov8']['objects_extracted'] = {
+                    'extraction_timestamp': datetime.now().isoformat(),
+                    'objects_extracted_count': objects_count,
+                    'annotated_image_path': annotated_image_path,
+                    'extractor_version': '1.0.0'
+                }
+                
+                # Save updated JSON
+                with open(json_path, 'w') as f:
+                    json.dump(json_data, f, indent=2)
+                    
+                logger.debug(f"Marked {objects_count} objects as extracted in {json_path.name}")
+                
+        except Exception as e:
+            logger.warning(f"Failed to mark objects as extracted in {json_path}: {e}")
+    
     def extract_objects_from_image(self, image_path: Path, output_dir: Path, 
                                  create_annotated: bool = True, 
-                                 create_individual: bool = True) -> ExtractionResult:
+                                 create_individual: bool = True,
+                                 force: bool = False) -> ExtractionResult:
         """
         Extract objects from a single image using JSON sidecar data.
         
@@ -217,6 +251,7 @@ class YOLOv8ObjectExtractor:
             output_dir: Output directory for extracted objects
             create_annotated: Whether to create annotated image
             create_individual: Whether to create individual object files
+            force: Whether to force extraction even if objects already extracted
             
         Returns:
             Extraction result with object information
@@ -248,8 +283,19 @@ class YOLOv8ObjectExtractor:
             return ExtractionResult(
                 image_path=str(image_path),
                 objects_extracted=0,
-                error="No YOLOv8 data found in JSON"
+                error="No YOLOv8 data found in JSON sidecar"
             )
+        
+        # Check if objects have already been extracted (unless force is True)
+        if not force:
+            yolov8_data = json_data['yolov8']
+            if 'objects_extracted' in yolov8_data:
+                logger.info(f"Skipping {image_path.name} - objects already extracted (use --force to override)")
+                return ExtractionResult(
+                    image_path=str(image_path),
+                    objects_extracted=yolov8_data.get('total_objects_found', 0),
+                    error="Skipped - objects already extracted"
+                )
         
         yolov8_data = json_data['yolov8']
         objects_data = yolov8_data.get('objects', [])
@@ -354,6 +400,9 @@ class YOLOv8ObjectExtractor:
             annotated_image_path = image_output_dir / annotated_filename
             cv2.imwrite(str(annotated_image_path), image)
         
+        # Mark objects as extracted in JSON file
+        self._mark_objects_extracted(json_path, len(objects_data), str(annotated_image_path) if annotated_image_path else None)
+        
         return ExtractionResult(
             image_path=str(image_path),
             objects_extracted=len(objects_data),
@@ -364,7 +413,8 @@ class YOLOv8ObjectExtractor:
     def extract_objects_from_directory(self, input_dir: Path, output_dir: Path,
                                      create_annotated: bool = True,
                                      create_individual: bool = True,
-                                     max_images: Optional[int] = None) -> List[ExtractionResult]:
+                                     max_images: Optional[int] = None,
+                                     force: bool = False) -> List[ExtractionResult]:
         """
         Extract objects from all images in a directory.
         
@@ -374,6 +424,7 @@ class YOLOv8ObjectExtractor:
             create_annotated: Whether to create annotated images
             create_individual: Whether to create individual object files
             max_images: Maximum number of images to process
+            force: Whether to force extraction even if objects already extracted
             
         Returns:
             List of extraction results
@@ -384,19 +435,28 @@ class YOLOv8ObjectExtractor:
         
         for file_path in input_dir.iterdir():
             if (file_path.is_file() and 
-                file_path.suffix.lower() in image_extensions and
-                (file_path.parent / f"{file_path.stem}.json").exists()):
-                image_files.append(file_path)
+                file_path.suffix.lower() in image_extensions):
+                # Check if JSON sidecar exists and contains YOLOv8 data
+                json_path = file_path.parent / f"{file_path.stem}.json"
+                if json_path.exists():
+                    try:
+                        with open(json_path, 'r') as f:
+                            json_data = json.load(f)
+                        if 'yolov8' in json_data:
+                            image_files.append(file_path)
+                    except:
+                        # Skip files with invalid JSON
+                        continue
         
         if not image_files:
-            logger.error(f"No images with JSON sidecars found in {input_dir}")
+            logger.error(f"No images with YOLOv8 JSON sidecars found in {input_dir}")
             return []
         
         # Limit number of images if specified
         if max_images:
             image_files = image_files[:max_images]
         
-        logger.info(f"Found {len(image_files)} images with JSON sidecars to process")
+        logger.info(f"Found {len(image_files)} images with YOLOv8 JSON sidecars to process")
         
         # Create output directory
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -409,7 +469,7 @@ class YOLOv8ObjectExtractor:
             # Submit all tasks
             future_to_image = {
                 executor.submit(self.extract_objects_from_image, image_path, output_dir, 
-                              create_annotated, create_individual): image_path 
+                              create_annotated, create_individual, force): image_path 
                 for image_path in image_files
             }
             
@@ -523,10 +583,11 @@ class YOLOv8ObjectExtractor:
 @click.option('--no-annotated', is_flag=True, help='Skip creating annotated images')
 @click.option('--no-individual', is_flag=True, help='Skip creating individual object files')
 @click.option('--max-images', '-m', default=None, type=int, help='Maximum number of images to process')
+@click.option('--force', is_flag=True, help='Force extraction even if objects already extracted')
 @click.option('--verbose', '-v', is_flag=True, help='Enable verbose logging')
 def main(input_path: Path, output_dir: Path, annotation_style: str, font_scale: float, 
          thickness: int, no_confidence: bool, no_annotated: bool, no_individual: bool,
-         max_images: Optional[int], verbose: bool):
+         max_images: Optional[int], force: bool, verbose: bool):
     """Extract objects from images using YOLOv8 detection data and create annotated images."""
     
     # Setup logging
@@ -555,7 +616,8 @@ def main(input_path: Path, output_dir: Path, annotation_style: str, font_scale: 
             image_path=input_path,
             output_dir=output_dir,
             create_annotated=not no_annotated,
-            create_individual=not no_individual
+            create_individual=not no_individual,
+            force=force
         )
         results = [result]
     else:
@@ -565,7 +627,8 @@ def main(input_path: Path, output_dir: Path, annotation_style: str, font_scale: 
             output_dir=output_dir,
             create_annotated=not no_annotated,
             create_individual=not no_individual,
-            max_images=max_images
+            max_images=max_images,
+            force=force
         )
     
     if not results:
