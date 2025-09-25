@@ -276,6 +276,7 @@ class FaceDetector:
         Returns:
             Detection result with face information
         """
+        import gc  # For garbage collection
         # Check if JSON sidecar already exists with face data
         json_path = image_path.parent / f"{image_path.stem}.json"
         if json_path.exists() and not force:
@@ -288,17 +289,38 @@ class FaceDetector:
                 if ("Face_detector" in data and 
                     "faces" in data["Face_detector"] and 
                     len(data["Face_detector"]["faces"]) > 0):
-                    # Print skip message to stderr so it appears below tqdm
-                    print(f"Skipped: {image_path.name} - JSON sidecar exists with {len(data['Face_detector']['faces'])} faces (use --force to override)", file=sys.stderr)
-                    return DetectionResult(
-                        image_path=str(image_path),
-                        image_width=0,
-                        image_height=0,
-                        faces_found=0,
-                        detection_time=0.0,
-                        detected_faces=[],
-                        error="Skipped - JSON sidecar exists with face data"
-                    )
+                    
+                    # Check if face encodings are missing (backward compatibility)
+                    missing_encodings = False
+                    for face in data["Face_detector"]["faces"]:
+                        if face.get("face_encoding") is None:
+                            missing_encodings = True
+                            break
+                    
+                    if missing_encodings:
+                        logger.info(f"Missing face encodings in {image_path.name} - will regenerate")
+                        # Return special result indicating we're updating existing faces
+                        return DetectionResult(
+                            image_path=str(image_path),
+                            image_width=data["Face_detector"]["metadata"]["image_dimensions"]["width"],
+                            image_height=data["Face_detector"]["metadata"]["image_dimensions"]["height"],
+                            faces_found=0,  # No new faces detected, just updating encodings
+                            detection_time=0.0,
+                            detected_faces=[],
+                            error="Updating existing faces with missing encodings"
+                        )
+                    else:
+                        # Print skip message to stderr so it appears below tqdm
+                        print(f"Skipped: {image_path.name} - JSON sidecar exists with {len(data['Face_detector']['faces'])} faces (use --force to override)", file=sys.stderr)
+                        return DetectionResult(
+                            image_path=str(image_path),
+                            image_width=0,
+                            image_height=0,
+                            faces_found=0,
+                            detection_time=0.0,
+                            detected_faces=[],
+                            error="Skipped - JSON sidecar exists with face data"
+                        )
             except (json.JSONDecodeError, KeyError, TypeError):
                 # JSON exists but is invalid or doesn't contain face data, continue processing
                 logger.debug(f"JSON sidecar exists but invalid/empty, reprocessing {image_path.name}")
@@ -405,6 +427,12 @@ class FaceDetector:
                 logger.error(f"Error processing face {i+1}: {e}")
                 continue
         
+        # Clean up memory before returning
+        del image, original_image
+        if 'rgb_image' in locals():
+            del rgb_image
+        gc.collect()
+        
         return DetectionResult(
             image_path=str(image_path),
             image_width=original_width,
@@ -457,8 +485,18 @@ class FaceDetector:
             "face_recognition_available": FACE_RECOGNITION_AVAILABLE
         }
         
-        # Update faces data
-        existing_data["Face_detector"]["faces"] = []
+        # Check if we're updating existing faces with missing encodings
+        updating_existing = (detection_result.error == "Updating existing faces with missing encodings")
+        
+        if updating_existing:
+            # We're updating existing faces with missing encodings
+            logger.info(f"Updating existing faces with missing encodings in {image_path.name}")
+            # Keep existing faces data and update encodings
+            existing_faces = existing_data["Face_detector"]["faces"]
+        else:
+            # Normal detection - replace faces data
+            existing_data["Face_detector"]["faces"] = []
+            existing_faces = []
         
         # Add each detected face to the JSON
         for face in detection_result.detected_faces:
@@ -498,6 +536,28 @@ class FaceDetector:
                 face_data["facial_features"].append(feature_data)
             
             existing_data["Face_detector"]["faces"].append(face_data)
+        
+        # If we're updating existing faces with missing encodings, update them now
+        if updating_existing and detection_result.faces_found == 0:
+            # Load the original image to generate encodings for existing faces
+            image = cv2.imread(str(image_path))
+            if image is not None:
+                # Convert to RGB for face_recognition
+                rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                
+                # Update each existing face with missing encoding
+                for face_data in existing_data["Face_detector"]["faces"]:
+                    if face_data.get("face_encoding") is None:
+                        coords = face_data["coordinates"]
+                        x, y, w, h = coords["x"], coords["y"], coords["width"], coords["height"]
+                        
+                        # Generate face encoding for this face
+                        face_encoding = self.get_face_encoding_from_original(rgb_image, x, y, w, h)
+                        if face_encoding:
+                            face_data["face_encoding"] = face_encoding
+                            logger.debug(f"Added face encoding for face {face_data['face_id']}")
+                        else:
+                            logger.warning(f"Failed to generate face encoding for face {face_data['face_id']}")
         
         # Save merged JSON file
         with open(json_path, 'w') as f:
@@ -547,24 +607,80 @@ class FaceDetector:
         
         logger.info(f"Found {len(image_files)} images to process")
         
-        # Process images in parallel
+        # Process images sequentially to avoid segmentation faults
         results = []
-        max_workers = min(4, len(image_files))  # Limit to 4 workers
+        
+        # Use sequential processing instead of parallel to avoid segfaults
+        if len(image_files) > 10:  # Only use parallel for small batches
+            logger.info("Using sequential processing to avoid memory issues")
+            # Sequential processing
+            progress_bar = tqdm(total=len(image_files), desc="Detecting faces", 
+                              bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}')
+            
+            for image_path in image_files:
+                try:
+                    result = self.detect_faces_in_image(image_path, force)
+                    results.append(result)
+                    
+                    # Always create/update JSON sidecar (even if no faces found)
+                    self.create_detection_json(image_path, result)
+                    
+                    # Update progress bar with current status
+                    progress_bar.set_postfix({
+                        'Current': image_path.name,
+                        'Faces': result.faces_found,
+                        'Total Found': sum(r.faces_found for r in results)
+                    })
+                    progress_bar.update(1)
+                    
+                except Exception as e:
+                    logger.error(f"Error processing {image_path}: {e}")
+                    error_result = DetectionResult(
+                        image_path=str(image_path),
+                        image_width=0,
+                        image_height=0,
+                        faces_found=0,
+                        detection_time=0.0,
+                        detected_faces=[],
+                        error=str(e)
+                    )
+                    results.append(error_result)
+                    progress_bar.update(1)
+            
+            progress_bar.close()
+            return results
+        
+        # Use parallel processing for small batches only
+        max_workers = min(2, len(image_files))
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all tasks
-            future_to_image = {
-                executor.submit(self.detect_faces_in_image, image_path, force): image_path 
-                for image_path in image_files
-            }
+            # Submit all tasks with timeout
+            future_to_image = {}
+            for image_path in image_files:
+                try:
+                    future = executor.submit(self.detect_faces_in_image, image_path, force)
+                    future_to_image[future] = image_path
+                except Exception as e:
+                    logger.error(f"Failed to submit task for {image_path}: {e}")
+                    # Create error result immediately
+                    error_result = DetectionResult(
+                        image_path=str(image_path),
+                        image_width=0,
+                        image_height=0,
+                        faces_found=0,
+                        detection_time=0.0,
+                        detected_faces=[],
+                        error=f"Submission error: {e}"
+                    )
+                    results.append(error_result)
             
             # Process completed tasks with progress bar
             progress_bar = tqdm(total=len(image_files), desc="Detecting faces", 
                               bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}')
             
-            for future in as_completed(future_to_image):
+            for future in as_completed(future_to_image, timeout=30):  # 30 second timeout per image
                 try:
-                    result = future.result()
+                    result = future.result(timeout=30)  # 30 second timeout
                     results.append(result)
                     
                     # Always create/update JSON sidecar (even if no faces found)
@@ -591,6 +707,20 @@ class FaceDetector:
                         detection_time=0.0,
                         detected_faces=[],
                         error=str(e)
+                    )
+                    results.append(error_result)
+                    progress_bar.update(1)
+                except TimeoutError:
+                    image_path = future_to_image[future]
+                    logger.error(f"Timeout processing {image_path}")
+                    error_result = DetectionResult(
+                        image_path=str(image_path),
+                        image_width=0,
+                        image_height=0,
+                        faces_found=0,
+                        detection_time=0.0,
+                        detected_faces=[],
+                        error="Timeout"
                     )
                     results.append(error_result)
                     progress_bar.update(1)
