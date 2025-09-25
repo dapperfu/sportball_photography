@@ -209,26 +209,14 @@ class EnhancedGameOrganizer:
             start_time = photo_metadata[start_idx]['timestamp']
             end_time = photo_metadata[end_idx]['timestamp']
             
-            # Calculate gaps
-            gap_before = None
-            gap_after = None
-            
-            if start_idx > 0:
-                prev_time = photo_metadata[start_idx - 1]['timestamp']
-                gap_before = int((start_time - prev_time).total_seconds())
-            
-            if end_idx < len(photo_metadata) - 1:
-                next_time = photo_metadata[end_idx + 1]['timestamp']
-                gap_after = int((next_time - end_time).total_seconds())
-            
             return GameSession(
                 game_id=len(games) + 1,
                 start_time=start_time,
                 end_time=end_time,
                 photo_count=len(game_photos),
                 photo_files=game_photos,
-                gap_before=gap_before,
-                gap_after=gap_after
+                gap_before=None,  # Will be calculated after all games are created
+                gap_after=None   # Will be calculated after all games are created
             )
         
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
@@ -239,8 +227,25 @@ class EnhancedGameOrganizer:
                 games.append(game)
                 progress.advance(task_id)
         
-        # Sort games by ID
-        games.sort(key=lambda x: x.game_id)
+        # Sort games by start time (chronological order)
+        games.sort(key=lambda x: x.start_time)
+        
+        # Reassign game IDs in chronological order
+        for i, game in enumerate(games, 1):
+            game.game_id = i
+        
+        # Calculate gaps between games
+        for i, game in enumerate(games):
+            if i > 0:
+                # Gap before = time from end of previous game to start of current game
+                prev_game = games[i - 1]
+                game.gap_before = int((game.start_time - prev_game.end_time).total_seconds())
+            
+            if i < len(games) - 1:
+                # Gap after = time from end of current game to start of next game
+                next_game = games[i + 1]
+                game.gap_after = int((next_game.start_time - game.end_time).total_seconds())
+        
         return games
     
     def _create_folders_parallel(self, 
@@ -674,8 +679,8 @@ class EnhancedGameOrganizer:
               default=Path('./results/games'),
               help='Output directory for organized games')
 @click.option('--pattern', '-p',
-              default='20250920_*',
-              help='File pattern to match')
+              default='202509*_*',
+              help='File pattern to match (supports multiple days)')
 @click.option('--split-file', '-s',
               type=click.Path(path_type=Path),
               help='Text file with manual splits (one timestamp per line, format: HH:MM:SS)')
@@ -708,7 +713,12 @@ def main(input: Path, output: Path, pattern: str, split_file: Optional[Path],
     Enhanced Game Organizer - Professional soccer photo organization tool.
     
     Automatically detects games in soccer photos and organizes them into folders.
-    Optionally apply manual splits from a text file.
+    Supports multiple days of photos and optionally applies manual splits.
+    
+    Multi-Day Support:
+    - Default pattern '202509*_*' processes all September 2025 photos
+    - Games are detected across multiple days automatically
+    - Games are sorted chronologically regardless of date
     
     Split File Format:
     - Plain text file with one timestamp per line
@@ -721,8 +731,12 @@ def main(input: Path, output: Path, pattern: str, split_file: Optional[Path],
     Examples:
     
     \b
-    # Basic usage
+    # Process all September 2025 photos
     python enhanced_game_organizer.py --input /path/to/photos
+    
+    \b
+    # Process specific date only
+    python enhanced_game_organizer.py --input /path/to/photos --pattern "20250920_*"
     
     \b
     # With manual splits
@@ -738,7 +752,7 @@ def main(input: Path, output: Path, pattern: str, split_file: Optional[Path],
     
     \b
     # Example split file content:
-    # # Manual splits for September 20th games
+    # # Manual splits for September games
     # 14:00:00
     # 15:30:00
     # 
