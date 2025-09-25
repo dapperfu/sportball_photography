@@ -1,0 +1,16 @@
+# Game Split File
+# Generated from automated detection
+# Source: /keg/pictures/incoming/2025/09-Sep
+# Pattern: 20250920_*
+# Generated: 2025-09-24T21:04:33.243678
+
+# Add manual splits below (one timestamp per line)
+# Format: HH:MM:SS or YYYY-MM-DDTHH:MM:SS
+# Example: 14:00:00
+
+# Suggested splits (uncomment to use):
+# 12:12:48  # Start of Game 2
+# 13:34:30  # Start of Game 3
+# 15:32:12  # Start of Game 4
+
+# Manual splits:
