@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import shutil
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
@@ -474,23 +475,31 @@ class YOLOv8ObjectExtractor:
             }
             
             # Process completed tasks with progress bar
-            for future in tqdm(as_completed(future_to_image), 
-                             total=len(image_files), 
-                             desc="Extracting objects"):
-                try:
-                    result = future.result()
-                    results.append(result)
-                    
-                except Exception as e:
-                    image_path = future_to_image[future]
-                    logger.error(f"Error processing {image_path}: {e}")
-                    # Create error result
-                    error_result = ExtractionResult(
-                        image_path=str(image_path),
-                        objects_extracted=0,
-                        error=str(e)
-                    )
-                    results.append(error_result)
+            with tqdm(as_completed(future_to_image), 
+                     total=len(image_files), 
+                     desc="Extracting objects") as pbar:
+                for future in pbar:
+                    try:
+                        result = future.result()
+                        results.append(result)
+                        
+                        # Update progress bar description with current status
+                        if result.error:
+                            pbar.set_description(f"Extracting objects (Error: {result.error})")
+                        else:
+                            pbar.set_description(f"Extracting objects ({result.objects_extracted} extracted)")
+                            
+                    except Exception as e:
+                        image_path = future_to_image[future]
+                        logger.error(f"Error processing {image_path}: {e}")
+                        # Create error result
+                        error_result = ExtractionResult(
+                            image_path=str(image_path),
+                            objects_extracted=0,
+                            error=str(e)
+                        )
+                        results.append(error_result)
+                        pbar.set_description(f"Extracting objects (Error: {e})")
         
         return results
     
@@ -596,12 +605,12 @@ def main(input_path: Path, output_dir: Path, annotation_style: str, font_scale: 
     
     if verbose >= 2:
         logger.add("yolo_object_extraction.log", level="DEBUG")
-        logger.add(lambda msg: print(msg), level="DEBUG")
+        logger.add(sys.stderr, level="DEBUG")
     elif verbose >= 1:
-        logger.add(lambda msg: print(msg), level="INFO")
+        logger.add(sys.stderr, level="INFO")
     else:
         # Only show warnings and errors by default
-        logger.add(lambda msg: print(msg), level="WARNING")
+        logger.add(sys.stderr, level="WARNING")
     
     # Initialize extractor
     extractor = YOLOv8ObjectExtractor(

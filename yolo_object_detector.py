@@ -13,6 +13,7 @@ Generated via Cursor IDE (cursor.sh) with AI assistance
 import json
 import logging
 import os
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -183,6 +184,10 @@ class YOLOv8ObjectDetector:
         
         # Load YOLOv8 model
         try:
+            # Suppress Ultralytics logging
+            import logging as std_logging
+            std_logging.getLogger('ultralytics').setLevel(std_logging.WARNING)
+            
             self.model = YOLO(model_path)
             logger.info(f"Loaded YOLOv8 model: {model_path}")
         except Exception as e:
@@ -302,7 +307,7 @@ class YOLOv8ObjectDetector:
         
         try:
             # Run inference
-            results = self.model(image, device=self.device, conf=self.confidence_threshold)
+            results = self.model(image, device=self.device, conf=self.confidence_threshold, verbose=False)
             detection_time = (cv2.getTickCount() - start_time) / cv2.getTickFrequency()
             
             detected_objects = []
@@ -537,32 +542,40 @@ class YOLOv8ObjectDetector:
             }
             
             # Process completed tasks with progress bar
-            for future in tqdm(as_completed(future_to_image), 
-                             total=len(image_files), 
-                             desc="Detecting objects"):
-                try:
-                    result = future.result()
-                    results.append(result)
-                    
-                    # Create JSON sidecar if objects were found
-                    if result.detected_objects:
-                        image_path = future_to_image[future]
-                        self.create_detection_json(image_path, result)
+            with tqdm(as_completed(future_to_image), 
+                     total=len(image_files), 
+                     desc="Detecting objects") as pbar:
+                for future in pbar:
+                    try:
+                        result = future.result()
+                        results.append(result)
                         
-                except Exception as e:
-                    image_path = future_to_image[future]
-                    logger.error(f"Error processing {image_path}: {e}")
-                    # Create error result
-                    error_result = DetectionResult(
-                        image_path=str(image_path),
-                        image_width=0,
-                        image_height=0,
-                        objects_found=0,
-                        detection_time=0.0,
-                        detected_objects=[],
-                        error=str(e)
-                    )
-                    results.append(error_result)
+                        # Create JSON sidecar if objects were found
+                        if result.detected_objects:
+                            image_path = future_to_image[future]
+                            self.create_detection_json(image_path, result)
+                        
+                        # Update progress bar description with current status
+                        if result.error:
+                            pbar.set_description(f"Detecting objects (Error: {result.error})")
+                        else:
+                            pbar.set_description(f"Detecting objects ({result.objects_found} found)")
+                            
+                    except Exception as e:
+                        image_path = future_to_image[future]
+                        logger.error(f"Error processing {image_path}: {e}")
+                        # Create error result
+                        error_result = DetectionResult(
+                            image_path=str(image_path),
+                            image_width=0,
+                            image_height=0,
+                            objects_found=0,
+                            detection_time=0.0,
+                            detected_objects=[],
+                            error=str(e)
+                        )
+                        results.append(error_result)
+                        pbar.set_description(f"Detecting objects (Error: {e})")
         
         return results
 
@@ -646,12 +659,12 @@ def main(input_pattern: Optional[str], objects: Optional[str], list_objects: boo
     
     if verbose >= 2:
         logger.add("yolo_object_detection.log", level="DEBUG")
-        logger.add(lambda msg: print(msg), level="DEBUG")
+        logger.add(sys.stderr, level="DEBUG")
     elif verbose >= 1:
-        logger.add(lambda msg: print(msg), level="INFO")
+        logger.add(sys.stderr, level="INFO")
     else:
         # Only show warnings and errors by default
-        logger.add(lambda msg: print(msg), level="WARNING")
+        logger.add(sys.stderr, level="WARNING")
     
     # Parse target objects
     target_objects = None
