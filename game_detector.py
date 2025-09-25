@@ -129,6 +129,17 @@ class GameDetector:
         
         return photo_metadata
     
+    def get_detected_dates(self) -> List[str]:
+        """Get list of unique dates detected in the photos."""
+        if not self.photo_metadata:
+            return []
+        
+        dates = set()
+        for meta in self.photo_metadata:
+            dates.add(meta['timestamp'].strftime("%Y-%m-%d"))
+        
+        return sorted(list(dates))
+    
     def detect_game_boundaries(self, photo_metadata: List[Dict]) -> List[Tuple[int, int]]:
         """
         Detect game boundaries based on temporal gaps.

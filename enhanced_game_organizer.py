@@ -28,7 +28,8 @@ from rich.panel import Panel
 from rich.logging import RichHandler
 import logging
 
-from unified_game_organizer import UnifiedGameOrganizer, GameDetectionConfig, GameSession
+from game_detector import GameDetector, GameDetectionConfig, GameSession
+from manual_game_splitter import ManualGameSplitter
 
 # Configure rich console
 console = Console()
@@ -43,7 +44,7 @@ logging.basicConfig(
 logger = logging.getLogger("game_organizer")
 
 
-class EnhancedGameOrganizer(UnifiedGameOrganizer):
+class EnhancedGameOrganizer:
     """
     Enhanced game organizer with parallel processing and professional features.
     """
@@ -56,7 +57,10 @@ class EnhancedGameOrganizer(UnifiedGameOrganizer):
             config: Optional configuration for game detection
             max_workers: Maximum number of parallel workers
         """
-        super().__init__(config)
+        self.config = config or GameDetectionConfig()
+        self.detector = GameDetector(self.config)
+        self.splitter = None
+        self.final_games: List[GameSession] = []
         self.max_workers = max_workers
         self.performance_metrics = {}
     
@@ -113,6 +117,11 @@ class EnhancedGameOrganizer(UnifiedGameOrganizer):
             # Task 4: Create game sessions
             task4 = progress.add_task("Creating game sessions...", total=len(boundaries))
             games = self._create_game_sessions_parallel(photo_metadata, boundaries, progress, task4)
+            
+            # Show detected dates
+            detected_dates = self._get_detected_dates(photo_metadata)
+            if detected_dates:
+                console.print(f"📅 Detected dates: {', '.join(detected_dates)}", style="blue")
             
             # Task 5: Create output folders
             task5 = progress.add_task("Creating organized folders...", total=len(games))
@@ -267,6 +276,43 @@ class EnhancedGameOrganizer(UnifiedGameOrganizer):
                 progress.advance(task_id)
         
         return game_folders
+    
+    def _get_detected_dates(self, photo_metadata: List[Dict]) -> List[str]:
+        """Get list of unique dates detected in the photos."""
+        if not photo_metadata:
+            return []
+        
+        dates = set()
+        for meta in photo_metadata:
+            dates.add(meta['timestamp'].strftime("%Y-%m-%d"))
+        
+        return sorted(list(dates))
+    
+    def apply_manual_splits(self) -> bool:
+        """
+        Apply manual splits to the detected games.
+        
+        Returns:
+            True if splits were applied successfully
+        """
+        if not self.splitter:
+            console.print("❌ No splitter available. Run detection first.", style="red")
+            return False
+        
+        if not self.splitter.manual_splits:
+            console.print("ℹ️  No manual splits to apply", style="yellow")
+            self.final_games = self.detector.games
+            return True
+        
+        console.print(f"🔧 Applying {len(self.splitter.manual_splits)} manual splits...", style="blue")
+        
+        try:
+            self.final_games = self.splitter.apply_manual_splits(self.detector.games)
+            console.print(f"✅ Applied manual splits. Final games: {len(self.final_games)}", style="green")
+            return True
+        except Exception as e:
+            console.print(f"❌ Error applying manual splits: {e}", style="red")
+            return False
     
     def _generate_report_parallel(self) -> Path:
         """Generate report with parallel processing."""
@@ -433,9 +479,11 @@ def main(input: Path, output: Path, pattern: str, split_file: Optional[Path],
     
     Split File Format:
     - Plain text file with one timestamp per line
-    - Format: HH:MM:SS (e.g., 14:00:00)
+    - Format: HH:MM:SS (e.g., 14:00:00) for single date
+    - Format: YYYY-MM-DD HH:MM:SS (e.g., 2025-09-20 14:00:00) for specific date
     - Comments start with # (ignored)
     - Empty lines are ignored
+    - If only time is specified, applies to all detected dates
     
     Examples:
     
@@ -460,6 +508,10 @@ def main(input: Path, output: Path, pattern: str, split_file: Optional[Path],
     # # Manual splits for September 20th games
     # 14:00:00
     # 15:30:00
+    # 
+    # # Or with specific dates:
+    # 2025-09-20 14:00:00
+    # 2025-09-21 10:30:00
     """
     
     # Configure logging
