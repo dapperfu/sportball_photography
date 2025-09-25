@@ -326,6 +326,9 @@ class YOLOv8ObjectExtractor:
         annotated_image_path = None
         individual_objects = []
         
+        # Track class-specific counters for better naming
+        class_counters = {}
+        
         # Process each detected object
         for i, obj_data in enumerate(objects_data):
             try:
@@ -333,6 +336,10 @@ class YOLOv8ObjectExtractor:
                 class_name = obj_data['class_name']
                 class_id = obj_data['class_id']
                 confidence = obj_data['confidence']
+                
+                # Increment class-specific counter
+                class_counters[class_name] = class_counters.get(class_name, 0) + 1
+                class_counter = class_counters[class_name]
                 
                 # Get coordinates (use pixel coordinates for extraction)
                 coords_pixels = obj_data['coordinates_pixels']
@@ -354,8 +361,8 @@ class YOLOv8ObjectExtractor:
                 crop_width = min(crop_width, original_width - crop_x)
                 crop_height = min(crop_height, original_height - crop_y)
                 
-                # Create individual object filename
-                object_filename = f"{image_path.stem}_{class_name}_{i+1:02d}.jpg"
+                # Create individual object filename using class-specific counter
+                object_filename = f"{image_path.stem}_{class_name}_{class_counter:02d}.jpg"
                 object_path = image_output_dir / object_filename
                 
                 # Extract individual object
