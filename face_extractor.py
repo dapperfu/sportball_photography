@@ -230,6 +230,27 @@ class FaceExtractor:
                 error="Failed to load image"
             )
         
+        # Resize image to 1080p for optimal face detection performance
+        # This balances speed vs accuracy - 1080p is sufficient for reliable face detection
+        original_height, original_width = image.shape[:2]
+        target_width = 1920  # 1080p width
+        target_height = 1080  # 1080p height
+        
+        # Calculate scaling factor to fit within 1080p while maintaining aspect ratio
+        scale_factor = min(target_width / original_width, target_height / original_height)
+        
+        # Keep original image for face extraction, use resized for detection
+        original_image = image.copy()
+        
+        if scale_factor < 1.0:
+            # Only resize if image is larger than 1080p
+            new_width = int(original_width * scale_factor)
+            new_height = int(original_height * scale_factor)
+            image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+            logger.debug(f"Resized image from {original_width}x{original_height} to {new_width}x{new_height}")
+        else:
+            scale_factor = 1.0  # No scaling needed
+        
         # Detect faces
         start_time = cv2.getTickCount()
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -241,6 +262,12 @@ class FaceExtractor:
         # Extract each face with border padding
         for i, (x, y, w, h) in enumerate(faces):
             try:
+                # Scale coordinates back to original image size
+                x = int(x / scale_factor)
+                y = int(y / scale_factor)
+                w = int(w / scale_factor)
+                h = int(h / scale_factor)
+                
                 # Calculate padded coordinates
                 padding_x = int(w * self.border_padding)
                 padding_y = int(h * self.border_padding)
@@ -248,11 +275,11 @@ class FaceExtractor:
                 # Calculate new coordinates with padding
                 new_x = max(0, x - padding_x)
                 new_y = max(0, y - padding_y)
-                new_w = min(image.shape[1] - new_x, w + 2 * padding_x)
-                new_h = min(image.shape[0] - new_y, h + 2 * padding_y)
+                new_w = min(original_image.shape[1] - new_x, w + 2 * padding_x)
+                new_h = min(original_image.shape[0] - new_y, h + 2 * padding_y)
                 
-                # Extract face region
-                face_region = image[new_y:new_y+new_h, new_x:new_x+new_w]
+                # Extract face region from original image
+                face_region = original_image[new_y:new_y+new_h, new_x:new_x+new_w]
                 
                 # Detect facial features
                 facial_features = self.detect_facial_features(face_region)
