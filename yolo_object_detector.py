@@ -240,19 +240,26 @@ class YOLOv8ObjectDetector:
         Returns:
             Detection result with object information
         """
-        # Check if JSON sidecar already exists
+        # Check if JSON sidecar already exists and contains YOLOv8 data
         json_path = image_path.parent / f"{image_path.stem}.json"
         if json_path.exists() and not force:
-            logger.info(f"Skipping {image_path.name} - JSON sidecar exists (use --force to override)")
-            return DetectionResult(
-                image_path=str(image_path),
-                image_width=0,
-                image_height=0,
-                objects_found=0,
-                detection_time=0.0,
-                detected_objects=[],
-                error="Skipped - JSON sidecar exists"
-            )
+            try:
+                with open(json_path, 'r') as f:
+                    json_data = json.load(f)
+                if 'yolov8' in json_data:
+                    logger.info(f"Skipping {image_path.name} - YOLOv8 data already exists (use --force to override)")
+                    return DetectionResult(
+                        image_path=str(image_path),
+                        image_width=0,
+                        image_height=0,
+                        objects_found=0,
+                        detection_time=0.0,
+                        detected_objects=[],
+                        error="Skipped - YOLOv8 data already exists"
+                    )
+            except Exception as e:
+                logger.debug(f"Could not read JSON sidecar {json_path}: {e}")
+                # Continue with detection if JSON is invalid
         
         logger.info(f"Detecting objects in {image_path.name}")
         
@@ -398,28 +405,42 @@ class YOLOv8ObjectDetector:
         """
         from datetime import datetime
         
-        # Create JSON data structure for this image
-        image_data = {
-            "yolov8": {
-                "metadata": {
-                    "extraction_timestamp": datetime.now().isoformat(),
-                    "tool_version": "1.0.0",
-                    "model_path": str(self.model.ckpt_path) if hasattr(self.model, 'ckpt_path') else "yolov8n.pt",
-                    "border_padding_percentage": self.border_padding * 100,
-                    "confidence_threshold": self.confidence_threshold,
-                    "total_objects_found": detection_result.objects_found,
-                    "image_path": str(image_path),
-                    "image_dimensions": {
-                        "width": detection_result.image_width,
-                        "height": detection_result.image_height
-                    },
-                    "detection_time_seconds": detection_result.detection_time,
-                    "gpu_enabled": self.use_gpu,
-                    "target_objects": list(self.target_objects) if self.target_objects else "all"
+        # Check if JSON sidecar already exists
+        json_path = image_path.parent / f"{image_path.stem}.json"
+        existing_data = {}
+        
+        if json_path.exists():
+            try:
+                with open(json_path, 'r') as f:
+                    existing_data = json.load(f)
+            except Exception as e:
+                logger.warning(f"Could not read existing JSON {json_path}: {e}")
+                existing_data = {}
+        
+        # Create YOLOv8 data structure
+        yolov8_data = {
+            "metadata": {
+                "extraction_timestamp": datetime.now().isoformat(),
+                "tool_version": "1.0.0",
+                "model_path": str(self.model.ckpt_path) if hasattr(self.model, 'ckpt_path') else "yolov8n.pt",
+                "border_padding_percentage": self.border_padding * 100,
+                "confidence_threshold": self.confidence_threshold,
+                "total_objects_found": detection_result.objects_found,
+                "image_path": str(image_path),
+                "image_dimensions": {
+                    "width": detection_result.image_width,
+                    "height": detection_result.image_height
                 },
-                "objects": []
-            }
+                "detection_time_seconds": detection_result.detection_time,
+                "gpu_enabled": self.use_gpu,
+                "target_objects": list(self.target_objects) if self.target_objects else "all"
+            },
+            "objects": []
         }
+        
+        # Merge with existing data
+        image_data = existing_data.copy()
+        image_data["yolov8"] = yolov8_data
         
         # Add each detected object to the JSON
         for obj in detection_result.detected_objects:
