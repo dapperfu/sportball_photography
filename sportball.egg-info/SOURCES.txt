@@ -4,6 +4,10 @@ pyproject.toml
 ./sportball/core.py
 ./sportball/decorators.py
 ./sportball/sidecar.py
+sportball/__init__.py
+sportball/core.py
+sportball/decorators.py
+sportball/sidecar.py
 sportball.egg-info/PKG-INFO
 sportball.egg-info/SOURCES.txt
 sportball.egg-info/dependency_links.txt
