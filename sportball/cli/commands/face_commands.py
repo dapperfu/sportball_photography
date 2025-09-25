@@ -11,7 +11,7 @@ import click
 import json
 from pathlib import Path
 from typing import Optional, Tuple
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
@@ -193,29 +193,93 @@ def detect(ctx: click.Context,
     total_faces_found = 0
     total_time = 0
     
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TimeElapsedColumn(),
-        console=console
-    ) as progress:
+    # Get workers parameter from context
+    max_workers = ctx.obj.get('workers')
+    if max_workers is None:
+        import os
+        max_workers = min(4, os.cpu_count() or 1)  # Default to 4 workers or CPU count
+    
+    # Use parallel processing if we have multiple files and workers > 1
+    if len(files_to_process) > 1 and max_workers > 1:
+        console.print(f"🔄 Using parallel processing with {max_workers} workers", style="blue")
         
-        task = progress.add_task("Detecting faces...", total=len(files_to_process))
-        
-        for image_file in files_to_process:
+        def process_single_image(image_file):
+            """Process a single image and return result."""
             try:
-                result = detector.detect_faces(image_file)
-                results.append(result)
-                total_faces_found += result.face_count
-                total_time += result.processing_time
-                
-                progress.update(task, advance=1, 
-                               description=f"Detecting faces... ({result.face_count} faces in {Path(image_file).name})")
-                
+                # Create a new detector instance for each worker to avoid threading issues
+                from ...detectors.face import FaceDetector
+                worker_detector = FaceDetector(
+                    enable_gpu=gpu,
+                    cache_enabled=True,
+                    confidence_threshold=0.5,
+                    min_face_size=64
+                )
+                result = worker_detector.detect_faces(image_file)
+                return result, None
             except Exception as e:
-                console.print(f"❌ Error processing {image_file.name}: {e}", style="red")
-                progress.update(task, advance=1)
+                return None, e
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TimeElapsedColumn(),
+            console=console
+        ) as progress:
+            
+            task = progress.add_task("Detecting faces...", total=len(files_to_process))
+            
+            # Use ThreadPoolExecutor with separate detector instances
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Submit all tasks
+                future_to_file = {
+                    executor.submit(process_single_image, image_file): image_file
+                    for image_file in files_to_process
+                }
+                
+                # Collect results as they complete
+                for future in as_completed(future_to_file):
+                    image_file = future_to_file[future]
+                    try:
+                        result, error = future.result()
+                        if error:
+                            console.print(f"❌ Error processing {image_file.name}: {error}", style="red")
+                        else:
+                            results.append(result)
+                            total_faces_found += result.face_count
+                            total_time += result.processing_time
+                            
+                            progress.update(task, advance=1, 
+                                           description=f"Detecting faces... ({result.face_count} faces in {Path(image_file).name})")
+                    except Exception as e:
+                        console.print(f"❌ Error processing {image_file.name}: {e}", style="red")
+                    
+                    progress.update(task, advance=1)
+    else:
+        # Sequential processing for single files or when workers = 1
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TimeElapsedColumn(),
+            console=console
+        ) as progress:
+            
+            task = progress.add_task("Detecting faces...", total=len(files_to_process))
+            
+            for image_file in files_to_process:
+                try:
+                    result = detector.detect_faces(image_file)
+                    results.append(result)
+                    total_faces_found += result.face_count
+                    total_time += result.processing_time
+                    
+                    progress.update(task, advance=1, 
+                                   description=f"Detecting faces... ({result.face_count} faces in {Path(image_file).name})")
+                    
+                except Exception as e:
+                    console.print(f"❌ Error processing {image_file.name}: {e}", style="red")
+                    progress.update(task, advance=1)
     
     # Display final results
     display_face_detection_results(results, len(files_to_process), total_faces_found, total_time, len(skipped_files))
