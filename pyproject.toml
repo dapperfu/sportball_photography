@@ -1,0 +1,221 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sportball"
+version = "1.0.0"
+description = "Unified Sports Photo Analysis Package - AI-powered sports photo processing and organization"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Sportball Team", email = "team@sportball.ai"}
+]
+maintainers = [
+    {name = "Sportball Team", email = "team@sportball.ai"}
+]
+keywords = [
+    "computer-vision", "ai", "photo-sorting", "sports", "opencv", "face-recognition", 
+    "image-processing", "machine-learning", "yolo", "object-detection", "game-analysis"
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Graphics :: Graphics Conversion",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Image Processing",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+requires-python = ">=3.8"
+dependencies = [
+    # Core image processing
+    "opencv-python>=4.8.0",
+    "Pillow>=10.0.0",
+    "numpy>=1.24.0",
+    
+    # Machine Learning
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    
+    # Face recognition
+    "face-recognition>=1.3.0",
+    "dlib>=19.24.0",
+    
+    # Object detection
+    "ultralytics>=8.0.0",
+    
+    # CLI and utilities
+    "click>=8.1.0",
+    "rich>=13.0.0",
+    "tqdm>=4.65.0",
+    "loguru>=0.7.0",
+    
+    # Data handling
+    "pandas>=2.0.0",
+    "matplotlib>=3.7.0",
+    
+    # Configuration
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0.0",
+    
+    # File handling
+    "pathspec>=0.11.0",
+    
+    # Performance
+    "psutil>=5.9.0",
+]
+
+[project.optional-dependencies]
+# CUDA support (recommended for GPU acceleration)
+cuda = [
+    "torch[cuda]>=2.0.0",
+    "torchvision[cuda]>=0.15.0",
+]
+
+# Development dependencies
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "mypy>=1.5.0",
+    "pre-commit>=3.0.0",
+]
+
+# All optional dependencies
+all = [
+    "sportball[cuda,dev]"
+]
+
+[project.urls]
+Homepage = "https://github.com/sportball/sportball"
+Repository = "https://github.com/sportball/sportball.git"
+Issues = "https://github.com/sportball/sportball/issues"
+Documentation = "https://sportball.readthedocs.io"
+
+[project.scripts]
+sportball = "sportball.cli.main:cli"
+sb = "sportball.cli.main:cli"
+
+[tool.setuptools]
+packages = ["sportball"]
+package-dir = {"" = "."}
+
+[tool.setuptools.package-data]
+"sportball" = [
+    "config/*.json",
+    "config/*.yaml",
+    "models/*.pkl",
+    "models/*.h5",
+    "models/*.onnx",
+    "models/*.pt",
+]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["tests/*", "docs/*", "examples/*"]
+
+# Black configuration
+[tool.black]
+line-length = 88
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+include = '\.pyi?$'
+
+# isort configuration
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["sportball"]
+
+# MyPy configuration
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = [
+    "cv2.*",
+    "face_recognition.*",
+    "dlib.*",
+    "torch.*",
+    "torchvision.*",
+    "ultralytics.*",
+    "loguru.*",
+]
+ignore_missing_imports = true
+
+# Pytest configuration
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov=sportball",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+    "--cov-fail-under=80",
+]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "cuda: marks tests that require CUDA",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["sportball"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__init__.py",
+    "*/conftest.py",
+    "*/venv/*",
+    "*/env/*",
+    "*/build/*",
+    "*/dist/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"

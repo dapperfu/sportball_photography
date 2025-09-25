@@ -1,0 +1,13 @@
+README.md
+pyproject.toml
+./sportball/__init__.py
+./sportball/core.py
+./sportball/decorators.py
+./sportball/sidecar.py
+sportball.egg-info/PKG-INFO
+sportball.egg-info/SOURCES.txt
+sportball.egg-info/dependency_links.txt
+sportball.egg-info/entry_points.txt
+sportball.egg-info/requires.txt
+sportball.egg-info/top_level.txt
+tests/test_sportball.py
