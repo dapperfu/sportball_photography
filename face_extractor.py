@@ -213,12 +213,15 @@ class FaceExtractor:
     
     def create_image_json(self, image_path: Path, extracted_faces: List[ExtractedFace]) -> None:
         """
-        Create JSON sidecar file for an image with all its faces.
+        Create JSON sidecar file for an image with extraction data.
         
         Args:
-            image_path: Path to the original image
-            extracted_faces: List of faces extracted from this image
+            image_path: Path to the image (may be symlink)
+            extracted_faces: List of extracted face data
         """
+        # Resolve symlink to get the original image path
+        original_image_path = image_path.resolve() if image_path.is_symlink() else image_path
+        
         from datetime import datetime
         
         # Create JSON data structure for this image
@@ -229,7 +232,8 @@ class FaceExtractor:
                     "tool_version": "1.0.0",
                     "border_padding_percentage": self.border_padding * 100,
                     "total_faces_found": len(extracted_faces),
-                    "image_path": str(image_path)
+                    "image_path": str(original_image_path),
+                    "symlink_path": str(image_path) if image_path.is_symlink() else None
                 },
                 "faces": []
             }
@@ -270,9 +274,9 @@ class FaceExtractor:
             
             image_data["Face_extractor"]["faces"].append(face_data)
         
-        # Create JSON filename based on the image filename
-        json_filename = f"{image_path.stem}.json"
-        json_path = image_path.parent / json_filename
+        # Create JSON filename based on the original image filename
+        json_filename = f"{original_image_path.stem}.json"
+        json_path = original_image_path.parent / json_filename
         
         # Save JSON file
         with open(json_path, 'w') as f:

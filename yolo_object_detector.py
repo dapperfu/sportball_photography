@@ -401,16 +401,19 @@ class YOLOv8ObjectDetector:
     
     def create_detection_json(self, image_path: Path, detection_result: DetectionResult) -> None:
         """
-        Create JSON sidecar file for an image with all detection data.
+        Create JSON sidecar file for an image with detection data.
         
         Args:
-            image_path: Path to the original image
+            image_path: Path to the image (may be symlink)
             detection_result: Detection result data
         """
+        # Resolve symlink to get the original image path
+        original_image_path = image_path.resolve() if image_path.is_symlink() else image_path
+        
         from datetime import datetime
         
         # Check if JSON sidecar already exists
-        json_path = image_path.parent / f"{image_path.stem}.json"
+        json_path = original_image_path.parent / f"{original_image_path.stem}.json"
         existing_data = {}
         
         if json_path.exists():
@@ -430,7 +433,8 @@ class YOLOv8ObjectDetector:
                 "border_padding_percentage": self.border_padding * 100,
                 "confidence_threshold": self.confidence_threshold,
                 "total_objects_found": detection_result.objects_found,
-                "image_path": str(image_path),
+                "image_path": str(original_image_path),
+                "symlink_path": str(image_path) if image_path.is_symlink() else None,
                 "image_dimensions": {
                     "width": detection_result.image_width,
                     "height": detection_result.image_height

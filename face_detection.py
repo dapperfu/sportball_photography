@@ -448,12 +448,16 @@ class FaceDetector:
         Merges with existing data to preserve information from other tools.
         
         Args:
-            image_path: Path to the original image
+            image_path: Path to the image (may be symlink)
             detection_result: Detection result data
         """
         from datetime import datetime
         
-        json_path = image_path.parent / f"{image_path.stem}.json"
+        # Resolve symlink to get the original image path
+        original_image_path = image_path.resolve() if image_path.is_symlink() else image_path
+        
+        # Create JSON next to the original image, not the symlink
+        json_path = original_image_path.parent / f"{original_image_path.stem}.json"
         
         # Load existing data if file exists
         existing_data = {}
@@ -475,7 +479,8 @@ class FaceDetector:
             "tool_version": "1.0.0",
             "border_padding_percentage": self.border_padding * 100,
             "total_faces_found": detection_result.faces_found,
-            "image_path": str(image_path),
+            "image_path": str(original_image_path),
+            "symlink_path": str(image_path) if image_path.is_symlink() else None,
             "image_dimensions": {
                 "width": detection_result.image_width,
                 "height": detection_result.image_height
