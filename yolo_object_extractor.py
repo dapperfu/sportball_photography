@@ -415,7 +415,8 @@ class YOLOv8ObjectExtractor:
                                      create_annotated: bool = True,
                                      create_individual: bool = True,
                                      max_images: Optional[int] = None,
-                                     force: bool = False) -> List[ExtractionResult]:
+                                     force: bool = False,
+                                     max_workers: Optional[int] = None) -> List[ExtractionResult]:
         """
         Extract objects from all images in a directory.
         
@@ -426,6 +427,7 @@ class YOLOv8ObjectExtractor:
             create_individual: Whether to create individual object files
             max_images: Maximum number of images to process
             force: Whether to force extraction even if objects already extracted
+            max_workers: Maximum number of parallel workers (default: CPU count)
             
         Returns:
             List of extraction results
@@ -464,7 +466,9 @@ class YOLOv8ObjectExtractor:
         
         # Process images in parallel
         results = []
-        max_workers = min(4, len(image_files))  # Limit to 4 workers
+        if max_workers is None:
+            max_workers = os.cpu_count() or 4  # Default to CPU count, fallback to 4
+        max_workers = min(max_workers, len(image_files))  # Don't exceed number of images
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit all tasks
@@ -601,10 +605,11 @@ class YOLOv8ObjectExtractor:
 @click.option('--no-individual', is_flag=True, help='Skip creating individual object files')
 @click.option('--max-images', '-m', default=None, type=int, help='Maximum number of images to process')
 @click.option('--force', is_flag=True, help='Force extraction even if objects already extracted')
+@click.option('--workers', '-w', default=None, type=int, help=f'Number of parallel workers (default: {os.cpu_count()})')
 @click.option('--verbose', '-v', count=True, help='Enable verbose logging (-v for info, -vv for debug)')
 def main(input_path: Path, output_dir: Path, annotation_style: str, font_scale: float, 
          thickness: int, no_confidence: bool, no_annotated: bool, no_individual: bool,
-         max_images: Optional[int], force: bool, verbose: int):
+         max_images: Optional[int], force: bool, workers: Optional[int], verbose: int):
     """Extract objects from images using YOLOv8 detection data and create annotated images."""
     
     # Setup logging based on verbosity level
@@ -653,7 +658,8 @@ def main(input_path: Path, output_dir: Path, annotation_style: str, font_scale: 
             create_annotated=not no_annotated,
             create_individual=not no_individual,
             max_images=max_images,
-            force=force
+            force=force,
+            max_workers=workers
         )
     
     if not results:

@@ -11,13 +11,12 @@ Generated via Cursor IDE (cursor.sh) with AI assistance
 """
 
 import json
-import logging
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Tuple, Any, Optional, Set
+from typing import List, Optional, Set
 import click
 import cv2
 import numpy as np
@@ -488,7 +487,7 @@ class YOLOv8ObjectDetector:
         
         logger.debug(f"Detection JSON sidecar saved: {json_filename}")
     
-    def detect_objects_in_images(self, image_pattern: str, max_images: Optional[int] = None, force: bool = False) -> List[DetectionResult]:
+    def detect_objects_in_images(self, image_pattern: str, max_images: Optional[int] = None, force: bool = False, max_workers: Optional[int] = None) -> List[DetectionResult]:
         """
         Detect objects in multiple images with parallel processing.
         
@@ -496,6 +495,7 @@ class YOLOv8ObjectDetector:
             image_pattern: Pattern to match image files or directory path
             max_images: Maximum number of images to process
             force: Whether to force detection even if JSON sidecar exists
+            max_workers: Maximum number of parallel workers (default: CPU count)
             
         Returns:
             List of detection results
@@ -532,7 +532,9 @@ class YOLOv8ObjectDetector:
         
         # Process images in parallel
         results = []
-        max_workers = min(4, len(image_files))  # Limit to 4 workers
+        if max_workers is None:
+            max_workers = os.cpu_count() or 4  # Default to CPU count, fallback to 4
+        max_workers = min(max_workers, len(image_files))  # Don't exceed number of images
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit all tasks
@@ -645,9 +647,10 @@ def list_available_objects():
 @click.option('--max-images', '-n', default=None, type=int, help='Maximum number of images to process')
 @click.option('--gpu/--no-gpu', default=True, help='Use GPU acceleration if available')
 @click.option('--force', '-f', is_flag=True, help='Force detection even if JSON sidecar exists')
+@click.option('--workers', '-w', default=None, type=int, help=f'Number of parallel workers (default: {os.cpu_count()})')
 @click.option('--verbose', '-v', count=True, help='Enable verbose logging (-v for info, -vv for debug)')
 def main(input_pattern: Optional[str], objects: Optional[str], list_objects: bool, border_padding: float, 
-         confidence: float, model: str, max_images: Optional[int], gpu: bool, force: bool, verbose: int):
+         confidence: float, model: str, max_images: Optional[int], gpu: bool, force: bool, workers: Optional[int], verbose: int):
     """Detect objects in images using YOLOv8 and save comprehensive data to JSON sidecar files."""
     
     # Handle --list option
@@ -694,7 +697,7 @@ def main(input_pattern: Optional[str], objects: Optional[str], list_objects: boo
     
     # Detect objects
     logger.info(f"Starting object detection with {border_padding*100:.0f}% border padding, confidence: {confidence}")
-    results = detector.detect_objects_in_images(input_pattern, max_images, force)
+    results = detector.detect_objects_in_images(input_pattern, max_images, force, workers)
     
     if not results:
         logger.error("No images processed")
