@@ -13,6 +13,7 @@ Generated via Cursor IDE (cursor.sh) with AI assistance
 import json
 import logging
 import os
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -248,7 +249,8 @@ class FaceDetector:
                 if ("Face_detector" in data and 
                     "faces" in data["Face_detector"] and 
                     len(data["Face_detector"]["faces"]) > 0):
-                    logger.info(f"Skipping {image_path.name} - JSON sidecar exists with {len(data['Face_detector']['faces'])} faces (use --force to override)")
+                    # Print skip message to stderr so it appears below tqdm
+                    print(f"Skipped: {image_path.name} - JSON sidecar exists with {len(data['Face_detector']['faces'])} faces (use --force to override)", file=sys.stderr)
                     return DetectionResult(
                         image_path=str(image_path),
                         image_width=0,
@@ -565,13 +567,23 @@ class NumpyEncoder(json.JSONEncoder):
 @click.option('--max-images', '-m', default=None, type=int, help='Maximum number of images to process')
 @click.option('--gpu/--no-gpu', default=True, help='Use GPU acceleration if available')
 @click.option('--force', '-f', is_flag=True, help='Force detection even if JSON sidecar exists')
-@click.option('--verbose', '-v', is_flag=True, help='Enable verbose logging')
-def main(input_pattern: str, border_padding: float, max_images: Optional[int], gpu: bool, force: bool, verbose: bool):
+@click.option('--verbose', '-v', count=True, help='Enable verbose logging (-v for info, -vv for debug)')
+def main(input_pattern: str, border_padding: float, max_images: Optional[int], gpu: bool, force: bool, verbose: int):
     """Detect faces in images and save comprehensive data to JSON sidecar files."""
     
-    # Setup logging
-    if verbose:
+    # Setup logging based on verbose level
+    # Always keep tqdm visible by using stdout for progress and stderr for messages
+    if verbose >= 2:  # -vv: debug level
         logger.add("face_detection.log", level="DEBUG")
+        logger.remove()  # Remove default handler
+        logger.add(sys.stderr, level="DEBUG", format="{time:HH:mm:ss} | {level} | {message}")
+    elif verbose >= 1:  # -v: info level
+        logger.add("face_detection.log", level="INFO")
+        logger.remove()  # Remove default handler
+        logger.add(sys.stderr, level="INFO", format="{time:HH:mm:ss} | {level} | {message}")
+    else:  # Default: only warnings and errors
+        logger.remove()  # Remove default handler
+        logger.add(sys.stderr, level="WARNING", format="{time:HH:mm:ss} | {level} | {message}")
     
     # Initialize detector
     detector = FaceDetector(border_padding=border_padding, use_gpu=gpu)
