@@ -127,7 +127,7 @@ class FaceExtractor:
                 data = json.load(f)
             
             if "Face_detector" not in data:
-                logger.warning(f"Invalid JSON format in {json_path}")
+                logger.debug(f"No face_detector data in {json_path}")
                 return None
             
             return data["Face_detector"]

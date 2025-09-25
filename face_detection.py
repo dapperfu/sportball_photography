@@ -520,9 +520,10 @@ class FaceDetector:
             }
             
             # Process completed tasks with progress bar
-            for future in tqdm(as_completed(future_to_image), 
-                             total=len(image_files), 
-                             desc="Detecting faces"):
+            progress_bar = tqdm(total=len(image_files), desc="Detecting faces", 
+                              bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}')
+            
+            for future in as_completed(future_to_image):
                 try:
                     result = future.result()
                     results.append(result)
@@ -530,6 +531,14 @@ class FaceDetector:
                     # Always create/update JSON sidecar (even if no faces found)
                     image_path = future_to_image[future]
                     self.create_detection_json(image_path, result)
+                    
+                    # Update progress bar with current status
+                    progress_bar.set_postfix({
+                        'Current': image_path.name,
+                        'Faces': result.faces_found,
+                        'Total Found': sum(r.faces_found for r in results)
+                    })
+                    progress_bar.update(1)
                         
                 except Exception as e:
                     image_path = future_to_image[future]
@@ -545,6 +554,9 @@ class FaceDetector:
                         error=str(e)
                     )
                     results.append(error_result)
+                    progress_bar.update(1)
+            
+            progress_bar.close()
         
         return results
 
@@ -581,9 +593,8 @@ def main(input_pattern: str, border_padding: float, max_images: Optional[int], g
         logger.add("face_detection.log", level="INFO")
         logger.remove()  # Remove default handler
         logger.add(sys.stderr, level="INFO", format="{time:HH:mm:ss} | {level} | {message}")
-    else:  # Default: only warnings and errors
-        logger.remove()  # Remove default handler
-        logger.add(sys.stderr, level="WARNING", format="{time:HH:mm:ss} | {level} | {message}")
+    else:  # Default: show nothing (silent mode)
+        logger.remove()  # Remove all handlers - completely silent
     
     # Initialize detector
     detector = FaceDetector(border_padding=border_padding, use_gpu=gpu)
