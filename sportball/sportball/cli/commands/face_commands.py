@@ -8,8 +8,10 @@ Generated via Cursor IDE (cursor.sh) with AI assistance
 """
 
 import click
+import json
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
@@ -18,6 +20,41 @@ from ..utils import get_core
 from ...sidecar import Sidecar, OperationType
 
 console = Console()
+
+
+def check_sidecar_file(image_file: Path, force: bool) -> Tuple[Path, bool]:
+    """
+    Check if a sidecar file exists and contains face detection data.
+    
+    Args:
+        image_file: Path to the image file
+        force: Whether to force processing even if sidecar exists
+        
+    Returns:
+        Tuple of (image_file, should_skip)
+    """
+    try:
+        # Resolve symlink if needed
+        original_image_path = image_file.resolve() if image_file.is_symlink() else image_file
+        json_path = original_image_path.parent / f"{original_image_path.stem}.json"
+        
+        if json_path.exists() and not force:
+            # Check if JSON contains face detection data
+            try:
+                with open(json_path, 'r') as f:
+                    data = json.load(f)
+                
+                if ("Face_detector" in data and 
+                    "faces" in data["Face_detector"] and 
+                    len(data["Face_detector"]["faces"]) > 0):
+                    return (image_file, True)  # Should skip
+            except (json.JSONDecodeError, KeyError, TypeError):
+                pass
+        
+        return (image_file, False)  # Should process
+        
+    except Exception:
+        return (image_file, False)  # Should process on error
 
 
 @click.group()
@@ -78,20 +115,109 @@ def detect(ctx: click.Context,
     
     console.print(f"🔍 Starting face detection with {border_padding*100:.0f}% border padding", style="blue")
     
-    # Use the detector's method directly (same as original)
-    results = detector.detect_faces_in_images(input_pattern, max_images, force)
+    # Pre-scan phase: find all images and check for existing sidecars
+    console.print("📁 Scanning directory for images and existing sidecar files...", style="blue")
     
-    if not results:
-        console.print("❌ No images processed", style="red")
+    # Find all image files (including symlinks)
+    input_path = Path(input_pattern)
+    if input_path.is_dir():
+        image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
+        image_files = []
+        # Use glob to find files including symlinks
+        for ext in image_extensions:
+            image_files.extend(input_path.glob(f'*{ext}'))
+            image_files.extend(input_path.glob(f'*{ext.upper()}'))
+    else:
+        # Pattern matching
+        if input_pattern.startswith('/'):
+            parent_dir = Path(input_pattern).parent
+            pattern = Path(input_pattern).name
+            image_files = list(parent_dir.glob(pattern))
+        else:
+            image_files = list(Path('.').glob(input_pattern))
+    
+    # Debug: show what we found
+    if verbose >= 1:
+        console.print(f"🔍 Debug: Found {len(image_files)} files", style="blue")
+        if image_files:
+            console.print(f"🔍 Debug: First few files: {[f.name for f in image_files[:3]]}", style="blue")
+    
+    if not image_files:
+        console.print("❌ No images found", style="red")
         return
     
-    # Calculate summary statistics
-    total_images = len(results)
-    total_faces_found = sum(result.faces_found for result in results)
-    total_time = sum(result.detection_time for result in results)
+    # Limit number of images if specified
+    if max_images:
+        image_files = image_files[:max_images]
     
-    # Display results
-    display_face_detection_results(results, total_images, total_faces_found, total_time)
+    console.print(f"📊 Found {len(image_files)} images to analyze", style="blue")
+    
+    # Parallel check for existing sidecar files
+    console.print("🔍 Checking for existing sidecar files...", style="blue")
+    
+    skipped_files = []
+    files_to_process = []
+    
+    # Use parallel processing for sidecar file checking
+    max_workers = min(32, len(image_files))  # Limit workers to avoid overwhelming the system
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all sidecar checks
+        future_to_file = {
+            executor.submit(check_sidecar_file, image_file, force): image_file 
+            for image_file in image_files
+        }
+        
+        # Process results as they complete
+        for future in as_completed(future_to_file):
+            image_file, should_skip = future.result()
+            if should_skip:
+                skipped_files.append(image_file)
+            else:
+                files_to_process.append(image_file)
+    
+    # Display pre-scan results
+    if skipped_files:
+        console.print(f"⏭️  Skipped {len(skipped_files)} images with existing face detection data", style="yellow")
+        console.print(f"💡 Use --force to reprocess all images", style="blue")
+    
+    if not files_to_process:
+        console.print("✅ All images already have face detection data", style="green")
+        return
+    
+    console.print(f"🔄 Processing {len(files_to_process)} images...", style="blue")
+    
+    # Process only the files that need processing
+    results = []
+    total_faces_found = 0
+    total_time = 0
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TimeElapsedColumn(),
+        console=console
+    ) as progress:
+        
+        task = progress.add_task("Detecting faces...", total=len(files_to_process))
+        
+        for image_file in files_to_process:
+            try:
+                result = detector.detect_faces_in_image(image_file, force)
+                results.append(result)
+                total_faces_found += result.faces_found
+                total_time += result.detection_time
+                
+                progress.update(task, advance=1, 
+                               description=f"Detecting faces... ({result.faces_found} faces in {Path(image_file).name})")
+                
+            except Exception as e:
+                console.print(f"❌ Error processing {image_file.name}: {e}", style="red")
+                progress.update(task, advance=1)
+    
+    # Display final results
+    display_face_detection_results(results, len(files_to_process), total_faces_found, total_time, len(skipped_files))
 
 
 def display_face_results(results: dict, extract_faces: bool, output_dir: Optional[Path]):
@@ -138,24 +264,24 @@ def display_face_results(results: dict, extract_faces: bool, output_dir: Optiona
         console.print("Face extraction not yet implemented", style="yellow")
 
 
-def display_face_detection_results(results, total_images: int, total_faces_found: int, total_time: float):
+def display_face_detection_results(results, total_images: int, total_faces_found: int, total_time: float, skipped_count: int = 0):
     """Display face detection results summary."""
     
     console.print(f"\n✅ Face detection complete!", style="green")
     console.print(f"📊 Processed {total_images} images")
     console.print(f"👥 Found {total_faces_found} faces")
     console.print(f"⏱️  Total detection time: {total_time:.2f}s")
-    console.print(f"📈 Average time per image: {total_time/total_images:.2f}s")
+    if total_images > 0:
+        console.print(f"📈 Average time per image: {total_time/total_images:.2f}s")
+    
+    # Show skipped count
+    if skipped_count > 0:
+        console.print(f"⏭️  {skipped_count} images skipped (existing sidecar data)", style="blue")
     
     # Show any errors
     error_count = sum(1 for result in results if result.error and not result.error.startswith("Skipped"))
     if error_count > 0:
         console.print(f"⚠️  {error_count} images had errors", style="yellow")
-    
-    # Show skipped count
-    skipped_count = sum(1 for result in results if result.error and result.error.startswith("Skipped"))
-    if skipped_count > 0:
-        console.print(f"⏭️  {skipped_count} images skipped (sidecar exists)", style="blue")
 
 
 @face_group.command()
