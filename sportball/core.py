@@ -85,6 +85,15 @@ class SportballCore:
             )
         return self._object_detector
     
+    def get_object_detector(self, gpu_batch_size: int = 8):
+        """Get object detector with custom batch size."""
+        from .detectors.object import ObjectDetector
+        return ObjectDetector(
+            enable_gpu=self.enable_gpu,
+            cache_enabled=self.cache_enabled,
+            gpu_batch_size=gpu_batch_size
+        )
+    
     @property
     def game_detector(self):
         """Lazy-loaded game detector."""
@@ -163,6 +172,7 @@ class SportballCore:
     def detect_objects(self, 
                       image_paths: Union[Path, List[Path]], 
                       save_sidecar: bool = True,
+                      gpu_batch_size: int = 8,
                       **kwargs) -> Dict[str, Any]:
         """
         Detect objects in images.
@@ -170,6 +180,7 @@ class SportballCore:
         Args:
             image_paths: Single image path or list of image paths
             save_sidecar: Whether to save results to sidecar files
+            gpu_batch_size: GPU batch size for processing multiple images
             **kwargs: Additional arguments for object detection
             
         Returns:
@@ -180,33 +191,11 @@ class SportballCore:
         
         self.logger.info(f"Detecting objects in {len(image_paths)} images")
         
-        results = {}
-        for image_path in image_paths:
-            try:
-                # Check cache first
-                if self.cache_enabled:
-                    cached_data = self.sidecar.load_data(image_path, "object_detection")
-                    if cached_data:
-                        results[str(image_path)] = cached_data
-                        continue
-                
-                # Perform detection
-                detection_result = self.object_detector.detect_objects(image_path, **kwargs)
-                
-                # Save to sidecar if requested
-                if save_sidecar:
-                    self.sidecar.save_data(
-                        image_path, 
-                        "object_detection", 
-                        detection_result,
-                        metadata={"kwargs": kwargs}
-                    )
-                
-                results[str(image_path)] = detection_result
-                
-            except Exception as e:
-                self.logger.error(f"Object detection failed for {image_path}: {e}")
-                results[str(image_path)] = {"error": str(e), "success": False}
+        # Use custom object detector with specified batch size
+        object_detector = self.get_object_detector(gpu_batch_size=gpu_batch_size)
+        
+        # Perform batch detection
+        results = object_detector.detect_objects(image_paths, save_sidecar=save_sidecar, **kwargs)
         
         return results
     
