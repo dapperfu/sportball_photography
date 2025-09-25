@@ -96,6 +96,10 @@ def cli(ctx: click.Context,
     elif quiet:
         logger.remove()
         logger.add(lambda msg: None, level="ERROR")
+    else:
+        # Default: INFO level, suppress DEBUG messages
+        logger.remove()
+        logger.add(lambda msg: None, level="INFO")
     
     # Store configuration in context
     ctx.ensure_object(dict)

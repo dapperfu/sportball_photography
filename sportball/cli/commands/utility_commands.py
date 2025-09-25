@@ -13,6 +13,7 @@ from typing import Optional
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
+import numpy as np
 
 from ..utils import get_core
 
@@ -209,10 +210,25 @@ def gpu_check(ctx: click.Context):
     # Check OpenCV GPU support
     try:
         import cv2
-        if cv2.cuda.getCudaEnabledDeviceCount() > 0:
-            gpu_table.add_row("OpenCV GPU", "✅ Available", f"{cv2.cuda.getCudaEnabledDeviceCount()} device(s)")
-        else:
-            gpu_table.add_row("OpenCV GPU", "❌ Not Available", "OpenCV compiled without CUDA")
+        # Check if OpenCV was compiled with CUDA support
+        try:
+            # Try to access CUDA functions
+            cuda_devices = cv2.cuda.getCudaEnabledDeviceCount()
+            if cuda_devices > 0:
+                gpu_table.add_row("OpenCV GPU", "✅ Available", f"{cuda_devices} CUDA device(s)")
+                
+                # Test basic CUDA functionality
+                try:
+                    # Create a simple GPU matrix
+                    gpu_mat = cv2.cuda_GpuMat()
+                    gpu_mat.upload(np.array([[1, 2], [3, 4]], dtype=np.uint8))
+                    gpu_table.add_row("OpenCV CUDA Ops", "✅ Working", "GPU matrix operations successful")
+                except Exception as e:
+                    gpu_table.add_row("OpenCV CUDA Ops", "❌ Failed", f"GPU operations failed: {str(e)[:30]}...")
+            else:
+                gpu_table.add_row("OpenCV GPU", "❌ Not Available", "OpenCV compiled without CUDA")
+        except AttributeError:
+            gpu_table.add_row("OpenCV GPU", "❌ Not Available", "OpenCV compiled without CUDA support")
     except ImportError:
         gpu_table.add_row("OpenCV GPU", "❌ Not Installed", "OpenCV not available")
     except Exception as e:
@@ -221,12 +237,29 @@ def gpu_check(ctx: click.Context):
     # Check ultralytics GPU support
     try:
         from ultralytics import YOLO
-        # Test if YOLO can use GPU
-        model = YOLO('yolov8n.pt')
-        if hasattr(model, 'device') and 'cuda' in str(model.device):
-            gpu_table.add_row("YOLO GPU", "✅ Available", "YOLO can use GPU acceleration")
-        else:
-            gpu_table.add_row("YOLO GPU", "⚠️  Limited", "YOLO may not use GPU optimally")
+        import torch
+        
+        # Test if YOLO can use GPU properly
+        try:
+            # Create a small test model
+            model = YOLO('yolov8n.pt')
+            
+            # Check if model can be moved to GPU
+            if torch.cuda.is_available():
+                try:
+                    # Move model to GPU
+                    model.to('cuda')
+                    device_info = str(model.device)
+                    if 'cuda' in device_info:
+                        gpu_table.add_row("YOLO GPU", "✅ Available", f"YOLO using GPU: {device_info}")
+                    else:
+                        gpu_table.add_row("YOLO GPU", "⚠️  Limited", f"YOLO device: {device_info}")
+                except Exception as e:
+                    gpu_table.add_row("YOLO GPU", "❌ Failed", f"Failed to move to GPU: {str(e)[:30]}...")
+            else:
+                gpu_table.add_row("YOLO GPU", "⚠️  Limited", "CUDA not available for YOLO")
+        except Exception as e:
+            gpu_table.add_row("YOLO GPU", "❌ Error", f"Model loading failed: {str(e)[:30]}...")
     except ImportError:
         gpu_table.add_row("YOLO GPU", "❌ Not Installed", "Ultralytics not available")
     except Exception as e:
@@ -275,7 +308,8 @@ def gpu_check(ctx: click.Context):
     console.print("\n💡 Performance Tips:", style="blue")
     console.print("• Use --gpu flag to enable GPU acceleration", style="white")
     console.print("• Install CUDA-enabled PyTorch: pip install torch[cuda]", style="white")
-    console.print("• For OpenCV GPU support, install opencv-contrib-python", style="white")
+    console.print("• OpenCV GPU support requires building from source with CUDA", style="white")
+    console.print("• For full GPU acceleration, build OpenCV with CUDA support", style="white")
     console.print("• Monitor GPU memory usage during large operations", style="white")
 
 
