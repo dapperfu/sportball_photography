@@ -244,8 +244,11 @@ class YOLOv8ObjectDetector:
         Returns:
             Detection result with object information
         """
+        # Resolve symlink to get the original image path
+        original_image_path = image_path.resolve() if image_path.is_symlink() else image_path
+        
         # Check if JSON sidecar already exists and contains YOLOv8 data
-        json_path = image_path.parent / f"{image_path.stem}.json"
+        json_path = original_image_path.parent / f"{original_image_path.stem}.json"
         if json_path.exists() and not force:
             try:
                 with open(json_path, 'r') as f:
@@ -481,9 +484,12 @@ class YOLOv8ObjectDetector:
             
             image_data["yolov8"]["objects"].append(object_data)
         
-        # Create JSON filename based on the image filename
-        json_filename = f"{image_path.stem}.json"
-        json_path = image_path.parent / json_filename
+        # Resolve symlink to get the original image path
+        original_image_path = image_path.resolve() if image_path.is_symlink() else image_path
+        
+        # Create JSON filename based on the original image filename
+        json_filename = f"{original_image_path.stem}.json"
+        json_path = original_image_path.parent / json_filename
         
         # Save JSON file
         with open(json_path, 'w') as f:

@@ -312,8 +312,11 @@ class YOLOv8ObjectExtractor:
         """
         logger.info(f"Extracting objects from {image_path.name}")
         
+        # Resolve symlink to get the original image path
+        original_image_path = image_path.resolve() if image_path.is_symlink() else image_path
+        
         # Check if JSON sidecar exists
-        json_path = image_path.parent / f"{image_path.stem}.json"
+        json_path = original_image_path.parent / f"{original_image_path.stem}.json"
         if not json_path.exists():
             return ExtractionResult(
                 image_path=str(image_path),
@@ -508,8 +511,11 @@ class YOLOv8ObjectExtractor:
         for file_path in input_dir.iterdir():
             if (file_path.is_file() and 
                 file_path.suffix.lower() in image_extensions):
+                # Resolve symlink to get the original image path
+                original_file_path = file_path.resolve() if file_path.is_symlink() else file_path
+                
                 # Check if JSON sidecar exists and contains YOLOv8 data
-                json_path = file_path.parent / f"{file_path.stem}.json"
+                json_path = original_file_path.parent / f"{original_file_path.stem}.json"
                 if json_path.exists():
                     try:
                         with open(json_path, 'r') as f:
