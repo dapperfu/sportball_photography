@@ -147,14 +147,36 @@ class FaceClusteringEngine:
                     # Extract image path (JSON file should be named like image.json)
                     image_path = json_path.parent / json_path.stem
                     
-                    # Handle different image extensions
+                    # Handle different image extensions and symlinks
+                    found_image = False
                     for ext in ['.jpg', '.jpeg', '.png', '.JPG', '.JPEG', '.PNG']:
                         potential_image = image_path.with_suffix(ext)
-                        if potential_image.exists():
+                        if potential_image.exists() or potential_image.is_symlink():
                             image_path = potential_image
+                            found_image = True
                             break
                     
-                    if not image_path.exists():
+                    # If no image found with standard extensions, try to resolve symlink
+                    if not found_image:
+                        # Check if the stem itself is a symlink
+                        if image_path.is_symlink():
+                            resolved_path = image_path.resolve()
+                            if resolved_path.exists():
+                                image_path = resolved_path
+                                found_image = True
+                        else:
+                            # Try to find any file with the same stem (case insensitive)
+                            parent_dir = json_path.parent
+                            stem_lower = json_path.stem.lower()
+                            for file_path in parent_dir.iterdir():
+                                if file_path.is_file() and file_path.stem.lower() == stem_lower:
+                                    # Check if it's an image file
+                                    if file_path.suffix.lower() in ['.jpg', '.jpeg', '.png']:
+                                        image_path = file_path
+                                        found_image = True
+                                        break
+                    
+                    if not found_image:
                         logger.warning(f"Image not found for JSON: {json_path}")
                         continue
                     
@@ -185,22 +207,33 @@ class FaceClusteringEngine:
                         faces = data['Face_extractor']['faces']
                         
                         for face in faces:
-                            # For extracted faces, we need to reconstruct the encoding
-                            # This is a simplified approach - in practice, you'd want to
-                            # re-extract encodings from the cropped face images
+                            # Calculate crop area with padding
+                            padding = face.get('border_padding', 0.25)
+                            x, y, w, h = face['coordinates']['x'], face['coordinates']['y'], face['coordinates']['width'], face['coordinates']['height']
+                            
+                            # Calculate padding amounts
+                            pad_x = int(w * padding)
+                            pad_y = int(h * padding)
+                            
+                            # Calculate crop coordinates
+                            crop_x = max(0, x - pad_x)
+                            crop_y = max(0, y - pad_y)
+                            crop_width = w + 2 * pad_x
+                            crop_height = h + 2 * pad_y
+                            
                             face_data.append(FaceData(
                                 image_path=image_path,
                                 face_id=face['face_id'],
-                                x=face['coordinates']['x'],
-                                y=face['coordinates']['y'],
-                                width=face['coordinates']['width'],
-                                height=face['coordinates']['height'],
+                                x=x,
+                                y=y,
+                                width=w,
+                                height=h,
                                 confidence=face['confidence'],
-                                face_encoding=None,  # Will need to be re-extracted
-                                crop_x=face['coordinates']['x'],
-                                crop_y=face['coordinates']['y'],
-                                crop_width=face['coordinates']['width'],
-                                crop_height=face['coordinates']['height'],
+                                face_encoding=None,  # Will be extracted from image
+                                crop_x=crop_x,
+                                crop_y=crop_y,
+                                crop_width=crop_width,
+                                crop_height=crop_height,
                                 detection_scale_factor=1.0
                             ))
                 
@@ -224,10 +257,16 @@ class FaceClusteringEngine:
         encodings = []
         valid_indices = []
         
+        # First, try to use existing encodings
         for i, face in enumerate(self.face_data):
             if face.face_encoding is not None:
                 encodings.append(face.face_encoding)
                 valid_indices.append(i)
+        
+        # If no encodings found, extract them from images
+        if not encodings:
+            console.print("🔍 No face encodings found in JSON data. Extracting from images...", style="yellow")
+            encodings, valid_indices = self._extract_encodings_from_images()
         
         if not encodings:
             raise ValueError("No face encodings found in the data")
@@ -241,6 +280,68 @@ class FaceClusteringEngine:
         
         console.print(f"✅ Extracted {len(encodings)} face encodings", style="green")
         return encodings_array, valid_indices
+    
+    def _extract_encodings_from_images(self) -> Tuple[List[List[float]], List[int]]:
+        """
+        Extract face encodings from images using face_recognition.
+        
+        Returns:
+            Tuple of (encodings, valid_indices)
+        """
+        try:
+            import face_recognition
+        except ImportError:
+            raise ImportError("face_recognition library is required for extracting encodings from images")
+        
+        encodings = []
+        valid_indices = []
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TimeElapsedColumn(),
+            console=console
+        ) as progress:
+            
+            task = progress.add_task("Extracting face encodings from images...", total=len(self.face_data))
+            
+            for i, face in enumerate(self.face_data):
+                try:
+                    # Load the image
+                    image = cv2.imread(str(face.image_path))
+                    if image is None:
+                        continue
+                    
+                    # Crop the face region
+                    img_height, img_width = image.shape[:2]
+                    x1 = max(0, face.crop_x)
+                    y1 = max(0, face.crop_y)
+                    x2 = min(img_width, face.crop_x + face.crop_width)
+                    y2 = min(img_height, face.crop_y + face.crop_height)
+                    
+                    cropped_face = image[y1:y2, x1:x2]
+                    
+                    if cropped_face.size == 0:
+                        continue
+                    
+                    # Convert BGR to RGB for face_recognition
+                    rgb_face = cv2.cvtColor(cropped_face, cv2.COLOR_BGR2RGB)
+                    
+                    # Extract face encoding
+                    face_encodings = face_recognition.face_encodings(rgb_face)
+                    
+                    if face_encodings:
+                        encodings.append(face_encodings[0].tolist())
+                        valid_indices.append(i)
+                
+                except Exception as e:
+                    logger.debug(f"Error extracting encoding from {face.image_path}: {e}")
+                    continue
+                
+                progress.advance(task)
+        
+        return encodings, valid_indices
     
     def cluster_faces(self, encodings: np.ndarray, valid_indices: List[int]) -> List[ClusterResult]:
         """
@@ -310,14 +411,23 @@ class FaceClusteringEngine:
     
     def _cluster_dbscan(self, encodings: np.ndarray) -> np.ndarray:
         """Cluster using DBSCAN algorithm."""
+        # Handle edge case with very few encodings
+        if len(encodings) < 2:
+            return np.array([0] * len(encodings))
+        
         # Estimate eps based on data
         from sklearn.neighbors import NearestNeighbors
-        nbrs = NearestNeighbors(n_neighbors=min(4, len(encodings))).fit(encodings)
+        n_neighbors = min(4, len(encodings))
+        nbrs = NearestNeighbors(n_neighbors=n_neighbors).fit(encodings)
         distances, indices = nbrs.kneighbors(encodings)
         distances = np.sort(distances[:, -1])
         
         # Use elbow method to find optimal eps
         eps = np.percentile(distances, 75)  # Use 75th percentile as eps
+        
+        # Ensure eps is not zero
+        if eps <= 0:
+            eps = 0.1  # Default fallback value
         
         dbscan = DBSCAN(eps=eps, min_samples=self.min_cluster_size)
         return dbscan.fit_predict(encodings)
