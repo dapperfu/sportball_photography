@@ -14,7 +14,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
-from ..utils import get_core
+from ..utils import get_core, find_image_files
 from ...sidecar import Sidecar, OperationType
 
 console = Console()
@@ -44,6 +44,9 @@ def object_group():
 @click.option('--extract-objects', 'extract_objects',
               is_flag=True,
               help='Extract detected objects to separate images')
+@click.option('--no-recursive', 'no_recursive',
+              is_flag=True,
+              help='Disable recursive directory processing')
 @click.pass_context
 def detect(ctx: click.Context, 
            input_path: Path, 
@@ -51,25 +54,20 @@ def detect(ctx: click.Context,
            confidence: float,
            class_names: Optional[str],
            save_sidecar: bool,
-           extract_objects: bool):
+           extract_objects: bool,
+           no_recursive: bool):
     """
     Detect objects in images using YOLOv8.
     
     INPUT_PATH can be a single image file or a directory containing images.
+    By default, directories are processed recursively. Use --no-recursive to disable.
     """
     
     core = get_core(ctx)
     
-    # Determine input files
-    if input_path.is_file():
-        image_paths = [input_path]
-    else:
-        # Find all image files in directory
-        image_extensions = ['.jpg', '.jpeg', '.png', '.tiff', '.bmp']
-        image_paths = []
-        for ext in image_extensions:
-            image_paths.extend(input_path.glob(f'*{ext}'))
-            image_paths.extend(input_path.glob(f'*{ext.upper()}'))
+    # Find image files (recursive by default)
+    recursive = not no_recursive
+    image_paths = find_image_files(input_path, recursive=recursive)
     
     if not image_paths:
         console.print("❌ No image files found", style="red")
@@ -175,6 +173,9 @@ def display_object_results(results: dict, extract_objects: bool, output_dir: Opt
               type=int,
               default=10,
               help='Padding around objects in pixels')
+@click.option('--no-recursive', 'no_recursive',
+              is_flag=True,
+              help='Disable recursive directory processing')
 @click.pass_context
 def extract(ctx: click.Context, 
             input_path: Path, 
@@ -182,12 +183,14 @@ def extract(ctx: click.Context,
             object_types: Optional[str],
             min_size: int,
             max_size: Optional[int],
-            padding: int):
+            padding: int,
+            no_recursive: bool):
     """
     Extract detected objects from images.
     
     INPUT_PATH should be a directory containing images with object detection sidecar files.
     OUTPUT_DIR is where extracted objects will be saved.
+    By default, directories are processed recursively. Use --no-recursive to disable.
     """
     
     core = get_core(ctx)
@@ -199,12 +202,9 @@ def extract(ctx: click.Context,
     
     console.print(f"✂️  Extracting objects from {input_path} to {output_dir}...", style="blue")
     
-    # Find all images with object detection sidecar files
-    image_extensions = ['.jpg', '.jpeg', '.png', '.tiff', '.bmp']
-    image_paths = []
-    for ext in image_extensions:
-        image_paths.extend(input_path.glob(f'*{ext}'))
-        image_paths.extend(input_path.glob(f'*{ext.upper()}'))
+    # Find image files (recursive by default)
+    recursive = not no_recursive
+    image_paths = find_image_files(input_path, recursive=recursive)
     
     if not image_paths:
         console.print("❌ No image files found", style="red")
@@ -233,27 +233,29 @@ def extract(ctx: click.Context,
 @click.option('--save-sidecar/--no-sidecar',
               default=True,
               help='Save results to sidecar files')
+@click.option('--no-recursive', 'no_recursive',
+              is_flag=True,
+              help='Disable recursive directory processing')
 @click.pass_context
 def analyze(ctx: click.Context, 
             input_path: Path, 
             confidence: float,
-            save_sidecar: bool):
+            save_sidecar: bool,
+            no_recursive: bool):
     """
     Analyze objects in images and generate statistics.
     
     INPUT_PATH should be a directory containing images.
+    By default, directories are processed recursively. Use --no-recursive to disable.
     """
     
     core = get_core(ctx)
     
     console.print(f"📊 Analyzing objects in {input_path}...", style="blue")
     
-    # Find all images
-    image_extensions = ['.jpg', '.jpeg', '.png', '.tiff', '.bmp']
-    image_paths = []
-    for ext in image_extensions:
-        image_paths.extend(input_path.glob(f'*{ext}'))
-        image_paths.extend(input_path.glob(f'*{ext.upper()}'))
+    # Find image files (recursive by default)
+    recursive = not no_recursive
+    image_paths = find_image_files(input_path, recursive=recursive)
     
     if not image_paths:
         console.print("❌ No image files found", style="red")

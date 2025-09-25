@@ -14,7 +14,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
-from ..utils import get_core
+from ..utils import get_core, find_image_files
 
 console = Console()
 
@@ -44,6 +44,9 @@ def quality_group():
 @click.option('--filter-low-quality', 'filter_low_quality',
               is_flag=True,
               help='Filter out low-quality images')
+@click.option('--no-recursive', 'no_recursive',
+              is_flag=True,
+              help='Disable recursive directory processing')
 @click.pass_context
 def assess(ctx: click.Context, 
            input_path: Path, 
@@ -51,25 +54,20 @@ def assess(ctx: click.Context,
            min_score: float,
            max_score: float,
            save_sidecar: bool,
-           filter_low_quality: bool):
+           filter_low_quality: bool,
+           no_recursive: bool):
     """
     Assess photo quality using multiple metrics.
     
     INPUT_PATH can be a single image file or a directory containing images.
+    By default, directories are processed recursively. Use --no-recursive to disable.
     """
     
     core = get_core(ctx)
     
-    # Determine input files
-    if input_path.is_file():
-        image_paths = [input_path]
-    else:
-        # Find all image files in directory
-        image_extensions = ['.jpg', '.jpeg', '.png', '.tiff', '.bmp']
-        image_paths = []
-        for ext in image_extensions:
-            image_paths.extend(input_path.glob(f'*{ext}'))
-            image_paths.extend(input_path.glob(f'*{ext.upper()}'))
+    # Find image files (recursive by default)
+    recursive = not no_recursive
+    image_paths = find_image_files(input_path, recursive=recursive)
     
     if not image_paths:
         console.print("❌ No image files found", style="red")

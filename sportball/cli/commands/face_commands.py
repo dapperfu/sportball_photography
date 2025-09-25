@@ -16,7 +16,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
-from ..utils import get_core
+from ..utils import get_core, find_image_files
 from ...sidecar import Sidecar, OperationType
 
 console = Console()
@@ -78,6 +78,9 @@ def face_group():
 @click.option('--force', '-f', 
               is_flag=True, 
               help='Force detection even if JSON sidecar exists')
+@click.option('--no-recursive', 'no_recursive',
+              is_flag=True,
+              help='Disable recursive directory processing')
 @click.option('--verbose', '-v', 
               count=True, 
               help='Enable verbose logging (-v for info, -vv for debug)')
@@ -88,12 +91,13 @@ def detect(ctx: click.Context,
            max_images: Optional[int],
            gpu: bool,
            force: bool,
+           no_recursive: bool,
            verbose: int):
     """
     Detect faces in images and save comprehensive data to JSON sidecar files.
     
     INPUT_PATTERN can be a file pattern, directory path, or single image file.
-    Supports recursive directory scanning and pattern matching.
+    By default, directories are processed recursively. Use --no-recursive to disable.
     """
     
     # Setup logging based on verbose level
@@ -118,15 +122,12 @@ def detect(ctx: click.Context,
     # Pre-scan phase: find all images and check for existing sidecars
     console.print("📁 Scanning directory for images and existing sidecar files...", style="blue")
     
-    # Find all image files (including symlinks)
+    # Find all image files (recursive by default)
     input_path = Path(input_pattern)
+    recursive = not no_recursive
+    
     if input_path.is_dir():
-        image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
-        image_files = []
-        # Use glob to find files including symlinks
-        for ext in image_extensions:
-            image_files.extend(input_path.glob(f'*{ext}'))
-            image_files.extend(input_path.glob(f'*{ext.upper()}'))
+        image_files = find_image_files(input_path, recursive=recursive)
     else:
         # Pattern matching
         if input_pattern.startswith('/'):

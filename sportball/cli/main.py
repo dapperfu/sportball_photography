@@ -57,9 +57,8 @@ def cli(ctx: click.Context,
     
     Features:
     - Face detection and recognition
-    - Object detection and extraction
+    - Object detection and extraction (including balls)
     - Game boundary detection
-    - Ball detection and tracking
     - Photo quality assessment
     - Sidecar file management and statistics
     - Parallel processing with GPU support
@@ -79,8 +78,8 @@ def cli(ctx: click.Context,
     sportball games split /path/to/photos --output /path/to/games
     
     \b
-    # Detect balls in images
-    sportball ball detect /path/to/images
+    # Detect balls specifically
+    sportball object detect /path/to/images --classes "sports ball"
     
     \b
     # Assess photo quality
@@ -121,7 +120,6 @@ from .commands import (
     face_commands,
     object_commands,
     game_commands,
-    ball_commands,
     quality_commands,
     utility_commands,
     sidecar_commands
@@ -130,7 +128,6 @@ from .commands import (
 cli.add_command(face_commands.face_group, name='face')
 cli.add_command(object_commands.object_group, name='object')
 cli.add_command(game_commands.game_group, name='games')
-cli.add_command(ball_commands.ball_group, name='ball')
 cli.add_command(quality_commands.quality_group, name='quality')
 cli.add_command(utility_commands.utility_group, name='util')
 cli.add_command(sidecar_commands.sidecar_group, name='sidecar')

@@ -9,8 +9,8 @@ A comprehensive Python package for analyzing and organizing sports photographs u
 - **Face Detection & Recognition** - Detect and cluster faces in sports photos
 - **Object Detection** - YOLOv8-powered object detection (players, balls, equipment)
 - **Game Boundary Detection** - Automatically split photos into games based on timestamps
-- **Ball Detection & Tracking** - Specialized ball detection with motion tracking
 - **Photo Quality Assessment** - Multi-metric quality analysis and filtering
+- **Recursive Processing** - Process directories recursively by default
 - **Parallel Processing** - GPU-accelerated processing with multi-threading
 - **Sidecar Data Management** - JSON sidecar files for metadata and caching
 - **Comprehensive CLI** - Clean command-line interface with subcommands
@@ -42,24 +42,27 @@ pip install -e .[dev]
 ### Face Detection
 
 ```bash
-# Detect faces in images
+# Detect faces in images (recursive by default)
 sportball face detect /path/to/images
 
 # Detect faces with specific confidence threshold
 sportball face detect /path/to/images --confidence 0.7
 
-# Extract detected faces to separate images
-sportball face detect /path/to/images --extract-faces --output /path/to/faces
+# Process only current directory (disable recursion)
+sportball face detect /path/to/images --no-recursive
 ```
 
 ### Object Detection
 
 ```bash
-# Detect objects in images
+# Detect objects in images (recursive by default)
 sportball object detect /path/to/images
 
-# Detect specific object classes
+# Detect specific object classes (including balls)
 sportball object detect /path/to/images --classes "person,sports ball"
+
+# Detect only balls
+sportball object detect /path/to/images --classes "sports ball"
 
 # Extract detected objects
 sportball object extract /path/to/images /path/to/output --object-types "person,sports ball"
@@ -78,30 +81,30 @@ sportball games split /path/to/photos /path/to/games --pattern "202509*_*"
 sportball games split /path/to/photos /path/to/games --split-file splits.txt
 ```
 
-### Ball Detection
+### Ball Detection (via Object Detection)
 
 ```bash
-# Detect balls in images
-sportball ball detect /path/to/images
-
-# Enable ball tracking across frames
-sportball ball detect /path/to/images --enable-tracking
+# Detect balls in images (recursive by default)
+sportball object detect /path/to/images --classes "sports ball"
 
 # Extract detected balls
-sportball ball detect /path/to/images --extract-balls --output /path/to/balls
+sportball object extract /path/to/images /path/to/output --object-types "sports ball"
+
+# Analyze ball detection results
+sportball object analyze /path/to/images --classes "sports ball"
 ```
 
 ### Quality Assessment
 
 ```bash
-# Assess photo quality
+# Assess photo quality (recursive by default)
 sportball quality assess /path/to/images
 
 # Filter low-quality images
 sportball quality assess /path/to/images --filter-low-quality --min-score 0.6
 
-# Generate quality report
-sportball quality report /path/to/images --output quality_report.json
+# Process only current directory
+sportball quality assess /path/to/images --no-recursive
 ```
 
 ## 🛠️ CLI Commands
@@ -109,9 +112,8 @@ sportball quality report /path/to/images --output quality_report.json
 ### Main Commands
 
 - `sportball face` - Face detection and recognition
-- `sportball object` - Object detection and extraction
+- `sportball object` - Object detection and extraction (including balls)
 - `sportball games` - Game boundary detection and splitting
-- `sportball ball` - Ball detection and tracking
 - `sportball quality` - Photo quality assessment
 - `sportball util` - Utility operations (cache, sidecar management)
 
@@ -121,6 +123,7 @@ You can use `sb` as a shorter alias for `sportball`:
 
 ```bash
 sb face detect /path/to/images
+sb object detect /path/to/images --classes "sports ball"
 sb object extract /path/to/images /path/to/output
 sb games split /path/to/photos /path/to/games
 ```
@@ -132,6 +135,7 @@ sb games split /path/to/photos /path/to/games
 - `--cache/--no-cache` - Enable/disable result caching
 - `--verbose` - Enable verbose logging
 - `--quiet` - Suppress output except errors
+- `--no-recursive` - Disable recursive directory processing (most commands)
 
 ## 🔧 Configuration
 
@@ -234,16 +238,16 @@ def process_images(images):
 ### Complete Workflow
 
 ```bash
-# 1. Detect faces in all photos
+# 1. Detect faces in all photos (recursive)
 sportball face detect /path/to/photos --confidence 0.6
 
-# 2. Detect objects (players, balls)
+# 2. Detect objects (players, balls) - recursive by default
 sportball object detect /path/to/photos --classes "person,sports ball"
 
 # 3. Split photos into games
 sportball games split /path/to/photos /path/to/games
 
-# 4. Assess photo quality
+# 4. Assess photo quality (recursive)
 sportball quality assess /path/to/photos --filter-low-quality
 
 # 5. Generate comprehensive report
