@@ -11,7 +11,7 @@ Generated via Cursor IDE (cursor.sh) with AI assistance
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Union, Tuple
+from typing import Dict, List, Optional, Any
 from datetime import datetime
 from enum import Enum
 
@@ -25,6 +25,7 @@ class OperationType(Enum):
     BALL_DETECTION = "ball_detection"
     QUALITY_ASSESSMENT = "quality_assessment"
     GAME_DETECTION = "game_detection"
+    YOLOV8 = "yolov8"
     UNKNOWN = "unknown"
 
 
@@ -87,7 +88,7 @@ class SidecarInfo:
                     try:
                         timestamp = datetime.fromisoformat(metadata['extraction_timestamp'])
                         return (datetime.now() - timestamp).total_seconds()
-                    except:
+                    except Exception:
                         pass
         
         return None
@@ -134,6 +135,7 @@ class Sidecar:
         'Ball_detector': OperationType.BALL_DETECTION,
         'Quality_assessor': OperationType.QUALITY_ASSESSMENT,
         'Game_detector': OperationType.GAME_DETECTION,
+        'yolov8': OperationType.YOLOV8,
     }
     
     def __init__(self, base_directory: Optional[Path] = None):
@@ -343,7 +345,7 @@ class Sidecar:
                 try:
                     if not image_file.resolve().exists():
                         broken_symlinks += 1
-                except:
+                except Exception:
                     broken_symlinks += 1
         
         # Analyze sidecars

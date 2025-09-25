@@ -24,6 +24,9 @@ import numpy as np
 from tqdm import tqdm
 from loguru import logger
 
+# Remove default logger handler to ensure silent operation by default
+logger.remove()
+
 # Try to import face_recognition for encodings
 try:
     import face_recognition
@@ -127,15 +130,15 @@ class FaceDetector:
                 # Try to create a GPU context
                 gpu_info = cv2.cuda.getCudaEnabledDeviceCount()
                 if gpu_info > 0:
-                    logger.info(f"GPU support available: {gpu_info} CUDA devices")
+                    logger.debug(f"GPU support available: {gpu_info} CUDA devices")
                 else:
-                    logger.warning("No CUDA devices found, falling back to CPU")
+                    logger.debug("No CUDA devices found, falling back to CPU")
                     self.use_gpu = False
             except:
-                logger.warning("CUDA not available, falling back to CPU")
+                logger.debug("CUDA not available, falling back to CPU")
                 self.use_gpu = False
         
-        logger.info(f"Initialized face detector with {border_padding*100:.0f}% border padding, GPU: {self.use_gpu}")
+        logger.debug(f"Initialized face detector with {border_padding*100:.0f}% border padding, GPU: {self.use_gpu}")
     
     def detect_facial_features(self, face_region: np.ndarray) -> List[FacialFeature]:
         """
@@ -328,7 +331,7 @@ class FaceDetector:
                 logger.debug(f"JSON sidecar exists but invalid/empty, reprocessing {image_path.name}")
                 pass
         
-        logger.info(f"Detecting faces in {image_path.name}")
+        logger.debug(f"Detecting faces in {image_path.name}")
         
         # Load image
         image = cv2.imread(str(image_path))
@@ -497,7 +500,7 @@ class FaceDetector:
         
         if updating_existing:
             # We're updating existing faces with missing encodings
-            logger.info(f"Updating existing faces with missing encodings in {image_path.name}")
+            logger.debug(f"Updating existing faces with missing encodings in {image_path.name}")
             # Keep existing faces data and update encodings
             existing_faces = existing_data["Face_detector"]["faces"]
         else:
@@ -612,14 +615,14 @@ class FaceDetector:
         if max_images:
             image_files = image_files[:max_images]
         
-        logger.info(f"Found {len(image_files)} images to process")
+        logger.debug(f"Found {len(image_files)} images to process")
         
         # Process images sequentially to avoid segmentation faults
         results = []
         
         # Use sequential processing instead of parallel to avoid segfaults
         if len(image_files) > 10:  # Only use parallel for small batches
-            logger.info("Using sequential processing to avoid memory issues")
+            logger.debug("Using sequential processing to avoid memory issues")
             # Sequential processing
             progress_bar = tqdm(total=len(image_files), desc="Detecting faces", 
                               bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}')
