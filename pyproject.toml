@@ -109,7 +109,7 @@ sportball = "sportball.cli.main:cli"
 sb = "sportball.cli.main:cli"
 
 [tool.setuptools]
-packages = ["sportball"]
+packages = ["sportball", "sportball.cli", "sportball.cli.commands", "sportball.detectors"]
 package-dir = {"" = "."}
 
 [tool.setuptools.package-data]
