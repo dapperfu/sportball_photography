@@ -58,7 +58,6 @@ class SportballCore:
         self._face_detector = None
         self._object_detector = None
         self._game_detector = None
-        self._ball_detector = None
         self._quality_assessor = None
         
         self.logger = logger.bind(component="core")
@@ -96,16 +95,6 @@ class SportballCore:
             )
         return self._game_detector
     
-    @property
-    def ball_detector(self):
-        """Lazy-loaded ball detector."""
-        if self._ball_detector is None:
-            from .detectors.ball import BallDetector
-            self._ball_detector = BallDetector(
-                enable_gpu=self.enable_gpu,
-                cache_enabled=self.cache_enabled
-            )
-        return self._ball_detector
     
     @property
     def quality_assessor(self):
@@ -265,57 +254,6 @@ class SportballCore:
             self.logger.error(f"Game detection failed: {e}")
             return {"error": str(e), "success": False}
     
-    @timing_decorator
-    @gpu_accelerated(fallback_cpu=True)
-    def detect_balls(self, 
-                    image_paths: Union[Path, List[Path]], 
-                    save_sidecar: bool = True,
-                    **kwargs) -> Dict[str, Any]:
-        """
-        Detect balls in images.
-        
-        Args:
-            image_paths: Single image path or list of image paths
-            save_sidecar: Whether to save results to sidecar files
-            **kwargs: Additional arguments for ball detection
-            
-        Returns:
-            Dictionary containing detection results
-        """
-        if isinstance(image_paths, Path):
-            image_paths = [image_paths]
-        
-        self.logger.info(f"Detecting balls in {len(image_paths)} images")
-        
-        results = {}
-        for image_path in image_paths:
-            try:
-                # Check cache first
-                if self.cache_enabled:
-                    cached_data = self.sidecar.load_data(image_path, "ball_detection")
-                    if cached_data:
-                        results[str(image_path)] = cached_data
-                        continue
-                
-                # Perform detection
-                detection_result = self.ball_detector.detect_balls(image_path, **kwargs)
-                
-                # Save to sidecar if requested
-                if save_sidecar:
-                    self.sidecar.save_data(
-                        image_path, 
-                        "ball_detection", 
-                        detection_result,
-                        metadata={"kwargs": kwargs}
-                    )
-                
-                results[str(image_path)] = detection_result
-                
-            except Exception as e:
-                self.logger.error(f"Ball detection failed for {image_path}: {e}")
-                results[str(image_path)] = {"error": str(e), "success": False}
-        
-        return results
     
     @timing_decorator
     def assess_quality(self, 
