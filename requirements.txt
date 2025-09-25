@@ -21,6 +21,7 @@ easyocr>=1.7.0
 
 # Color analysis and processing
 scikit-image>=0.21.0
+scikit-learn>=1.3.0
 
 # Data handling and utilities
 pandas>=2.0.0
