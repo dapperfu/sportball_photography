@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 """
 Enhanced Game Organizer - Professional soccer photo organization tool.
@@ -32,7 +33,6 @@ from rich.logging import RichHandler
 import logging
 
 from game_detector import GameDetector, GameDetectionConfig, GameSession
-from manual_game_splitter import ManualGameSplitter
 
 # Configure rich console
 console = Console()
@@ -62,7 +62,7 @@ class EnhancedGameOrganizer:
         """
         self.config = config or GameDetectionConfig()
         self.detector = GameDetector(self.config)
-        self.splitter = None
+        self.manual_splits: List[datetime] = []
         self.final_games: List[GameSession] = []
         self.max_workers = max_workers
         self.performance_metrics = {}
@@ -93,7 +93,7 @@ class EnhancedGameOrganizer:
             
             # Task 1: Find photos
             task1 = progress.add_task("Finding photos...", total=None)
-            photo_paths = list(input_dir.glob(pattern))
+            photo_paths = list(input_dir.rglob(pattern))
             photo_paths = [p for p in photo_paths if p.is_file() and p.suffix.lower() in ['.jpg', '.jpeg', '.png']]
             progress.update(task1, completed=True, description=f"Found {len(photo_paths)} photos")
             
@@ -143,10 +143,6 @@ class EnhancedGameOrganizer:
             'games_detected': len(games),
             'parallel_workers': self.max_workers
         }
-        
-        # Set up the splitter for manual splits
-        from manual_game_splitter import ManualGameSplitter
-        self.splitter = ManualGameSplitter(self.detector)
         
         # Ensure detector games are set
         self.detector.games = games
@@ -382,10 +378,6 @@ class EnhancedGameOrganizer:
         Returns:
             True if splits were loaded successfully
         """
-        if not self.splitter:
-            console.print("❌ No splitter available. Run detection first.", style="red")
-            return False
-        
         try:
             with open(split_file_path, 'r') as f:
                 lines = f.readlines()
@@ -423,7 +415,7 @@ class EnhancedGameOrganizer:
                             # Fallback to September 20th, 2025
                             timestamp = datetime(2025, 9, 20, time_part.hour, time_part.minute, time_part.second)
                     
-                    self.splitter.manual_splits.append(timestamp)
+                    self.manual_splits.append(timestamp)
                     splits_loaded += 1
                     
                 except ValueError as e:
@@ -431,7 +423,7 @@ class EnhancedGameOrganizer:
                     continue
             
             # Sort splits
-            self.splitter.manual_splits.sort()
+            self.manual_splits.sort()
             
             console.print(f"✅ Loaded {splits_loaded} manual splits from {split_file_path}", style="green")
             return True
@@ -450,24 +442,84 @@ class EnhancedGameOrganizer:
         Returns:
             True if splits were applied successfully
         """
-        if not self.splitter:
-            console.print("❌ No splitter available. Run detection first.", style="red")
-            return False
-        
-        if not self.splitter.manual_splits:
+        if not self.manual_splits:
             console.print("ℹ️  No manual splits to apply", style="yellow")
             self.final_games = self.detector.games
             return True
         
-        console.print(f"🔧 Applying {len(self.splitter.manual_splits)} manual splits...", style="blue")
+        console.print(f"🔧 Applying {len(self.manual_splits)} manual splits...", style="blue")
         
         try:
-            self.final_games = self.splitter.apply_manual_splits()
+            self.final_games = self._apply_manual_splits_internal()
             console.print(f"✅ Applied manual splits. Final games: {len(self.final_games)}", style="green")
             return True
         except Exception as e:
             console.print(f"❌ Error applying manual splits: {e}", style="red")
             return False
+    
+    def _apply_manual_splits_internal(self) -> List[GameSession]:
+        """
+        Internal method to apply manual splits to detected games.
+        
+        Returns:
+            List of GameSession objects with manual splits applied
+        """
+        if not self.detector.games:
+            return []
+        
+        final_games = []
+        
+        for game in self.detector.games:
+            # Find manual splits that fall within this game's time range
+            game_splits = [split for split in self.manual_splits 
+                          if game.start_time <= split <= game.end_time]
+            
+            if not game_splits:
+                # No splits within this game, keep it as is
+                final_games.append(game)
+                continue
+            
+            # Sort splits and add start/end times
+            game_splits.sort()
+            split_points = [game.start_time] + game_splits + [game.end_time]
+            
+            # Create sub-games for each segment
+            for i in range(len(split_points) - 1):
+                segment_start = split_points[i]
+                segment_end = split_points[i + 1]
+                
+                # Find photos in this time segment
+                segment_photos = [photo for photo in game.photo_files
+                                 if segment_start <= self.detector.extract_timestamp_from_filename(photo.name) <= segment_end]
+                
+                if len(segment_photos) >= self.config.min_photos_per_game:
+                    # Create new game session for this segment
+                    segment_game = GameSession(
+                        game_id=len(final_games) + 1,
+                        start_time=segment_start,
+                        end_time=segment_end,
+                        photo_count=len(segment_photos),
+                        photo_files=segment_photos,
+                        gap_before=None,  # Will be calculated later
+                        gap_after=None   # Will be calculated later
+                    )
+                    final_games.append(segment_game)
+        
+        # Reassign game IDs and calculate gaps
+        for i, game in enumerate(final_games, 1):
+            game.game_id = i
+        
+        # Calculate gaps between games
+        for i, game in enumerate(final_games):
+            if i > 0:
+                prev_game = final_games[i - 1]
+                game.gap_before = int((game.start_time - prev_game.end_time).total_seconds())
+            
+            if i < len(final_games) - 1:
+                next_game = final_games[i + 1]
+                game.gap_after = int((next_game.start_time - game.end_time).total_seconds())
+        
+        return final_games
     
     def _generate_report_parallel(self) -> Path:
         """Generate report with parallel processing."""
@@ -605,8 +657,8 @@ class EnhancedGameOrganizer:
             'summary': {
                 'total_games': len(self.final_games),
                 'total_photos': sum(game.photo_count for game in self.final_games),
-                'detection_method': 'automated_with_manual_splits' if self.splitter and self.splitter.manual_splits else 'automated_only',
-                'manual_splits_applied': len(self.splitter.manual_splits) if self.splitter else 0,
+                'detection_method': 'automated_with_manual_splits' if self.manual_splits else 'automated_only',
+                'manual_splits_applied': len(self.manual_splits),
                 'generated_at': datetime.now().isoformat()
             },
             'games': [],
@@ -639,11 +691,11 @@ class EnhancedGameOrganizer:
             report_data['games'].append(game_info)
         
         # Add manual splits information if available
-        if self.splitter and self.splitter.manual_splits:
+        if self.manual_splits:
             report_data['manual_splits'] = {
-                'count': len(self.splitter.manual_splits),
-                'timestamps': [split.isoformat() for split in self.splitter.manual_splits],
-                'timestamps_formatted': [split.strftime('%H:%M:%S') for split in self.splitter.manual_splits]
+                'count': len(self.manual_splits),
+                'timestamps': [split.isoformat() for split in self.manual_splits],
+                'timestamps_formatted': [split.strftime('%H:%M:%S') for split in self.manual_splits]
             }
         
         # Write report to file

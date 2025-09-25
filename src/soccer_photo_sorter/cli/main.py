@@ -7,59 +7,25 @@ This module provides the main Click CLI interface for the soccer photo sorter.
 import click
 from pathlib import Path
 from typing import Optional
-from loguru import logger
+import sys
+import os
 
-from ..config.config_loader import ConfigLoader
-from ..config.settings import Settings
-from ..utils.logging_utils import setup_logging, log_cuda_info
-from ..utils.cuda_utils import CudaManager
-from ..core.photo_sorter import PhotoSorter
+# Add the project root to the Python path so we can import the enhanced_game_organizer
+project_root = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(project_root))
+
+try:
+    from enhanced_game_organizer import main as enhanced_organizer_main
+except ImportError:
+    enhanced_organizer_main = None
 
 
 @click.group()
-@click.option('--config', '-c', 
-              type=click.Path(exists=True, path_type=Path),
-              help='Configuration file path')
-@click.option('--input', '-i',
-              type=click.Path(exists=True, path_type=Path),
-              help='Input directory path')
-@click.option('--output', '-o',
-              type=click.Path(path_type=Path),
-              help='Output directory path')
 @click.option('--verbose', '-v',
               is_flag=True,
               help='Enable verbose output')
-@click.option('--log-level',
-              type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR']),
-              default='INFO',
-              help='Logging level')
-@click.option('--use-cuda/--no-cuda',
-              default=True,
-              help='Enable/disable CUDA acceleration')
-@click.option('--cpu-only',
-              is_flag=True,
-              help='Force CPU-only processing')
-@click.option('--gpu-memory-limit',
-              type=int,
-              help='GPU memory limit in GB')
-@click.option('--threads', '-t',
-              type=int,
-              help='Number of processing threads')
-@click.option('--dry-run',
-              is_flag=True,
-              help='Preview changes without creating directories')
 @click.pass_context
-def cli(ctx: click.Context,
-        config: Optional[Path],
-        input: Optional[Path],
-        output: Optional[Path],
-        verbose: bool,
-        log_level: str,
-        use_cuda: bool,
-        cpu_only: bool,
-        gpu_memory_limit: Optional[int],
-        threads: Optional[int],
-        dry_run: bool):
+def cli(ctx: click.Context, verbose: bool):
     """
     Soccer Photo Sorter - AI-powered photo organization system.
     
@@ -68,163 +34,89 @@ def cli(ctx: click.Context,
     """
     # Ensure context object exists
     ctx.ensure_object(dict)
-    
-    # Override CUDA setting if CPU-only is specified
-    if cpu_only:
-        use_cuda = False
-    
-    # Setup logging
-    log_file = Path('logs') / 'soccer_photo_sorter.log' if verbose else None
-    setup_logging(log_level, log_file, verbose)
-    
-    # Load configuration
-    config_loader = ConfigLoader(config)
-    cli_overrides = {
-        'input_path': input,
-        'output_path': output,
-        'processing.verbose': verbose,
-        'processing.log_level': log_level,
-        'processing.use_cuda': use_cuda,
-        'processing.gpu_memory_limit': gpu_memory_limit,
-        'processing.max_threads': threads,
-        'dry_run': dry_run,
-    }
-    
-    # Remove None values
-    cli_overrides = {k: v for k, v in cli_overrides.items() if v is not None}
-    
-    settings = config_loader.load_config(
-        file_path=config,
-        env_overrides=True,
-        cli_overrides=cli_overrides
-    )
-    
-    # Initialize CUDA manager
-    cuda_manager = CudaManager(
-        memory_limit_gb=settings.processing.gpu_memory_limit
-    )
-    
-    # Log CUDA information
-    log_cuda_info(cuda_manager)
-    
-    # Store in context
-    ctx.obj['settings'] = settings
-    ctx.obj['cuda_manager'] = cuda_manager
-    ctx.obj['config_loader'] = config_loader
+    ctx.obj['verbose'] = verbose
 
 
 @cli.command()
-@click.option('--all-methods',
-              is_flag=True,
-              help='Run all sorting methods')
-@click.option('--color-confidence',
-              type=float,
-              help='Color detection confidence threshold')
-@click.option('--number-confidence',
-              type=float,
-              help='Number detection confidence threshold')
-@click.option('--face-confidence',
-              type=float,
-              help='Face detection confidence threshold')
-@click.option('--enable-color/--disable-color',
-              default=True,
-              help='Enable/disable color detection')
-@click.option('--enable-number/--disable-number',
-              default=True,
-              help='Enable/disable number detection')
-@click.option('--enable-face/--disable-face',
-              default=True,
-              help='Enable/disable face detection')
-@click.pass_context
-def sort(ctx: click.Context,
-         all_methods: bool,
-         color_confidence: Optional[float],
-         number_confidence: Optional[float],
-         face_confidence: Optional[float],
-         enable_color: bool,
-         enable_number: bool,
-         enable_face: bool):
-    """
-    Sort photos using AI detection methods.
-    
-    This command processes images in the input directory and organizes them
-    into output directories based on detected jersey colors, jersey numbers,
-    and player faces.
-    """
-    settings = ctx.obj['settings']
-    cuda_manager = ctx.obj['cuda_manager']
-    
-    # Update settings with CLI options
-    if color_confidence is not None:
-        settings.detection.color_confidence = color_confidence
-    if number_confidence is not None:
-        settings.detection.number_confidence = number_confidence
-    if face_confidence is not None:
-        settings.detection.face_confidence = face_confidence
-    
-    # Set processing modes
-    if all_methods:
-        settings.enable_color_detection = True
-        settings.enable_number_detection = True
-        settings.enable_face_detection = True
-    else:
-        settings.enable_color_detection = enable_color
-        settings.enable_number_detection = enable_number
-        settings.enable_face_detection = enable_face
-    
-    # Validate paths
-    if not settings.input_path:
-        click.echo("Error: Input path is required", err=True)
-        ctx.exit(1)
-    
-    if not settings.output_path:
-        click.echo("Error: Output path is required", err=True)
-        ctx.exit(1)
-    
-    # Initialize photo sorter
-    photo_sorter = PhotoSorter(settings, cuda_manager)
-    
-    try:
-        # Process photos
-        results = photo_sorter.process_photos()
-        
-        # Display results
-        click.echo(f"\nProcessing complete!")
-        click.echo(f"Files processed: {results.get('total_files', 0)}")
-        click.echo(f"Files organized: {results.get('organized_files', 0)}")
-        click.echo(f"Errors: {results.get('errors', 0)}")
-        
-        if settings.dry_run:
-            click.echo("\nDry run completed - no files were actually organized")
-        
-    except Exception as e:
-        logger.error(f"Processing failed: {e}")
-        click.echo(f"Error: {e}", err=True)
-        ctx.exit(1)
-
-
-@cli.command()
-@click.option('--create-default',
-              is_flag=True,
-              help='Create default configuration file')
+@click.option('--input', '-i', 
+              type=click.Path(exists=True, file_okay=False, path_type=Path),
+              required=True,
+              help='Input directory containing photos')
 @click.option('--output', '-o',
               type=click.Path(path_type=Path),
-              default='config.json',
-              help='Output configuration file path')
+              default=Path('./results/games'),
+              help='Output directory for organized games')
+@click.option('--pattern', '-p',
+              default='*_*',
+              help='File pattern to match (e.g., "202509*_*" for Sep 2025, "*_*" for all)')
+@click.option('--split-file', '-s',
+              type=click.Path(path_type=Path),
+              help='Text file with manual splits (one timestamp per line, format: HH:MM:SS)')
+@click.option('--copy', 'copy_files',
+              is_flag=True,
+              help='Copy files instead of creating symlinks')
+@click.option('--workers', '-w',
+              type=int,
+              default=4,
+              help='Number of parallel workers')
+@click.option('--min-duration',
+              type=int,
+              default=30,
+              help='Minimum game duration in minutes')
+@click.option('--min-gap',
+              type=int,
+              default=10,
+              help='Minimum gap to separate games in minutes')
+@click.option('--verbose', '-v',
+              is_flag=True,
+              help='Enable verbose logging')
+@click.option('--quiet', '-q',
+              is_flag=True,
+              help='Suppress output except errors')
 @click.pass_context
-def config(ctx: click.Context, create_default: bool, output: Path):
+def organize(ctx: click.Context, input: Path, output: Path, pattern: str, split_file: Optional[Path], 
+             copy_files: bool, workers: int, min_duration: int, min_gap: int, 
+             verbose: bool, quiet: bool):
     """
-    Configuration management commands.
+    Organize soccer photos into games using the enhanced game organizer.
     
-    Create, validate, or display configuration settings.
+    This command processes images in the input directory and organizes them
+    into game-specific folders based on temporal analysis and optional manual splits.
     """
-    config_loader = ctx.obj['config_loader']
+    if enhanced_organizer_main is None:
+        click.echo("Error: Enhanced game organizer not available", err=True)
+        ctx.exit(1)
     
-    if create_default:
-        config_loader.create_default_config_file(output)
-        click.echo(f"Default configuration created: {output}")
-    else:
-        click.echo("Use --create-default to create a default configuration file")
+    # Prepare arguments for the enhanced organizer
+    sys.argv = [
+        'enhanced_game_organizer.py',
+        '--input', str(input),
+        '--output', str(output),
+        '--pattern', pattern,
+        '--workers', str(workers),
+        '--min-duration', str(min_duration),
+        '--min-gap', str(min_gap),
+    ]
+    
+    if split_file:
+        sys.argv.extend(['--split-file', str(split_file)])
+    
+    if copy_files:
+        sys.argv.append('--copy')
+    
+    if verbose:
+        sys.argv.append('--verbose')
+    
+    if quiet:
+        sys.argv.append('--quiet')
+    
+    # Run the enhanced organizer
+    try:
+        exit_code = enhanced_organizer_main()
+        ctx.exit(exit_code)
+    except Exception as e:
+        click.echo(f"Error running organizer: {e}", err=True)
+        ctx.exit(1)
 
 
 @cli.command()
@@ -233,44 +125,54 @@ def info(ctx: click.Context):
     """
     Display system information.
     
-    Show CUDA availability, device information, and system capabilities.
+    Show available features and system capabilities.
     """
-    cuda_manager = ctx.obj['cuda_manager']
-    settings = ctx.obj['settings']
+    verbose = ctx.obj.get('verbose', False)
     
     click.echo("Soccer Photo Sorter - System Information")
     click.echo("=" * 50)
     
-    # CUDA Information
-    click.echo("\nCUDA Information:")
-    if cuda_manager.is_available:
-        click.echo(f"  CUDA Available: Yes")
-        click.echo(f"  Devices: {cuda_manager.device_count}")
-        
-        for device_id in range(cuda_manager.device_count):
-            info = cuda_manager.get_device_info(device_id)
-            click.echo(f"    Device {device_id}: {info['name']}")
-            click.echo(f"      Memory: {info['memory_total'] / 1024**3:.1f} GB")
-            click.echo(f"      Compute Capability: {info['compute_capability']}")
-    else:
-        click.echo(f"  CUDA Available: No")
+    # Package Information
+    click.echo("\nPackage Information:")
+    click.echo(f"  Version: 0.1.0")
+    click.echo(f"  Python Version: {sys.version}")
+    click.echo(f"  Platform: {sys.platform}")
     
-    # OpenCV CUDA
-    click.echo(f"  OpenCV CUDA: {'Yes' if cuda_manager.check_opencv_cuda() else 'No'}")
+    # Available Features
+    click.echo("\nAvailable Features:")
+    click.echo(f"  Enhanced Game Organizer: {'Yes' if enhanced_organizer_main else 'No'}")
     
-    # Configuration
-    click.echo("\nConfiguration:")
-    click.echo(f"  Input Path: {settings.input_path}")
-    click.echo(f"  Output Path: {settings.output_path}")
-    click.echo(f"  Use CUDA: {settings.processing.use_cuda}")
-    click.echo(f"  Max Threads: {settings.processing.max_threads}")
-    click.echo(f"  Batch Size: {settings.processing.batch_size}")
+    # Dependencies
+    click.echo("\nDependencies:")
+    try:
+        import cv2
+        click.echo(f"  OpenCV: {cv2.__version__}")
+    except ImportError:
+        click.echo(f"  OpenCV: Not installed")
     
-    # Processing Modes
-    click.echo("\nProcessing Modes:")
-    click.echo(f"  Color Detection: {settings.enable_color_detection}")
-    click.echo(f"  Number Detection: {settings.enable_number_detection}")
-    click.echo(f"  Face Detection: {settings.enable_face_detection}")
+    try:
+        import numpy
+        click.echo(f"  NumPy: {numpy.__version__}")
+    except ImportError:
+        click.echo(f"  NumPy: Not installed")
+    
+    try:
+        import torch
+        click.echo(f"  PyTorch: {torch.__version__}")
+        click.echo(f"  CUDA Available: {torch.cuda.is_available()}")
+    except ImportError:
+        click.echo(f"  PyTorch: Not installed")
+    
+    try:
+        import face_recognition
+        click.echo(f"  Face Recognition: Available")
+    except ImportError:
+        click.echo(f"  Face Recognition: Not installed")
+    
+    # CLI Information
+    click.echo("\nCLI Information:")
+    click.echo(f"  Verbose Mode: {verbose}")
+    click.echo(f"  Working Directory: {os.getcwd()}")
 
 
 def main():
@@ -279,9 +181,10 @@ def main():
         cli()
     except KeyboardInterrupt:
         click.echo("\nOperation cancelled by user", err=True)
+        sys.exit(1)
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
         click.echo(f"Unexpected error: {e}", err=True)
+        sys.exit(1)
 
 
 if __name__ == '__main__':

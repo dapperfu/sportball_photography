@@ -10,20 +10,5 @@ __version__ = "0.1.0"
 __author__ = "Soccer Photo Sorter Team"
 __email__ = "team@soccerphotosorter.com"
 
-from .core.image_processor import ImageProcessor
-from .core.photo_sorter import PhotoSorter
-from .detectors.color_detector import ColorDetector
-from .detectors.number_detector import NumberDetector
-from .detectors.face_detector import FaceDetector
-from .utils.cuda_utils import CudaManager
-from .config.settings import Settings
-
-__all__ = [
-    "ImageProcessor",
-    "PhotoSorter", 
-    "ColorDetector",
-    "NumberDetector",
-    "FaceDetector",
-    "CudaManager",
-    "Settings",
-]
+# Don't import anything that might cause issues
+# The CLI will handle imports as needed

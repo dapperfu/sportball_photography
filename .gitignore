@@ -156,3 +156,5 @@ dmypy.json
 
 # Results directory (analysis data and visualizations)
 results/
+game_organized/
+results/
