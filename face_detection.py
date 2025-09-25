@@ -585,10 +585,10 @@ class FaceDetector:
         # Check if input is a directory
         input_path = Path(image_pattern)
         if input_path.is_dir():
-            # If it's a directory, find all image files in it
+            # If it's a directory, recursively find all image files in it and subdirectories
             image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
             image_files = []
-            for file_path in input_path.iterdir():
+            for file_path in input_path.rglob('*'):  # rglob recursively searches all subdirectories
                 if file_path.is_file() and file_path.suffix.lower() in image_extensions:
                     image_files.append(file_path)
         else:
