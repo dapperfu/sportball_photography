@@ -278,7 +278,9 @@ class FaceDetector:
         """
         import gc  # For garbage collection
         # Check if JSON sidecar already exists with face data
-        json_path = image_path.parent / f"{image_path.stem}.json"
+        # For symlinks, check JSON next to the original image, not the symlink
+        original_image_path = image_path.resolve() if image_path.is_symlink() else image_path
+        json_path = original_image_path.parent / f"{original_image_path.stem}.json"
         if json_path.exists() and not force:
             # Check if JSON contains actual face data
             try:
