@@ -399,7 +399,7 @@ class EnhancedGameOrganizer(UnifiedGameOrganizer):
               help='File pattern to match')
 @click.option('--split-file', '-s',
               type=click.Path(path_type=Path),
-              help='Text file with manual splits (one timestamp per line)')
+              help='Text file with manual splits (one timestamp per line, format: HH:MM:SS)')
 @click.option('--copy', 'copy_files',
               is_flag=True,
               help='Copy files instead of creating symlinks')
@@ -431,6 +431,12 @@ def main(input: Path, output: Path, pattern: str, split_file: Optional[Path],
     Automatically detects games in soccer photos and organizes them into folders.
     Optionally apply manual splits from a text file.
     
+    Split File Format:
+    - Plain text file with one timestamp per line
+    - Format: HH:MM:SS (e.g., 14:00:00)
+    - Comments start with # (ignored)
+    - Empty lines are ignored
+    
     Examples:
     
     \b
@@ -448,6 +454,12 @@ def main(input: Path, output: Path, pattern: str, split_file: Optional[Path],
     \b
     # Copy files instead of symlinks
     python enhanced_game_organizer.py --input /path/to/photos --copy
+    
+    \b
+    # Example split file content:
+    # # Manual splits for September 20th games
+    # 14:00:00
+    # 15:30:00
     """
     
     # Configure logging
