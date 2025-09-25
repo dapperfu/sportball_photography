@@ -53,7 +53,8 @@ class FaceDetector:
                  enable_gpu: bool = True,
                  cache_enabled: bool = True,
                  confidence_threshold: float = 0.5,
-                 min_face_size: int = 64):
+                 min_face_size: int = 64,
+                 batch_size: int = 8):
         """
         Initialize face detector.
         
@@ -62,11 +63,13 @@ class FaceDetector:
             cache_enabled: Whether to enable result caching
             confidence_threshold: Minimum confidence for face detection
             min_face_size: Minimum face size in pixels
+            batch_size: Batch size for processing multiple images
         """
         self.enable_gpu = enable_gpu
         self.cache_enabled = cache_enabled
         self.confidence_threshold = confidence_threshold
         self.min_face_size = min_face_size
+        self.batch_size = batch_size
         
         # Initialize OpenCV face cascade
         self.face_cascade = cv2.CascadeClassifier(
@@ -184,6 +187,180 @@ class FaceDetector:
                 processing_time=time.time() - start_time,
                 error=str(e)
             )
+    
+    def detect_faces_batch(self, 
+                          image_paths: List[Path], 
+                          confidence: Optional[float] = None,
+                          min_faces: int = 1,
+                          max_faces: Optional[int] = None,
+                          face_size: int = 64) -> Dict[str, FaceDetectionResult]:
+        """
+        Detect faces in multiple images using batch processing.
+        
+        Args:
+            image_paths: List of image paths
+            confidence: Detection confidence threshold
+            min_faces: Minimum number of faces to detect
+            max_faces: Maximum number of faces to detect
+            face_size: Minimum face size in pixels
+            
+        Returns:
+            Dictionary mapping image paths to detection results
+        """
+        self.logger.info(f"Processing {len(image_paths)} images in batches of {self.batch_size}")
+        
+        results = {}
+        
+        # Process images in batches
+        for i in range(0, len(image_paths), self.batch_size):
+            batch_paths = image_paths[i:i + self.batch_size]
+            self.logger.info(f"Processing face detection batch {i//self.batch_size + 1}: {len(batch_paths)} images")
+            
+            try:
+                batch_results = self._process_face_batch(
+                    batch_paths, confidence, min_faces, max_faces, face_size
+                )
+                results.update(batch_results)
+            except Exception as e:
+                self.logger.error(f"Face batch processing failed: {e}")
+                # Fallback to individual processing
+                for image_path in batch_paths:
+                    try:
+                        result = self.detect_faces(image_path, confidence, min_faces, max_faces, face_size)
+                        results[str(image_path)] = result
+                    except Exception as img_error:
+                        self.logger.error(f"Error processing {image_path}: {img_error}")
+                        results[str(image_path)] = FaceDetectionResult(
+                            faces=[],
+                            face_count=0,
+                            success=False,
+                            processing_time=0.0,
+                            error=str(img_error)
+                        )
+        
+        return results
+    
+    def _process_face_batch(self, 
+                           image_paths: List[Path], 
+                           confidence: Optional[float],
+                           min_faces: int,
+                           max_faces: Optional[int],
+                           face_size: int) -> Dict[str, FaceDetectionResult]:
+        """Process a batch of images for face detection."""
+        import time
+        start_time = time.time()
+        
+        results = {}
+        
+        # Load all images in the batch
+        batch_images = []
+        batch_metadata = []
+        
+        for image_path in image_paths:
+            try:
+                image = cv2.imread(str(image_path))
+                if image is None:
+                    results[str(image_path)] = FaceDetectionResult(
+                        faces=[],
+                        face_count=0,
+                        success=False,
+                        processing_time=0.0,
+                        error="Failed to load image"
+                    )
+                    continue
+                
+                batch_images.append(image)
+                batch_metadata.append({
+                    'path': image_path,
+                    'original_height': image.shape[0],
+                    'original_width': image.shape[1]
+                })
+            except Exception as e:
+                results[str(image_path)] = FaceDetectionResult(
+                    faces=[],
+                    face_count=0,
+                    success=False,
+                    processing_time=0.0,
+                    error=str(e)
+                )
+        
+        if not batch_images:
+            return results
+        
+        # Process each image in the batch
+        batch_processing_time = time.time() - start_time
+        
+        for i, (image, metadata) in enumerate(zip(batch_images, batch_metadata)):
+            try:
+                # Convert to grayscale for face detection
+                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                
+                # Detect faces using OpenCV
+                faces = self.face_cascade.detectMultiScale(
+                    gray,
+                    scaleFactor=1.1,
+                    minNeighbors=5,
+                    minSize=(face_size, face_size),
+                    flags=cv2.CASCADE_SCALE_IMAGE
+                )
+                
+                # Filter faces by confidence and size
+                detected_faces = []
+                for j, (x, y, w, h) in enumerate(faces):
+                    if w >= face_size and h >= face_size:
+                        # Calculate confidence (simplified)
+                        face_confidence = min(1.0, (w * h) / (face_size * face_size))
+                        
+                        if confidence is None or face_confidence >= confidence:
+                            detected_face = DetectedFace(
+                                face_id=j,
+                                bbox=(x, y, w, h),
+                                confidence=face_confidence
+                            )
+                            
+                            # Add face encoding if available
+                            if self.face_recognition_available:
+                                try:
+                                    face_encoding = self._get_face_encoding(image, (x, y, w, h))
+                                    detected_face.encoding = face_encoding
+                                except Exception as e:
+                                    self.logger.warning(f"Failed to get face encoding: {e}")
+                            
+                            detected_faces.append(detected_face)
+                
+                # Apply min/max face constraints
+                if len(detected_faces) < min_faces:
+                    results[str(metadata['path'])] = FaceDetectionResult(
+                        faces=[],
+                        face_count=0,
+                        success=False,
+                        processing_time=batch_processing_time / len(batch_images),
+                        error=f"Not enough faces detected (found {len(detected_faces)}, required {min_faces})"
+                    )
+                    continue
+                
+                if max_faces and len(detected_faces) > max_faces:
+                    # Sort by confidence and take top N
+                    detected_faces.sort(key=lambda f: f.confidence, reverse=True)
+                    detected_faces = detected_faces[:max_faces]
+                
+                results[str(metadata['path'])] = FaceDetectionResult(
+                    faces=detected_faces,
+                    face_count=len(detected_faces),
+                    success=True,
+                    processing_time=batch_processing_time / len(batch_images)
+                )
+                
+            except Exception as e:
+                results[str(metadata['path'])] = FaceDetectionResult(
+                    faces=[],
+                    face_count=0,
+                    success=False,
+                    processing_time=batch_processing_time / len(batch_images),
+                    error=str(e)
+                )
+        
+        return results
     
     def _get_face_encoding(self, image: np.ndarray, bbox: tuple) -> Optional[List[float]]:
         """

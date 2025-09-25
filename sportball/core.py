@@ -8,7 +8,6 @@ Author: Claude Sonnet 4 (claude-3-5-sonnet-20241022)
 Generated via Cursor IDE (cursor.sh) with AI assistance
 """
 
-import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from loguru import logger
@@ -16,9 +15,6 @@ from loguru import logger
 from .sidecar import SidecarManager
 from .decorators import (
     gpu_accelerated,
-    parallel_processing,
-    progress_tracked,
-    cached_result,
     timing_decorator
 )
 
@@ -74,6 +70,15 @@ class SportballCore:
             )
         return self._face_detector
     
+    def get_face_detector(self, batch_size: int = 8):
+        """Get face detector with custom batch size."""
+        from .detectors.face import FaceDetector
+        return FaceDetector(
+            enable_gpu=self.enable_gpu,
+            cache_enabled=self.cache_enabled,
+            batch_size=batch_size
+        )
+    
     @property
     def object_detector(self):
         """Lazy-loaded object detector."""
@@ -120,6 +125,7 @@ class SportballCore:
     def detect_faces(self, 
                      image_paths: Union[Path, List[Path]], 
                      save_sidecar: bool = True,
+                     batch_size: int = 8,
                      **kwargs) -> Dict[str, Any]:
         """
         Detect faces in images.
@@ -127,6 +133,7 @@ class SportballCore:
         Args:
             image_paths: Single image path or list of image paths
             save_sidecar: Whether to save results to sidecar files
+            batch_size: Batch size for processing multiple images
             **kwargs: Additional arguments for face detection
             
         Returns:
@@ -137,33 +144,22 @@ class SportballCore:
         
         self.logger.info(f"Detecting faces in {len(image_paths)} images")
         
-        results = {}
-        for image_path in image_paths:
-            try:
-                # Check cache first
-                if self.cache_enabled:
-                    cached_data = self.sidecar.load_data(image_path, "face_detection")
-                    if cached_data:
-                        results[str(image_path)] = cached_data
-                        continue
-                
-                # Perform detection
-                detection_result = self.face_detector.detect_faces(image_path, **kwargs)
-                
-                # Save to sidecar if requested
-                if save_sidecar:
+        # Use custom face detector with specified batch size
+        face_detector = self.get_face_detector(batch_size=batch_size)
+        
+        # Perform batch detection
+        results = face_detector.detect_faces_batch(image_paths, **kwargs)
+        
+        # Save to sidecar if requested
+        if save_sidecar:
+            for image_path in image_paths:
+                if str(image_path) in results:
                     self.sidecar.save_data(
                         image_path, 
                         "face_detection", 
-                        detection_result,
-                        metadata={"kwargs": kwargs}
+                        results[str(image_path)],
+                        metadata={"kwargs": kwargs, "batch_size": batch_size}
                     )
-                
-                results[str(image_path)] = detection_result
-                
-            except Exception as e:
-                self.logger.error(f"Face detection failed for {image_path}: {e}")
-                results[str(image_path)] = {"error": str(e), "success": False}
         
         return results
     
