@@ -47,6 +47,10 @@ def object_group():
 @click.option('--no-recursive', 'no_recursive',
               is_flag=True,
               help='Disable recursive directory processing')
+@click.option('--batch-size', 'batch_size',
+              type=int,
+              default=8,
+              help='GPU batch size for processing multiple images (default: 8)')
 @click.pass_context
 def detect(ctx: click.Context, 
            input_path: Path, 
@@ -55,7 +59,8 @@ def detect(ctx: click.Context,
            class_names: Optional[str],
            save_sidecar: bool,
            extract_objects: bool,
-           no_recursive: bool):
+           no_recursive: bool,
+           batch_size: int):
     """
     Detect objects in images using YOLOv8.
     
@@ -84,7 +89,8 @@ def detect(ctx: click.Context,
     detection_kwargs = {
         'confidence': confidence,
         'classes': classes,
-        'save_sidecar': save_sidecar
+        'save_sidecar': save_sidecar,
+        'gpu_batch_size': batch_size
     }
     
     # Perform detection
