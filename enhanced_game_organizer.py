@@ -14,6 +14,7 @@ Author: Claude Sonnet 4 (claude-3-5-sonnet-20241022)
 Generated via Cursor IDE (cursor.sh) with AI assistance
 """
 
+import shutil
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -258,8 +259,9 @@ class EnhancedGameOrganizer:
                 futures = []
                 for photo_path in game.photo_files:
                     symlink_path = game_folder / photo_path.name
-                    if not symlink_path.exists():
-                        futures.append(executor.submit(symlink_path.symlink_to, photo_path))
+                    if symlink_path.exists():
+                        symlink_path.unlink()  # Remove existing symlink
+                    futures.append(executor.submit(symlink_path.symlink_to, photo_path))
                 
                 # Wait for all symlinks to be created
                 for future in as_completed(futures):
@@ -274,6 +276,55 @@ class EnhancedGameOrganizer:
                 game_id, folder_path = future.result()
                 game_folders[game_id] = folder_path
                 progress.advance(task_id)
+        
+        return game_folders
+    
+    def create_organized_folders(self, output_dir: Path, create_symlinks: bool = True, use_final_games: bool = True) -> Dict[str, Path]:
+        """
+        Create organized folders for games.
+        
+        Args:
+            output_dir: Output directory for organized games
+            create_symlinks: Whether to create symlinks (True) or copy files (False)
+            use_final_games: Whether to use final_games (True) or detector.games (False)
+            
+        Returns:
+            Dictionary mapping game IDs to folder paths
+        """
+        games_to_organize = self.final_games if use_final_games else self.detector.games
+        
+        if not games_to_organize:
+            console.print("❌ No games to organize", style="red")
+            return {}
+        
+        console.print(f"📁 Creating organized folders for {len(games_to_organize)} games...", style="blue")
+        
+        # Create output directory
+        output_dir.mkdir(parents=True, exist_ok=True)
+        game_folders = {}
+        
+        for game in games_to_organize:
+            # Create game folder name
+            game_folder_name = f"Game_{game.game_id:02d}_{game.start_time.strftime('%H%M')}-{game.end_time.strftime('%H%M')}"
+            game_folder = output_dir / game_folder_name
+            game_folder.mkdir(exist_ok=True)
+            
+            console.print(f"📂 Creating {game_folder_name} with {game.photo_count} photos", style="green")
+            
+            # Copy or symlink photos
+            for photo_path in game.photo_files:
+                if create_symlinks:
+                    symlink_path = game_folder / photo_path.name
+                    if symlink_path.exists():
+                        symlink_path.unlink()  # Remove existing symlink
+                    symlink_path.symlink_to(photo_path)
+                else:
+                    dest_path = game_folder / photo_path.name
+                    if dest_path.exists():
+                        dest_path.unlink()  # Remove existing file
+                    shutil.copy2(photo_path, dest_path)
+            
+            game_folders[f"Game_{game.game_id:02d}"] = game_folder
         
         return game_folders
     
