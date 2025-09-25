@@ -679,8 +679,8 @@ class EnhancedGameOrganizer:
               default=Path('./results/games'),
               help='Output directory for organized games')
 @click.option('--pattern', '-p',
-              default='202509*_*',
-              help='File pattern to match (supports multiple days)')
+              default='*_*',
+              help='File pattern to match (e.g., "202509*_*" for Sep 2025, "*_*" for all)')
 @click.option('--split-file', '-s',
               type=click.Path(path_type=Path),
               help='Text file with manual splits (one timestamp per line, format: HH:MM:SS)')
@@ -716,7 +716,8 @@ def main(input: Path, output: Path, pattern: str, split_file: Optional[Path],
     Supports multiple days of photos and optionally applies manual splits.
     
     Multi-Day Support:
-    - Default pattern '202509*_*' processes all September 2025 photos
+    - Default pattern '*_*' processes all photos with timestamp format
+    - Use '202509*_*' for September 2025, '202508*_*' for August 2025, etc.
     - Games are detected across multiple days automatically
     - Games are sorted chronologically regardless of date
     
@@ -731,8 +732,12 @@ def main(input: Path, output: Path, pattern: str, split_file: Optional[Path],
     Examples:
     
     \b
-    # Process all September 2025 photos
+    # Process all photos (any month/year)
     python enhanced_game_organizer.py --input /path/to/photos
+    
+    \b
+    # Process specific month (September 2025)
+    python enhanced_game_organizer.py --input /path/to/photos --pattern "202509*_*"
     
     \b
     # Process specific date only
