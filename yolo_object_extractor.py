@@ -485,7 +485,13 @@ class YOLOv8ObjectExtractor:
                         
                         # Update progress bar description with current status
                         if result.error:
-                            pbar.set_description(f"Extracting objects (Error: {result.error})")
+                            if "Skipped" in result.error:
+                                # For skipped items, show info below progress bar
+                                pbar.write(f"ℹ️  {result.image_path.split('/')[-1]}: {result.error}")
+                                pbar.set_description(f"Extracting objects ({result.objects_extracted} extracted)")
+                            else:
+                                # For real errors, show in description
+                                pbar.set_description(f"Extracting objects (Error: {result.error})")
                         else:
                             pbar.set_description(f"Extracting objects ({result.objects_extracted} extracted)")
                             
@@ -499,6 +505,7 @@ class YOLOv8ObjectExtractor:
                             error=str(e)
                         )
                         results.append(error_result)
+                        pbar.write(f"❌ {image_path.name}: Error processing - {e}")
                         pbar.set_description(f"Extracting objects (Error: {e})")
         
         return results
