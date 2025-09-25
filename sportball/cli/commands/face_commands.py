@@ -108,18 +108,13 @@ def detect(ctx: click.Context,
     
     core = get_core(ctx)
     
-    # Initialize face detector with same parameters as original
-    import sys
-    import os
-    # Add parent directory to path to import local face_detection module
-    parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
-    if parent_dir not in sys.path:
-        sys.path.insert(0, parent_dir)
-    
-    from face_detection import FaceDetector
+    # Initialize face detector using internal sportball detector
+    from ...detectors.face import FaceDetector
     detector = FaceDetector(
-        border_padding=border_padding,
-        use_gpu=gpu
+        enable_gpu=gpu,
+        cache_enabled=True,
+        confidence_threshold=0.5,
+        min_face_size=64
     )
     
     console.print(f"🔍 Starting face detection with {border_padding*100:.0f}% border padding", style="blue")
@@ -210,13 +205,13 @@ def detect(ctx: click.Context,
         
         for image_file in files_to_process:
             try:
-                result = detector.detect_faces_in_image(image_file, force)
+                result = detector.detect_faces(image_file)
                 results.append(result)
-                total_faces_found += result.faces_found
-                total_time += result.detection_time
+                total_faces_found += result.face_count
+                total_time += result.processing_time
                 
                 progress.update(task, advance=1, 
-                               description=f"Detecting faces... ({result.faces_found} faces in {Path(image_file).name})")
+                               description=f"Detecting faces... ({result.face_count} faces in {Path(image_file).name})")
                 
             except Exception as e:
                 console.print(f"❌ Error processing {image_file.name}: {e}", style="red")
