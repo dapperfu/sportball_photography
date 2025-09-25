@@ -1,0 +1,93 @@
+# YAGG Configuration File
+# Yet Another Gallery Generator - Dead simple gallery generator for sports photography
+# 
+# This file contains all available configuration options with their default values.
+# Each option maps 1:1 to command line flags (using TOML naming conventions).
+
+[gallery]
+
+# =============================================================================
+# RESPONSIVE IMAGE SIZES (Primary Configuration)
+# =============================================================================
+# Multiple image sizes for responsive srcset (width in pixels)
+# CLI: --image-sizes="300,600,900,1200,1920"
+image_sizes = [300, 600, 900, 1200, 1920]
+
+# =============================================================================
+# IMAGE PROCESSING SETTINGS
+# =============================================================================
+# JPEG quality (1-100, higher = better quality but larger files)
+# CLI: --quality=85 or -q 85
+quality = 85
+
+# Number of parallel workers (0 = auto-detect CPU cores)
+# CLI: --workers=8 or -w 8
+workers = 0
+
+# Enable smart cropping for better image composition
+# CLI: --smart-crop="300,900,1920" or --no-smart-crop (flag to disable)
+# TOML: smart_crop = true (smart crop all sizes) or smart_crop = [300, 900, 1920] (specific sizes)
+smart_crop = [900, 1920]
+
+# Enable automatic EXIF rotation correction
+# CLI: --no-exif-rotate (flag to disable)
+exif_rotate = true
+
+# =============================================================================
+# GALLERY DISPLAY OPTIONS
+# =============================================================================
+# License text to display in gallery footer (optional)
+# CLI: --license="CC BY-NC-SA 4.0"
+license = "CC BY-NC-SA 4.0"
+
+# =============================================================================
+# PROCESSING OPTIONS
+# =============================================================================
+# Force regeneration of existing images (overwrites existing files)
+# CLI: --force or -f
+force = false
+
+# Enable verbose output with detailed logging
+# CLI: --verbose (multiple -v flags for different levels)
+verbose = false
+
+
+# =============================================================================
+# COMMAND LINE EQUIVALENTS
+# =============================================================================
+# Each TOML option has a direct CLI equivalent:
+#
+# TOML: image_sizes = [300, 600, 900, 1200, 1920]
+# CLI:  --image-sizes="300,600,900,1200,1920"
+#
+# TOML: quality = 85
+# CLI:  --quality=85
+#
+# TOML: workers = 8
+# CLI:  --workers=8
+#
+# TOML: smart_crop = [300, 900, 1920]
+# CLI:  --smart-crop="300,900,1920"
+#
+# TOML: smart_crop = []
+# CLI:  --no-smart-crop
+#
+# TOML: exif_rotate = false
+# CLI:  --no-exif-rotate
+#
+# TOML: license = "CC BY-NC-SA 4.0"
+# CLI:  --license="CC BY-NC-SA 4.0"
+#
+# TOML: force = true
+# CLI:  --force
+#
+# TOML: verbose = true
+# CLI:  --verbose
+#
+# Verbosity levels (CLI only):
+# -v: CHATTER (basic progress updates)
+# -vv: GOSSIP (more detailed progress)
+# -vvv: CHATTERBOX (detailed processing info)
+# -vvvv: BLABBER (very detailed info)
+# -vvvvv: MOTORMOUTH (extremely detailed)
+# -vvvvvv: TRACE (everything including function calls)

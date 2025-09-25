@@ -1,4 +1,0 @@
-# Manual splits for September 20th games
-# One timestamp per line
-
-14:00:00

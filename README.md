@@ -1,10 +1,35 @@
 # Soccer Photo Sorter 🏈📸
 
-An AI-powered system for automatically organizing soccer game photographs based on jersey colors, jersey numbers, and player faces.
+An AI-powered system for automatically organizing soccer game photographs by detecting game boundaries and organizing photos chronologically.
 
 ## Overview
 
-Tired of manually sorting through hundreds of soccer photos? This system uses computer vision and AI to automatically categorize your soccer game photographs, saving you hours of tedious organization work.
+Tired of manually sorting through hundreds of soccer photos? This system automatically detects game boundaries based on photo timestamps and organizes them into chronological game folders, saving you hours of tedious organization work.
+
+## 🎯 **Primary Tool: Enhanced Game Organizer**
+
+The **`enhanced_game_organizer.py`** is the main tool that provides:
+- **Multi-day photo processing** - handles photos from multiple dates
+- **Automatic game detection** - finds game boundaries based on time gaps
+- **Manual split support** - apply custom game boundaries from text files
+- **Parallel processing** - fast processing with multiple workers
+- **Comprehensive reporting** - detailed JSON reports with game statistics
+
+## 🚀 **Quick Start**
+
+```bash
+# Process all photos in a directory
+python enhanced_game_organizer.py --input /path/to/photos
+
+# Process specific month (September 2025)
+python enhanced_game_organizer.py --input /path/to/photos --pattern "202509*_*"
+
+# With manual splits
+python enhanced_game_organizer.py --input /path/to/photos --split-file splits.txt
+
+# High performance with 8 workers
+python enhanced_game_organizer.py --input /path/to/photos --workers 8
+```
 
 ## Features
 
