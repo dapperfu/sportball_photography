@@ -27,122 +27,71 @@ def face_group():
 
 
 @face_group.command()
-@click.argument('input_path', type=click.Path(exists=True, path_type=Path))
-@click.option('--output', '-o',
-              type=click.Path(path_type=Path),
-              help='Output directory for results')
-@click.option('--confidence', '-c',
-              type=float,
-              default=0.5,
-              help='Detection confidence threshold (0.0-1.0)')
-@click.option('--min-faces', 'min_faces',
-              type=int,
-              default=1,
-              help='Minimum number of faces to process')
-@click.option('--max-faces', 'max_faces',
-              type=int,
-              help='Maximum number of faces to detect')
-@click.option('--face-size', 'face_size',
-              type=int,
-              default=64,
-              help='Minimum face size in pixels')
-@click.option('--save-sidecar/--no-sidecar',
-              default=True,
-              help='Save results to sidecar files')
-@click.option('--extract-faces', 'extract_faces',
-              is_flag=True,
-              help='Extract detected faces to separate images')
+@click.argument('input_pattern', type=str)
+@click.option('--border-padding', '-b', 
+              default=0.25, 
+              help='Border padding percentage (0.25 = 25%)')
+@click.option('--max-images', '-m', 
+              default=None, 
+              type=int, 
+              help='Maximum number of images to process')
+@click.option('--gpu/--no-gpu', 
+              default=True, 
+              help='Use GPU acceleration if available')
+@click.option('--force', '-f', 
+              is_flag=True, 
+              help='Force detection even if JSON sidecar exists')
+@click.option('--verbose', '-v', 
+              count=True, 
+              help='Enable verbose logging (-v for info, -vv for debug)')
 @click.pass_context
 def detect(ctx: click.Context, 
-           input_path: Path, 
-           output: Optional[Path],
-           confidence: float,
-           min_faces: int,
-           max_faces: Optional[int],
-           face_size: int,
-           save_sidecar: bool,
-           extract_faces: bool):
+           input_pattern: str,
+           border_padding: float,
+           max_images: Optional[int],
+           gpu: bool,
+           force: bool,
+           verbose: int):
     """
-    Detect faces in images.
+    Detect faces in images and save comprehensive data to JSON sidecar files.
     
-    INPUT_PATH can be a single image file or a directory containing images.
+    INPUT_PATTERN can be a file pattern, directory path, or single image file.
+    Supports recursive directory scanning and pattern matching.
     """
+    
+    # Setup logging based on verbose level
+    if verbose >= 2:  # -vv: debug level
+        console.print("🔍 Debug logging enabled", style="blue")
+    elif verbose >= 1:  # -v: info level
+        console.print("ℹ️  Info logging enabled", style="blue")
     
     core = get_core(ctx)
     
-    # Determine input files
-    if input_path.is_file():
-        image_paths = [input_path]
-    else:
-        # Find all image files in directory
-        image_extensions = ['.jpg', '.jpeg', '.png', '.tiff', '.bmp']
-        image_paths = []
-        for ext in image_extensions:
-            image_paths.extend(input_path.glob(f'*{ext}'))
-            image_paths.extend(input_path.glob(f'*{ext.upper()}'))
+    # Initialize face detector with same parameters as original
+    from ...detectors.face import FaceDetector
+    detector = FaceDetector(
+        border_padding=border_padding,
+        use_gpu=gpu,
+        enable_gpu=gpu,
+        cache_enabled=True
+    )
     
-    if not image_paths:
-        console.print("❌ No image files found", style="red")
+    console.print(f"🔍 Starting face detection with {border_padding*100:.0f}% border padding", style="blue")
+    
+    # Use the detector's method directly (same as original)
+    results = detector.detect_faces_in_images(input_pattern, max_images, force)
+    
+    if not results:
+        console.print("❌ No images processed", style="red")
         return
     
-    console.print(f"🔍 Detecting faces in {len(image_paths)} images...", style="blue")
-    
-    # Initialize sidecar manager for direct usage
-    sidecar_manager = Sidecar()
-    
-    # Perform face detection
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TimeElapsedColumn(),
-        console=console
-    ) as progress:
-        
-        task = progress.add_task("Processing images...", total=len(image_paths))
-        
-        results = {}
-        for image_path in image_paths:
-            try:
-                # Check if sidecar already exists
-                existing_sidecar = sidecar_manager.find_sidecar_for_image(image_path)
-                if existing_sidecar and existing_sidecar.operation == OperationType.FACE_DETECTION:
-                    console.print(f"⏭️  Skipping {image_path.name} - sidecar already exists", style="yellow")
-                    results[str(image_path)] = existing_sidecar.load()
-                    continue
-                
-                # Perform detection using core
-                detection_result = core.detect_faces(
-                    [image_path],
-                    save_sidecar=False,  # We'll handle sidecar saving manually
-                    confidence=confidence,
-                    min_faces=min_faces,
-                    max_faces=max_faces,
-                    face_size=face_size
-                )
-                
-                result = detection_result[str(image_path)]
-                
-                # Save to sidecar if requested
-                if save_sidecar and result.get('success', False):
-                    sidecar_info = sidecar_manager.create_sidecar(
-                        image_path,
-                        OperationType.FACE_DETECTION,
-                        result
-                    )
-                    if sidecar_info:
-                        console.print(f"💾 Saved sidecar for {image_path.name}", style="green")
-                
-                results[str(image_path)] = result
-                
-            except Exception as e:
-                console.print(f"❌ Error processing {image_path.name}: {e}", style="red")
-                results[str(image_path)] = {"error": str(e), "success": False}
-            
-            progress.advance(task)
+    # Calculate summary statistics
+    total_images = len(results)
+    total_faces_found = sum(result.faces_found for result in results)
+    total_time = sum(result.detection_time for result in results)
     
     # Display results
-    display_face_results(results, extract_faces, output)
+    display_face_detection_results(results, total_images, total_faces_found, total_time)
 
 
 def display_face_results(results: dict, extract_faces: bool, output_dir: Optional[Path]):
@@ -187,6 +136,26 @@ def display_face_results(results: dict, extract_faces: bool, output_dir: Optiona
         console.print(f"\n💾 Extracting faces to {output_dir}...", style="blue")
         # TODO: Implement face extraction
         console.print("Face extraction not yet implemented", style="yellow")
+
+
+def display_face_detection_results(results, total_images: int, total_faces_found: int, total_time: float):
+    """Display face detection results summary."""
+    
+    console.print(f"\n✅ Face detection complete!", style="green")
+    console.print(f"📊 Processed {total_images} images")
+    console.print(f"👥 Found {total_faces_found} faces")
+    console.print(f"⏱️  Total detection time: {total_time:.2f}s")
+    console.print(f"📈 Average time per image: {total_time/total_images:.2f}s")
+    
+    # Show any errors
+    error_count = sum(1 for result in results if result.error and not result.error.startswith("Skipped"))
+    if error_count > 0:
+        console.print(f"⚠️  {error_count} images had errors", style="yellow")
+    
+    # Show skipped count
+    skipped_count = sum(1 for result in results if result.error and result.error.startswith("Skipped"))
+    if skipped_count > 0:
+        console.print(f"⏭️  {skipped_count} images skipped (sidecar exists)", style="blue")
 
 
 @face_group.command()
