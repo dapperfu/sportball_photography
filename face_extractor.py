@@ -205,9 +205,152 @@ class FaceExtractor:
         
         return annotated
     
+    def create_face_json(self, face_info: ExtractedFace, output_dir: Path) -> None:
+        """
+        Create individual JSON sidecar file for a single face.
+        
+        Args:
+            face_info: Information about the extracted face
+            output_dir: Output directory for the JSON file
+        """
+        from datetime import datetime
+        
+        # Create JSON data structure for this face
+        face_data = {
+            "Face_extractor": {
+                "metadata": {
+                    "extraction_timestamp": datetime.now().isoformat(),
+                    "tool_version": "1.0.0",
+                    "border_padding_percentage": face_info.border_padding * 100
+                },
+                "face": {
+                    "face_id": face_info.face_id,
+                    "original_image": face_info.original_image,
+                    "coordinates": {
+                        "x": face_info.x,
+                        "y": face_info.y,
+                        "width": face_info.width,
+                        "height": face_info.height
+                    },
+                    "confidence": face_info.confidence,
+                    "border_padding": face_info.border_padding,
+                    "files": {
+                        "clean_face": face_info.extracted_filename,
+                        "annotated_face": face_info.annotated_filename
+                    },
+                    "facial_features": []
+                }
+            }
+        }
+        
+        # Add facial features data
+        for feature in face_info.facial_features:
+            feature_data = {
+                "feature_type": feature.feature_type,
+                "coordinates": {
+                    "x": feature.x,
+                    "y": feature.y,
+                    "width": feature.width,
+                    "height": feature.height
+                },
+                "confidence": feature.confidence
+            }
+            face_data["Face_extractor"]["face"]["facial_features"].append(feature_data)
+        
+        # Create JSON filename based on the clean face filename
+        json_filename = face_info.extracted_filename.replace('.jpg', '.json')
+        json_path = output_dir / json_filename
+        
+        # Save JSON file
+        with open(json_path, 'w') as f:
+            json.dump(face_data, f, indent=2, cls=NumpyEncoder)
+        
+        logger.debug(f"Face JSON sidecar saved: {json_filename}")
+    
+    def load_existing_face_data(self, image_path: Path, output_dir: Path) -> Optional[ExtractionResult]:
+        """
+        Load existing face data from JSON sidecar files if available.
+        
+        Args:
+            image_path: Path to the input image
+            output_dir: Directory containing face data
+            
+        Returns:
+            ExtractionResult if existing data found, None otherwise
+        """
+        # Look for JSON files matching this image
+        image_stem = image_path.stem
+        json_pattern = f"{image_stem}_face_*.json"
+        json_files = list(output_dir.glob(json_pattern))
+        
+        if not json_files:
+            return None
+        
+        logger.debug(f"Found {len(json_files)} existing JSON files for {image_path.name}")
+        
+        extracted_faces = []
+        total_faces_found = 0
+        
+        # Load data from each JSON file
+        for json_file in sorted(json_files):
+            try:
+                with open(json_file, 'r') as f:
+                    face_data = json.load(f)
+                
+                # Extract face information from JSON
+                face_info = face_data["Face_extractor"]["face"]
+                
+                # Convert facial features
+                facial_features = []
+                for feature_data in face_info["facial_features"]:
+                    feature = FacialFeature(
+                        feature_type=feature_data["feature_type"],
+                        x=feature_data["coordinates"]["x"],
+                        y=feature_data["coordinates"]["y"],
+                        width=feature_data["coordinates"]["width"],
+                        height=feature_data["coordinates"]["height"],
+                        confidence=feature_data["confidence"]
+                    )
+                    facial_features.append(feature)
+                
+                # Create ExtractedFace object
+                extracted_face = ExtractedFace(
+                    face_id=face_info["face_id"],
+                    original_image=face_info["original_image"],
+                    x=face_info["coordinates"]["x"],
+                    y=face_info["coordinates"]["y"],
+                    width=face_info["coordinates"]["width"],
+                    height=face_info["coordinates"]["height"],
+                    confidence=face_info["confidence"],
+                    extracted_filename=face_info["files"]["clean_face"],
+                    annotated_filename=face_info["files"]["annotated_face"],
+                    border_padding=face_info["border_padding"],
+                    facial_features=facial_features
+                )
+                
+                extracted_faces.append(extracted_face)
+                total_faces_found += 1
+                
+            except Exception as e:
+                logger.warning(f"Failed to load JSON file {json_file}: {e}")
+                continue
+        
+        if extracted_faces:
+            return ExtractionResult(
+                image_path=str(image_path),
+                faces_found=total_faces_found,
+                faces_extracted=len(extracted_faces),
+                extraction_time=0.0,  # No processing time for loaded data
+                extracted_faces=extracted_faces,
+                error=None
+            )
+        
+        return None
+    
     def extract_faces_from_image(self, image_path: Path, output_dir: Path) -> ExtractionResult:
         """
         Extract faces from a single image with border padding.
+        Checks for existing JSON sidecar files to avoid reprocessing.
         
         Args:
             image_path: Path to the input image
@@ -217,6 +360,12 @@ class FaceExtractor:
             Extraction result with face information
         """
         logger.info(f"Extracting faces from {image_path.name}")
+        
+        # Check if we already have face data from previous runs
+        existing_faces = self.load_existing_face_data(image_path, output_dir)
+        if existing_faces:
+            logger.info(f"Found existing face data for {image_path.name}, skipping processing")
+            return existing_faces
         
         # Load image
         image = cv2.imread(str(image_path))
@@ -311,6 +460,9 @@ class FaceExtractor:
                     border_padding=self.border_padding,
                     facial_features=facial_features
                 )
+                
+                # Create individual JSON sidecar for this face
+                self.create_face_json(face_info, output_dir)
                 
                 extracted_faces.append(face_info)
                 logger.debug(f"Extracted face {i+1}: {face_filename}")
@@ -453,7 +605,6 @@ class FaceExtractor:
         
         logger.info(f"Extraction summary saved to {json_file}")
         logger.info(f"Extraction report saved to {md_file}")
-
 
 @click.command()
 @click.argument('input_pattern', type=str)
