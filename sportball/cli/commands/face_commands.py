@@ -18,6 +18,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeEl
 
 from ..utils import get_core, find_image_files
 from ...sidecar import Sidecar, OperationType
+from ...detectors.face_benchmark import FaceDetectionBenchmark
 
 console = Console()
 
@@ -237,6 +238,124 @@ def extract(ctx: click.Context, input_path: Path, output: Optional[Path]):
     console.print("Face extraction not yet implemented", style="yellow")
 
 
+@face_group.command()
+@click.argument('input_pattern', type=str)
+@click.option('--output', '-o',
+              type=click.Path(path_type=Path),
+              default='face_benchmark_results.json',
+              help='Output file for benchmark results (default: face_benchmark_results.json)')
+@click.option('--max-images', '-m',
+              type=int,
+              default=50,
+              help='Maximum number of images to benchmark (default: 50)')
+@click.option('--detectors', '-d',
+              type=str,
+              help='Comma-separated list of detectors to test (opencv_face_recognition,insightface)')
+@click.option('--confidence', '-c',
+              type=float,
+              default=0.5,
+              help='Confidence threshold for face detection (default: 0.5)')
+@click.option('--min-face-size',
+              type=int,
+              default=64,
+              help='Minimum face size in pixels (default: 64)')
+@click.option('--gpu/--no-gpu',
+              default=True,
+              help='Use GPU acceleration if available')
+@click.option('--no-recursive', 'no_recursive',
+              is_flag=True,
+              help='Disable recursive directory processing')
+@click.option('--verbose', '-v',
+              count=True,
+              help='Enable verbose logging (-v for info, -vv for debug)')
+@click.pass_context
+def benchmark(ctx: click.Context,
+              input_pattern: str,
+              output: Path,
+              max_images: int,
+              detectors: Optional[str],
+              confidence: float,
+              min_face_size: int,
+              gpu: bool,
+              no_recursive: bool,
+              verbose: int):
+    """
+    Benchmark different face detection methods for speed and accuracy.
+    
+    INPUT_PATTERN can be a file pattern, directory path, or single image file.
+    By default, directories are processed recursively. Use --no-recursive to disable.
+    """
+    
+    # Setup logging based on verbose level
+    if verbose >= 2:  # -vv: debug level
+        console.print("🔍 Debug logging enabled", style="blue")
+    elif verbose >= 1:  # -v: info level
+        console.print("ℹ️  Info logging enabled", style="blue")
+    
+    # Parse detector list
+    detector_list = None
+    if detectors:
+        detector_list = [d.strip() for d in detectors.split(',')]
+        console.print(f"🎯 Testing detectors: {', '.join(detector_list)}", style="blue")
+    
+    # Find image files
+    input_path = Path(input_pattern)
+    recursive = not no_recursive
+    
+    if input_path.is_dir():
+        image_files = find_image_files(input_path, recursive=recursive)
+    else:
+        # Pattern matching
+        if input_pattern.startswith('/'):
+            parent_dir = Path(input_pattern).parent
+            pattern = Path(input_pattern).name
+            image_files = list(parent_dir.glob(pattern))
+        else:
+            image_files = list(Path('.').glob(input_pattern))
+    
+    if not image_files:
+        console.print("❌ No images found", style="red")
+        return
+    
+    # Limit number of images if specified
+    if max_images:
+        image_files = image_files[:max_images]
+    
+    console.print(f"📊 Found {len(image_files)} images for benchmarking", style="blue")
+    
+    # Initialize benchmark
+    benchmark = FaceDetectionBenchmark(
+        enable_gpu=gpu,
+        confidence_threshold=confidence,
+        min_face_size=min_face_size
+    )
+    
+    console.print("🚀 Starting face detection benchmark...", style="blue")
+    
+    # Run benchmark
+    try:
+        summary = benchmark.benchmark_batch(
+            image_files,
+            detectors=detector_list,
+            max_images=max_images
+        )
+        
+        # Display results
+        display_benchmark_results(summary)
+        
+        # Save results
+        benchmark.save_benchmark_results(summary, output)
+        console.print(f"💾 Benchmark results saved to {output}", style="green")
+        
+        # Generate comparison
+        comparison = benchmark.compare_detectors(summary)
+        display_detector_comparison(comparison)
+        
+    except Exception as e:
+        console.print(f"❌ Benchmark failed: {e}", style="red")
+        return
+
+
 def display_face_results(results: dict, extract_faces: bool, output_dir: Optional[Path]):
     """Display face detection results."""
     
@@ -298,3 +417,81 @@ def display_face_detection_results(results, total_images: int, total_faces_found
     # Show batch processing info
     if total_images > 1:
         console.print(f"🔄 Used batch processing for efficiency", style="blue")
+
+
+def display_benchmark_results(summary):
+    """Display benchmark results summary."""
+    from rich.table import Table
+    
+    console.print(f"\n🏆 Face Detection Benchmark Results", style="bold green")
+    console.print(f"📊 Tested {summary.total_images} images with {len(summary.detectors)} detectors")
+    
+    # Performance table
+    perf_table = Table(title="Performance Statistics")
+    perf_table.add_column("Detector", style="cyan")
+    perf_table.add_column("Avg Time (s)", style="green", justify="right")
+    perf_table.add_column("Min Time (s)", style="green", justify="right")
+    perf_table.add_column("Max Time (s)", style="green", justify="right")
+    perf_table.add_column("Success Rate", style="green", justify="right")
+    perf_table.add_column("Total Faces", style="green", justify="right")
+    
+    for detector_name in summary.detectors:
+        if detector_name in summary.performance_stats:
+            stats = summary.performance_stats[detector_name]
+            perf_table.add_row(
+                detector_name,
+                f"{stats['avg_time']:.3f}",
+                f"{stats['min_time']:.3f}",
+                f"{stats['max_time']:.3f}",
+                f"{stats['success_rate']:.1%}",
+                str(stats['total_faces'])
+            )
+    
+    console.print(perf_table)
+    
+    # Accuracy table
+    acc_table = Table(title="Accuracy Statistics")
+    acc_table.add_column("Detector", style="cyan")
+    acc_table.add_column("Avg Confidence", style="green", justify="right")
+    acc_table.add_column("Min Confidence", style="green", justify="right")
+    acc_table.add_column("Max Confidence", style="green", justify="right")
+    acc_table.add_column("Avg Face Size", style="green", justify="right")
+    
+    for detector_name in summary.detectors:
+        if detector_name in summary.accuracy_stats:
+            stats = summary.accuracy_stats[detector_name]
+            acc_table.add_row(
+                detector_name,
+                f"{stats['avg_confidence']:.3f}",
+                f"{stats['min_confidence']:.3f}",
+                f"{stats['max_confidence']:.3f}",
+                f"{stats['avg_face_size']:.0f}"
+            )
+    
+    console.print(acc_table)
+
+
+def display_detector_comparison(comparison):
+    """Display detector comparison and recommendations."""
+    console.print(f"\n🎯 Detector Comparison", style="bold blue")
+    
+    if comparison['fastest_detector']:
+        console.print(f"⚡ Fastest: {comparison['fastest_detector']}", style="green")
+    
+    if comparison['most_accurate_detector']:
+        console.print(f"🎯 Most Accurate: {comparison['most_accurate_detector']}", style="green")
+    
+    if comparison['most_reliable_detector']:
+        console.print(f"🛡️  Most Reliable: {comparison['most_reliable_detector']}", style="green")
+    
+    if comparison['recommendations']:
+        console.print(f"\n💡 Recommendations:", style="bold yellow")
+        for rec in comparison['recommendations']:
+            console.print(f"  • {rec}", style="yellow")
+    
+    # Overall scores
+    if comparison['detailed_comparison']:
+        console.print(f"\n📊 Overall Scores:", style="bold blue")
+        for detector_name, details in comparison['detailed_comparison'].items():
+            score = details.get('overall_score', 0)
+            console.print(f"  {detector_name}: {score:.1f}/100", style="blue")

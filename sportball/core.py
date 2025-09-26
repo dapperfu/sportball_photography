@@ -79,6 +79,16 @@ class SportballCore:
             batch_size=batch_size
         )
     
+    def get_insightface_detector(self, batch_size: int = 8, model_name: str = "buffalo_l"):
+        """Get InsightFace detector with custom batch size and model."""
+        from .detectors.face import InsightFaceDetector
+        return InsightFaceDetector(
+            enable_gpu=self.enable_gpu,
+            cache_enabled=self.cache_enabled,
+            batch_size=batch_size,
+            model_name=model_name
+        )
+    
     @property
     def object_detector(self):
         """Lazy-loaded object detector."""
