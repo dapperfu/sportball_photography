@@ -339,11 +339,13 @@ def create_organized_folders(games: List[Dict], output_dir: Path, copy_files: bo
                         dest_path.unlink()  # Remove existing file
                     shutil.copy2(photo_path, dest_path)
                 else:
-                    # Create symlink
+                    # Create symlink with absolute path
                     if dest_path.exists():
                         dest_path.unlink()  # Remove existing symlink/file
                     try:
-                        dest_path.symlink_to(photo_path)
+                        # Ensure we use absolute path for the symlink target
+                        absolute_photo_path = photo_path.resolve()
+                        dest_path.symlink_to(absolute_photo_path)
                     except Exception as e:
                         console.print(f"⚠️  Warning: Could not create symlink {dest_path}: {e}", style="yellow")
                         # Fallback to copying
