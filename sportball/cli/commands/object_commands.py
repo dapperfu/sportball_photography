@@ -130,7 +130,8 @@ def detect(ctx: click.Context,
         'confidence': confidence,
         'classes': classes,
         'save_sidecar': save_sidecar,
-        'gpu_batch_size': batch_size
+        'gpu_batch_size': batch_size,
+        'force': force
     }
     
     # Perform detection

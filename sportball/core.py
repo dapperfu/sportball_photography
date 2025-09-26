@@ -194,7 +194,7 @@ class SportballCore:
                         image_width,
                         image_height
                     )
-                    self.sidecar.save_data(
+                    self.sidecar.save_data_merge(
                         image_path, 
                         "face_detection", 
                         formatted_result,
@@ -209,6 +209,7 @@ class SportballCore:
                       image_paths: Union[Path, List[Path]], 
                       save_sidecar: bool = True,
                       gpu_batch_size: int = 8,
+                      force: bool = False,
                       **kwargs) -> Dict[str, Any]:
         """
         Detect objects in images.
@@ -231,7 +232,7 @@ class SportballCore:
         object_detector = self.get_object_detector(gpu_batch_size=gpu_batch_size)
         
         # Perform batch detection
-        results = object_detector.detect_objects(image_paths, save_sidecar=save_sidecar, **kwargs)
+        results = object_detector.detect_objects(image_paths, save_sidecar=save_sidecar, force=force, **kwargs)
         
         return results
     
