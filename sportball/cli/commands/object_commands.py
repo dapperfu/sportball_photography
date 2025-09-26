@@ -14,7 +14,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
-from ..utils import get_core, find_image_files
+from ..utils import get_core, find_image_files, check_sidecar_files_parallel
 # Lazy import to avoid heavy dependencies at startup
 # from ...sidecar import Sidecar, OperationType
 
@@ -100,29 +100,14 @@ def detect(ctx: click.Context,
     
     console.print(f"📊 Found {len(image_paths)} images to analyze", style="blue")
     
-    # Check for existing sidecar files
-    skipped_files = []
-    files_to_process = []
-    
-    for image_path in image_paths:
-        # Check if JSON sidecar already exists and contains YOLOv8 data
-        original_image_path = image_path.resolve() if image_path.is_symlink() else image_path
-        json_path = original_image_path.parent / f"{original_image_path.stem}.json"
-        should_skip = False
-        
-        if json_path.exists() and not force:
-            try:
-                with open(json_path, 'r') as f:
-                    json_data = json.load(f)
-                if 'yolov8' in json_data:
-                    should_skip = True
-            except Exception:
-                pass
-        
-        if should_skip:
-            skipped_files.append(image_path)
-        else:
-            files_to_process.append(image_path)
+    # Check for existing sidecar files in parallel
+    console.print("🔍 Checking for existing sidecar files...", style="blue")
+    files_to_process, skipped_files = check_sidecar_files_parallel(
+        image_paths, 
+        force, 
+        operation_type="object_detection",
+        use_processes=True  # Use ProcessPoolExecutor for better I/O performance
+    )
     
     # Show skipping message after image discovery but before processing
     if skipped_files:

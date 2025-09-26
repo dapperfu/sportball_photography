@@ -18,7 +18,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
-from ..utils import get_core, find_image_files
+from ..utils import get_core, find_image_files, check_sidecar_files_parallel
 # Lazy imports to avoid heavy dependencies at startup
 # from ...sidecar import Sidecar, OperationType
 # from ...detectors.face_benchmark import FaceDetectionBenchmark
@@ -173,16 +173,14 @@ def detect(ctx: click.Context,
         except Exception as e:
             console.print(f"⚠️  Auto-tuning failed: {e}", style="yellow")
     
-    # Check for existing sidecar files
-    skipped_files = []
-    files_to_process = []
-    
-    for image_file in image_files:
-        image_file, should_skip = check_sidecar_file(image_file, force)
-        if should_skip:
-            skipped_files.append(image_file)
-        else:
-            files_to_process.append(image_file)
+    # Check for existing sidecar files in parallel
+    console.print("🔍 Checking for existing sidecar files...", style="blue")
+    files_to_process, skipped_files = check_sidecar_files_parallel(
+        image_files, 
+        force, 
+        operation_type="face_detection",
+        use_processes=True  # Use ProcessPoolExecutor for better I/O performance
+    )
     
     # Show skipping message after image discovery but before processing
     if skipped_files:
