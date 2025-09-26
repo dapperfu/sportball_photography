@@ -463,6 +463,15 @@ def cluster(ctx: click.Context,
         output = input_path / f"{input_path.name}_clusters"
     
     console.print(f"🔗 Clustering faces in {input_path}...", style="blue")
+    # Validate parameters
+    if not 0.0 <= similarity <= 1.0:
+        console.print(f"❌ Invalid similarity threshold: {similarity}. Must be between 0.0 and 1.0", style="red")
+        return
+    
+    if min_cluster_size < 1:
+        console.print(f"❌ Invalid min cluster size: {min_cluster_size}. Must be >= 1", style="red")
+        return
+    
     console.print(f"📁 Output directory: {output}", style="blue")
     console.print(f"🎯 Similarity threshold: {similarity}", style="blue")
     console.print(f"👥 Min cluster size: {min_cluster_size}", style="blue")

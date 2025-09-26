@@ -216,8 +216,7 @@ class FaceClustering:
                 parameters=self._get_algorithm_parameters()
             )
             
-            if self.verbose:
-                self.logger.info(f"Clustering completed: {len(clusters)} clusters, {len(unclustered_faces)} unclustered faces")
+            self.logger.info(f"Clustering completed: {len(clusters)} clusters, {len(unclustered_faces)} unclustered faces")
             
             return result
             
@@ -278,11 +277,13 @@ class FaceClustering:
                             # The sidecar file is next to the actual image (which may be a symlink target)
                             image_path = sidecar_file.stem
                             detection_results[image_path] = data['face_detection']
-                            self.logger.debug(f"Loaded face detection data for {image_path}: {len(data['face_detection'].get('faces', []))} faces")
+                            if self.verbose:
+                                self.logger.debug(f"Loaded face detection data for {image_path}: {len(data['face_detection'].get('faces', []))} faces")
                 except Exception as e:
                     self.logger.warning(f"Failed to load sidecar file {sidecar_file}: {e}")
             
-            self.logger.info(f"Loaded detection results for {len(detection_results)} images")
+            if self.verbose:
+                self.logger.info(f"Loaded detection results for {len(detection_results)} images")
             
             return self.cluster_faces_from_detections(detection_results, max_faces)
             
@@ -322,17 +323,20 @@ class FaceClustering:
                 continue
             
             faces = detection_data.get('faces', [])
-            self.logger.debug(f"Processing {image_path}: {len(faces)} faces")
+            if self.verbose:
+                self.logger.debug(f"Processing {image_path}: {len(faces)} faces")
             for face_idx, face_data in enumerate(faces):
                 # Check if face has encoding
                 if 'encoding' not in face_data or face_data['encoding'] is None:
-                    self.logger.debug(f"Skipping face {face_idx} in {image_path}: no encoding")
+                    if self.verbose:
+                        self.logger.debug(f"Skipping face {face_idx} in {image_path}: no encoding")
                     continue
                 
                 # Convert encoding to numpy array
                 encoding = np.array(face_data['encoding'], dtype=np.float32)
                 face_encodings.append(encoding)
-                self.logger.debug(f"Added encoding for face {face_idx} in {image_path}: shape {encoding.shape}")
+                if self.verbose:
+                    self.logger.debug(f"Added encoding for face {face_idx} in {image_path}: shape {encoding.shape}")
                 
                 # Store metadata
                 face_id = f"{image_path}:{face_data.get('face_id', face_idx)}"
