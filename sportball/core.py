@@ -373,10 +373,14 @@ class SportballCore:
         for image_path in image_paths:
             try:
                 # Load detection data
-                detection_data = self.sidecar.load_data(image_path, "object_detection")
-                if not detection_data:
+                sidecar_data = self.sidecar.load_data(image_path, "yolov8")
+                if sidecar_data and 'yolov8' in sidecar_data:
+                    detection_data = sidecar_data['yolov8']
+                else:
                     # Perform detection first
                     detection_data = self.detect_objects(image_path, save_sidecar=True)
+                    if detection_data and str(image_path) in detection_data:
+                        detection_data = detection_data[str(image_path)]
                 
                 # Extract objects
                 extraction_result = self.object_detector.extract_objects(
