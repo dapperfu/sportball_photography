@@ -189,37 +189,47 @@ class SportballCore:
         # Use InsightFace detector (default and most reliable)
         face_detector = self.face_detector
         
-        # Perform sequential detection
-        results = face_detector.detect_faces_batch(image_paths, **kwargs)
-        
-        # Save to sidecar if requested
-        if save_sidecar:
-            for image_path in image_paths:
-                if str(image_path) in results:
-                    # Load image dimensions for ratio calculation
-                    try:
-                        import cv2
-                        image = cv2.imread(str(image_path))
-                        if image is not None:
-                            image_height, image_width = image.shape[:2]
-                        else:
-                            image_width = image_height = None
-                    except Exception:
-                        image_width = image_height = None
+        # Process images one by one to save JSON files immediately
+        results = {}
+        for image_path in image_paths:
+            try:
+                # Process single image
+                single_result = face_detector.detect_faces_batch([image_path], **kwargs)
+                
+                if str(image_path) in single_result:
+                    results[str(image_path)] = single_result[str(image_path)]
                     
-                    # Format the result for JSON serialization
-                    formatted_result = face_detector._format_result(
-                        results[str(image_path)], 
-                        image_path,
-                        image_width,
-                        image_height
-                    )
-                    self.sidecar.save_data_merge(
-                        image_path, 
-                        "face_detection", 
-                        formatted_result,
-                        metadata={"kwargs": kwargs}
-                    )
+                    # Save to sidecar immediately if requested
+                    if save_sidecar:
+                        # Load image dimensions for ratio calculation
+                        try:
+                            import cv2
+                            image = cv2.imread(str(image_path))
+                            if image is not None:
+                                image_height, image_width = image.shape[:2]
+                            else:
+                                image_width = image_height = None
+                        except Exception:
+                            image_width = image_height = None
+                        
+                        # Format the result for JSON serialization
+                        formatted_result = face_detector._format_result(
+                            single_result[str(image_path)], 
+                            image_path,
+                            image_width,
+                            image_height
+                        )
+                        self.sidecar.save_data_merge(
+                            image_path, 
+                            "face_detection", 
+                            formatted_result,
+                            metadata={"kwargs": kwargs}
+                        )
+                        
+            except Exception as e:
+                self.logger.error(f"Failed to process {image_path}: {e}")
+                # Continue with next image
+                continue
         
         return results
     
