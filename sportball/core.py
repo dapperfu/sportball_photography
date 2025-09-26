@@ -58,6 +58,7 @@ class SportballCore:
         self._object_detector = None
         self._game_detector = None
         self._quality_assessor = None
+        self._face_clustering = None
         
         self.logger = logger.bind(component="core")
         self.logger.info("Initialized SportballCore")
@@ -143,6 +144,17 @@ class SportballCore:
                 cache_enabled=self.cache_enabled
             )
         return self._quality_assessor
+    
+    @property
+    def face_clustering(self):
+        """Lazy-loaded face clustering."""
+        if self._face_clustering is None:
+            from .detectors.face_clustering import FaceClustering
+            self._face_clustering = FaceClustering(
+                cache_enabled=self.cache_enabled,
+                verbose=self.verbose
+            )
+        return self._face_clustering
     
     @timing_decorator
     @gpu_accelerated(fallback_cpu=True)
@@ -382,6 +394,282 @@ class SportballCore:
                 results[str(image_path)] = {"error": str(e), "success": False}
         
         return results
+    
+    def extract_faces(self, 
+                     image_paths: Union[Path, List[Path]], 
+                     output_dir: Path,
+                     face_size: int = 256,
+                     padding: int = 20,
+                     max_workers: Optional[int] = None,
+                     **kwargs) -> Dict[str, Any]:
+        """
+        Extract detected faces from images with parallel processing.
+        
+        Args:
+            image_paths: Single image path or list of image paths
+            output_dir: Directory to save extracted faces
+            face_size: Size of extracted faces (default: 256px for better quality)
+            padding: Padding around face in pixels (default: 20px)
+            max_workers: Maximum number of parallel workers (None for auto)
+            **kwargs: Additional arguments for extraction
+            
+        Returns:
+            Dictionary containing extraction results
+        """
+        if isinstance(image_paths, Path):
+            image_paths = [image_paths]
+        
+        self.logger.info(f"Extracting faces from {len(image_paths)} images")
+        
+        # Ensure output directory exists
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Determine number of workers
+        if max_workers is None:
+            max_workers = min(len(image_paths), self.max_workers or 4)
+        
+        results = {}
+        
+        # Use parallel processing for multiple images
+        if len(image_paths) > 1 and max_workers > 1:
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            from tqdm import tqdm
+            
+            def extract_single_image(image_path: Path) -> tuple:
+                """Extract faces from a single image."""
+                try:
+                    # Load detection data
+                    detection_data = self.sidecar.load_data(image_path, "face_detection")
+                    if not detection_data:
+                        # Perform detection first
+                        detection_data = self.detect_faces(image_path, save_sidecar=True)
+                    
+                    # Extract faces using InsightFace detector (most reliable)
+                    face_detector = self.face_detector
+                    extraction_result = face_detector.extract_faces(
+                        image_path, 
+                        output_dir,
+                        face_size=face_size,
+                        padding=padding,
+                        **kwargs
+                    )
+                    
+                    return str(image_path), extraction_result
+                    
+                except Exception as e:
+                    self.logger.error(f"Face extraction failed for {image_path}: {e}")
+                    return str(image_path), {"error": str(e), "success": False}
+            
+            # Process images in parallel with progress bar
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Submit all tasks
+                future_to_path = {
+                    executor.submit(extract_single_image, image_path): image_path 
+                    for image_path in image_paths
+                }
+                
+                # Process completed tasks with progress bar
+                with tqdm(total=len(image_paths), desc="Extracting faces", unit="images") as pbar:
+                    for future in as_completed(future_to_path):
+                        image_path, result = future.result()
+                        results[image_path] = result
+                        pbar.update(1)
+                        
+                        # Update progress bar description with current stats
+                        successful = sum(1 for r in results.values() if r.get('success', False))
+                        total_faces = sum(r.get('faces_extracted', 0) for r in results.values())
+                        pbar.set_postfix({
+                            'successful': successful,
+                            'faces': total_faces
+                        })
+        
+        else:
+            # Sequential processing for single image or when parallel processing is disabled
+            for image_path in image_paths:
+                try:
+                    # Load detection data
+                    detection_data = self.sidecar.load_data(image_path, "face_detection")
+                    if not detection_data:
+                        # Perform detection first
+                        detection_data = self.detect_faces(image_path, save_sidecar=True)
+                    
+                    # Extract faces using InsightFace detector (most reliable)
+                    face_detector = self.face_detector
+                    extraction_result = face_detector.extract_faces(
+                        image_path, 
+                        output_dir,
+                        face_size=face_size,
+                        padding=padding,
+                        **kwargs
+                    )
+                    
+                    results[str(image_path)] = extraction_result
+                    
+                except Exception as e:
+                    self.logger.error(f"Face extraction failed for {image_path}: {e}")
+                    results[str(image_path)] = {"error": str(e), "success": False}
+        
+        return results
+    
+    @timing_decorator
+    def cluster_faces(self, 
+                     input_source: Union[Path, Dict[str, Any]], 
+                     similarity_threshold: float = 0.6,
+                     min_cluster_size: int = 2,
+                     algorithm: str = "dbscan",
+                     max_faces: Optional[int] = None,
+                     save_sidecar: bool = True,
+                     **kwargs) -> Dict[str, Any]:
+        """
+        Cluster similar faces together.
+        
+        Args:
+            input_source: Directory path or detection results dictionary
+            similarity_threshold: Minimum similarity for faces to be in same cluster
+            min_cluster_size: Minimum number of faces required to form a cluster
+            algorithm: Clustering algorithm ('dbscan', 'agglomerative', 'kmeans')
+            max_faces: Maximum number of faces to cluster (None for all)
+            save_sidecar: Whether to save results to sidecar files
+            **kwargs: Additional arguments for clustering
+            
+        Returns:
+            Dictionary containing clustering results
+        """
+        self.logger.info(f"Clustering faces with {algorithm} algorithm")
+        
+        # Get face clustering instance with custom parameters
+        face_clustering = self.get_face_clustering(
+            similarity_threshold=similarity_threshold,
+            min_cluster_size=min_cluster_size,
+            algorithm=algorithm
+        )
+        
+        # Perform clustering
+        if isinstance(input_source, Path):
+            # Cluster from directory
+            clustering_result = face_clustering.cluster_faces_from_directory(
+                input_source, max_faces=max_faces
+            )
+        else:
+            # Cluster from detection results
+            clustering_result = face_clustering.cluster_faces_from_detections(
+                input_source, max_faces=max_faces
+            )
+        
+        # Save to sidecar if requested
+        if save_sidecar and clustering_result.success:
+            if isinstance(input_source, Path):
+                sidecar_path = input_source / "face_clustering.json"
+            else:
+                # Use base directory for detection results
+                sidecar_path = self.base_dir / "face_clustering.json"
+            
+            self.sidecar.save_data(
+                sidecar_path, 
+                "face_clustering", 
+                clustering_result.as_dict(),
+                metadata={
+                    "similarity_threshold": similarity_threshold,
+                    "min_cluster_size": min_cluster_size,
+                    "algorithm": algorithm,
+                    "max_faces": max_faces,
+                    "kwargs": kwargs
+                }
+            )
+        
+        return clustering_result.as_dict()
+    
+    def get_face_clustering(self, 
+                           similarity_threshold: float = 0.6,
+                           min_cluster_size: int = 2,
+                           algorithm: str = "dbscan"):
+        """Get face clustering instance with custom parameters."""
+        from .detectors.face_clustering import FaceClustering
+        return FaceClustering(
+            similarity_threshold=similarity_threshold,
+            min_cluster_size=min_cluster_size,
+            algorithm=algorithm,
+            cache_enabled=self.cache_enabled,
+            verbose=self.verbose
+        )
+    
+    def export_face_clusters(self, 
+                           clustering_result: Dict[str, Any],
+                           output_dir: Path,
+                           export_format: str = "json",
+                           create_visualization: bool = True,
+                           **kwargs) -> Dict[str, Any]:
+        """
+        Export face clustering results.
+        
+        Args:
+            clustering_result: Result from cluster_faces method
+            output_dir: Directory to save export files
+            export_format: Export format ('json', 'csv', 'both')
+            create_visualization: Whether to create cluster visualization images
+            **kwargs: Additional arguments for export
+            
+        Returns:
+            Dictionary containing export results
+        """
+        self.logger.info(f"Exporting face clusters to {output_dir}")
+        
+        # Get face clustering instance
+        face_clustering = self.face_clustering
+        
+        # Convert dict back to FaceClusteringResult for export
+        from .detectors.face_clustering import FaceClusteringResult, FaceCluster
+        
+        # Reconstruct clusters
+        clusters = []
+        for cluster_data in clustering_result.get('clusters', []):
+            cluster = FaceCluster(
+                cluster_id=cluster_data['cluster_id'],
+                face_ids=cluster_data['face_ids'],
+                centroid_encoding=cluster_data.get('centroid_encoding'),
+                face_count=cluster_data.get('face_count', 0),
+                confidence_scores=cluster_data.get('confidence_scores', []),
+                image_paths=cluster_data.get('image_paths', [])
+            )
+            clusters.append(cluster)
+        
+        # Reconstruct result
+        result = FaceClusteringResult(
+            clusters=clusters,
+            unclustered_faces=clustering_result.get('unclustered_faces', []),
+            total_faces=clustering_result.get('total_faces', 0),
+            cluster_count=clustering_result.get('cluster_count', 0),
+            success=clustering_result.get('success', False),
+            processing_time=clustering_result.get('processing_time', 0.0),
+            algorithm_used=clustering_result.get('algorithm_used', 'dbscan'),
+            parameters=clustering_result.get('parameters', {}),
+            error=clustering_result.get('error')
+        )
+        
+        # Export results
+        export_results = face_clustering.export_clusters(
+            result, output_dir, export_format
+        )
+        
+        # Create visualization if requested
+        if create_visualization and result.success:
+            # Load detection results for visualization
+            detection_results = {}
+            for cluster in clusters:
+                for image_path in cluster.image_paths:
+                    if image_path not in detection_results:
+                        # Try to load from sidecar
+                        sidecar_data = self.sidecar.load_data(Path(image_path), "face_detection")
+                        if sidecar_data:
+                            detection_results[image_path] = sidecar_data
+            
+            if detection_results:
+                viz_results = face_clustering.visualize_clusters(
+                    result, detection_results, output_dir / "visualizations"
+                )
+                export_results['visualization'] = viz_results
+        
+        return export_results
     
     def get_sidecar_summary(self, directory: Optional[Path] = None) -> Dict[str, Any]:
         """

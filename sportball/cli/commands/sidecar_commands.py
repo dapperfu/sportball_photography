@@ -17,8 +17,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeEl
 from collections import defaultdict, Counter
 import json
 
-from ..utils import get_core
-# Lazy import to avoid heavy dependencies at startup
+# Lazy imports to avoid heavy dependencies at startup
+# from ..utils import get_core
 # from ...sidecar import Sidecar, OperationType
 
 console = Console()
@@ -54,6 +54,8 @@ def stats(ctx: click.Context,
     DIRECTORY should contain images with sidecar files.
     """
     
+    # Lazy import to avoid heavy dependencies at startup
+    from ..utils import get_core
     core = get_core(ctx)
     
     console.print(f"📊 Analyzing sidecar files in {directory}...", style="blue")
@@ -297,6 +299,8 @@ def cleanup(ctx: click.Context,
     DIRECTORY should contain images with sidecar files.
     """
     
+    # Lazy import to avoid heavy dependencies at startup
+    from ..utils import get_core
     core = get_core(ctx)
     
     console.print(f"🧹 Cleaning up sidecar files in {directory}...", style="blue")

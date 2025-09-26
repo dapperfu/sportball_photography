@@ -18,8 +18,8 @@ from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
-from ..utils import get_core, find_image_files, check_sidecar_files
 # Lazy imports to avoid heavy dependencies at startup
+# from ..utils import get_core, find_image_files, check_sidecar_files
 # from ...sidecar import Sidecar, OperationType
 # from ...detectors.face_benchmark import FaceDetectionBenchmark
 
@@ -98,6 +98,8 @@ def detect(ctx: click.Context,
     elif verbose >= 1:  # -v: info level
         console.print("ℹ️  Info logging enabled", style="blue")
     
+    # Lazy import to avoid heavy dependencies at startup
+    from ..utils import get_core
     core = get_core(ctx)
     
     # Find image files
@@ -105,6 +107,8 @@ def detect(ctx: click.Context,
     recursive = not no_recursive
     
     if input_path.is_dir():
+        # Lazy import to avoid heavy dependencies at startup
+        from ..utils import find_image_files
         image_files = find_image_files(input_path, recursive=recursive)
     else:
         # Pattern matching
@@ -137,7 +141,9 @@ def detect(ctx: click.Context,
     
     # Check for existing sidecar files
     console.print("🔍 Checking for existing sidecar files...", style="blue")
-    files_to_process, skipped_files = check_sidecar_files(
+    # Lazy import to avoid heavy dependencies at startup
+    from ..utils import check_sidecar_files_parallel
+    files_to_process, skipped_files = check_sidecar_files_parallel(
         image_files, 
         force, 
         operation_type="face_detection"
@@ -156,6 +162,8 @@ def detect(ctx: click.Context,
     console.print(f"🔍 Starting face detection...", style="blue")
     
     # Use core's sequential processing for face detection
+    # Lazy import to avoid heavy dependencies at startup
+    from ..utils import get_core
     core = get_core(ctx)
     
     # Prepare detection parameters
@@ -207,20 +215,80 @@ def detect(ctx: click.Context,
 @click.option('--output', '-o',
               type=click.Path(path_type=Path),
               help='Output directory for extracted faces')
+@click.option('--face-size', 'face_size',
+              type=int,
+              default=256,
+              help='Size of extracted faces in pixels (default: 256)')
+@click.option('--padding', '-p',
+              type=int,
+              default=20,
+              help='Padding around faces in pixels (default: 20)')
+@click.option('--workers', '-w',
+              type=int,
+              help='Number of parallel workers (default: auto)')
+@click.option('--no-recursive', 'no_recursive',
+              is_flag=True,
+              help='Disable recursive directory processing')
+@click.option('--verbose', '-v',
+              count=True,
+              help='Enable verbose logging (-v for info, -vv for debug)')
 @click.pass_context
-def extract(ctx: click.Context, input_path: Path, output: Optional[Path]):
+def extract(ctx: click.Context, 
+           input_path: Path, 
+           output: Optional[Path],
+           face_size: int,
+           padding: int,
+           workers: Optional[int],
+           no_recursive: bool,
+           verbose: int):
     """
     Extract detected faces to separate images.
     
     INPUT_PATH should be a directory containing images with face detection sidecar files.
     """
     
+    # Setup logging based on verbose level
+    if verbose >= 2:  # -vv: debug level
+        console.print("🔍 Debug logging enabled", style="blue")
+    elif verbose >= 1:  # -v: info level
+        console.print("ℹ️  Info logging enabled", style="blue")
+    
+    # Lazy import to avoid heavy dependencies at startup
+    from ..utils import get_core
     core = get_core(ctx)
     
-    console.print(f"✂️  Extracting faces from {input_path}...", style="blue")
+    # Determine output directory
+    if output is None:
+        output = input_path / f"{input_path.name}_faces"
     
-    # TODO: Implement face extraction
-    console.print("Face extraction not yet implemented", style="yellow")
+    console.print(f"✂️  Extracting faces from {input_path}...", style="blue")
+    console.print(f"📁 Output directory: {output}", style="blue")
+    console.print(f"🖼️  Face size: {face_size}px", style="blue")
+    console.print(f"📏 Padding: {padding}px", style="blue")
+    
+    # Find image files (recursive by default)
+    recursive = not no_recursive
+    # Lazy import to avoid heavy dependencies at startup
+    from ..utils import find_image_files
+    image_files = find_image_files(input_path, recursive=recursive)
+    
+    if not image_files:
+        console.print("❌ No image files found", style="red")
+        return
+    
+    console.print(f"📊 Found {len(image_files)} images to process", style="blue")
+    
+    # Extract faces using core
+    extraction_results = core.extract_faces(
+        image_files,
+        output,
+        face_size=face_size,
+        padding=padding,
+        max_workers=workers
+    )
+    
+    # Display extraction results
+    display_face_extraction_results(extraction_results, output)
 
 
 @face_group.command()
@@ -288,6 +356,8 @@ def benchmark(ctx: click.Context,
     recursive = not no_recursive
     
     if input_path.is_dir():
+        # Lazy import to avoid heavy dependencies at startup
+        from ..utils import find_image_files
         image_files = find_image_files(input_path, recursive=recursive)
     else:
         # Pattern matching
@@ -329,17 +399,203 @@ def benchmark(ctx: click.Context,
         # Display results
         display_benchmark_results(summary)
         
-        # Save results
-        benchmark.save_benchmark_results(summary, output)
-        console.print(f"💾 Benchmark results saved to {output}", style="green")
-        
-        # Generate comparison
-        comparison = benchmark.compare_detectors(summary)
-        display_detector_comparison(comparison)
-        
     except Exception as e:
         console.print(f"❌ Benchmark failed: {e}", style="red")
         return
+
+
+@face_group.command()
+@click.argument('input_path', type=click.Path(exists=True, path_type=Path))
+@click.option('--output', '-o',
+              type=click.Path(path_type=Path),
+              help='Output directory for clustering results')
+@click.option('--similarity', '-s',
+              type=float,
+              default=0.6,
+              help='Similarity threshold for clustering (0.0-1.0, default: 0.6)')
+@click.option('--min-cluster-size', 'min_cluster_size',
+              type=int,
+              default=2,
+              help='Minimum number of faces per cluster (default: 2)')
+@click.option('--algorithm', '-a',
+              type=click.Choice(['dbscan', 'agglomerative', 'kmeans']),
+              default='dbscan',
+              help='Clustering algorithm (default: dbscan)')
+@click.option('--max-faces', 'max_faces',
+              type=int,
+              help='Maximum number of faces to cluster (default: all)')
+@click.option('--export-format', 'export_format',
+              type=click.Choice(['json', 'csv', 'both']),
+              default='both',
+              help='Export format (default: both)')
+@click.option('--no-visualization', 'no_visualization',
+              is_flag=True,
+              help='Skip creating cluster visualization images')
+@click.option('--no-recursive', 'no_recursive',
+              is_flag=True,
+              help='Disable recursive directory processing')
+@click.option('--verbose', '-v',
+              count=True,
+              help='Enable verbose logging (-v for info, -vv for debug)')
+@click.pass_context
+def cluster(ctx: click.Context,
+           input_path: Path,
+           output: Optional[Path],
+           similarity: float,
+           min_cluster_size: int,
+           algorithm: str,
+           max_faces: Optional[int],
+           export_format: str,
+           no_visualization: bool,
+           no_recursive: bool,
+           verbose: int):
+    """
+    Cluster similar faces together.
+    
+    INPUT_PATH should be a directory containing face detection sidecar files.
+    """
+    
+    # Setup logging based on verbose level
+    if verbose >= 2:  # -vv: debug level
+        console.print("🔍 Debug logging enabled", style="blue")
+    elif verbose >= 1:  # -v: info level
+        console.print("ℹ️  Info logging enabled", style="blue")
+    
+    # Lazy import to avoid heavy dependencies at startup
+    from ..utils import get_core
+    core = get_core(ctx)
+    
+    # Determine output directory
+    if output is None:
+        output = input_path / f"{input_path.name}_clusters"
+    
+    console.print(f"🔗 Clustering faces in {input_path}...", style="blue")
+    console.print(f"📁 Output directory: {output}", style="blue")
+    console.print(f"🎯 Similarity threshold: {similarity}", style="blue")
+    console.print(f"👥 Min cluster size: {min_cluster_size}", style="blue")
+    console.print(f"🧮 Algorithm: {algorithm}", style="blue")
+    
+    # Check if input path contains face detection sidecar files
+    sidecar_files = list(input_path.glob("*_face_detection.json"))
+    if not sidecar_files:
+        console.print("❌ No face detection sidecar files found", style="red")
+        console.print("💡 Run 'sportball face detect' first to detect faces", style="yellow")
+        return
+    
+    console.print(f"📊 Found {len(sidecar_files)} face detection files", style="blue")
+    
+    # Perform clustering
+    try:
+        clustering_result = core.cluster_faces(
+            input_path,
+            similarity_threshold=similarity,
+            min_cluster_size=min_cluster_size,
+            algorithm=algorithm,
+            max_faces=max_faces,
+            save_sidecar=True
+        )
+        
+        if not clustering_result.get('success', False):
+            console.print(f"❌ Clustering failed: {clustering_result.get('error', 'Unknown error')}", style="red")
+            return
+        
+        # Display clustering results
+        display_clustering_results(clustering_result)
+        
+        # Export results
+        console.print(f"📤 Exporting results to {output}...", style="blue")
+        
+        export_results = core.export_face_clusters(
+            clustering_result,
+            output,
+            export_format=export_format,
+            create_visualization=not no_visualization
+        )
+        
+        if export_results.get('success', False):
+            console.print("✅ Export completed successfully", style="green")
+            
+            # Display export summary
+            files_created = export_results.get('files_created', [])
+            if files_created:
+                console.print(f"📄 Files created: {len(files_created)}", style="blue")
+                for file_path in files_created:
+                    console.print(f"  • {file_path}", style="dim")
+            
+            # Display visualization results
+            viz_results = export_results.get('visualization', {})
+            if viz_results.get('success', False):
+                images_created = viz_results.get('images_created', [])
+                if images_created:
+                    console.print(f"🖼️  Visualization images: {len(images_created)}", style="blue")
+                    for img_path in images_created:
+                        console.print(f"  • {img_path}", style="dim")
+        else:
+            console.print(f"❌ Export failed: {export_results.get('error', 'Unknown error')}", style="red")
+        
+    except Exception as e:
+        console.print(f"❌ Clustering failed: {e}", style="red")
+        if verbose >= 1:
+            import traceback
+            console.print(traceback.format_exc(), style="red")
+
+
+def display_clustering_results(clustering_result: dict):
+    """Display face clustering results in a formatted table."""
+    from rich.table import Table
+    from rich.panel import Panel
+    
+    # Create results table
+    table = Table(title="Face Clustering Results")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", style="green")
+    
+    # Add clustering statistics
+    table.add_row("Total Faces", str(clustering_result.get('total_faces', 0)))
+    table.add_row("Clusters Found", str(clustering_result.get('cluster_count', 0)))
+    table.add_row("Unclustered Faces", str(len(clustering_result.get('unclustered_faces', []))))
+    table.add_row("Algorithm", clustering_result.get('algorithm_used', 'unknown'))
+    table.add_row("Processing Time", f"{clustering_result.get('processing_time', 0.0):.2f}s")
+    
+    console.print(table)
+    
+    # Display cluster details
+    clusters = clustering_result.get('clusters', [])
+    if clusters:
+        cluster_table = Table(title="Cluster Details")
+        cluster_table.add_column("Cluster ID", style="cyan")
+        cluster_table.add_column("Face Count", style="green")
+        cluster_table.add_column("Avg Confidence", style="yellow")
+        cluster_table.add_column("Images", style="blue")
+        
+        for cluster in clusters:
+            cluster_id = cluster.get('cluster_id', -1)
+            face_count = cluster.get('face_count', 0)
+            confidences = cluster.get('confidence_scores', [])
+            avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+            image_paths = cluster.get('image_paths', [])
+            unique_images = len(set(image_paths))
+            
+            cluster_table.add_row(
+                str(cluster_id),
+                str(face_count),
+                f"{avg_confidence:.3f}",
+                str(unique_images)
+            )
+        
+        console.print(cluster_table)
+    
+    # Display unclustered faces if any
+    unclustered = clustering_result.get('unclustered_faces', [])
+    if unclustered:
+        console.print(f"\n⚠️  {len(unclustered)} faces could not be clustered", style="yellow")
+        if len(unclustered) <= 10:  # Show details for small numbers
+            for face_id in unclustered:
+                console.print(f"  • {face_id}", style="dim")
+        else:
+            console.print(f"  (showing first 10 of {len(unclustered)})", style="dim")
+            for face_id in unclustered[:10]:
+                console.print(f"  • {face_id}", style="dim")
 
 
 def display_face_results(results: dict, extract_faces: bool, output_dir: Optional[Path]):
@@ -481,3 +737,42 @@ def display_detector_comparison(comparison):
         for detector_name, details in comparison['detailed_comparison'].items():
             score = details.get('overall_score', 0)
             console.print(f"  {detector_name}: {score:.1f}/100", style="blue")
+
+
+def display_face_extraction_results(extraction_results: dict, output_dir: Path):
+    """Display face extraction results summary."""
+    
+    total_images = len(extraction_results)
+    total_faces_extracted = 0
+    successful_extractions = 0
+    failed_extractions = 0
+    
+    # Count results
+    for image_path, result in extraction_results.items():
+        if result.get('success', False):
+            successful_extractions += 1
+            total_faces_extracted += result.get('faces_extracted', 0)
+        else:
+            failed_extractions += 1
+    
+    console.print(f"\n✅ Face extraction complete!", style="green")
+    console.print(f"📊 Processed {total_images} images")
+    console.print(f"👥 Extracted {total_faces_extracted} faces")
+    console.print(f"📁 Saved to: {output_dir}", style="blue")
+    
+    if successful_extractions > 0:
+        console.print(f"✅ {successful_extractions} images processed successfully", style="green")
+    
+    if failed_extractions > 0:
+        console.print(f"❌ {failed_extractions} images failed to process", style="red")
+        
+        # Show details for failed extractions
+        console.print(f"\n⚠️  Failed extractions:", style="yellow")
+        for image_path, result in extraction_results.items():
+            if not result.get('success', False):
+                error_msg = result.get('error', 'Unknown error')
+                console.print(f"  • {Path(image_path).name}: {error_msg}", style="red")
+    
+    if total_faces_extracted > 0:
+        avg_faces = total_faces_extracted / successful_extractions if successful_extractions > 0 else 0
+        console.print(f"📈 Average faces per image: {avg_faces:.1f}", style="blue")

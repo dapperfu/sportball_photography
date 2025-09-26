@@ -7,6 +7,7 @@ Author: Claude Sonnet 4 (claude-3-5-sonnet-20241022)
 Generated via Cursor IDE (cursor.sh) with AI assistance
 """
 
-from .main import cli
+# No imports at module level to avoid heavy dependencies
+# Import cli only when needed
 
-__all__ = ["cli"]
+__all__ = []

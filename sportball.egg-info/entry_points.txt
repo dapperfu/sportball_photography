@@ -1,3 +1,3 @@
 [console_scripts]
-sb = sportball.cli.__main__:main
-sportball = sportball.cli.__main__:main
+sb = sportball.cli.minimal_main:main
+sportball = sportball.cli.minimal_main:main
