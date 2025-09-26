@@ -332,78 +332,88 @@ class ObjectDetector:
             return self._detect_multiple_images_cpu_parallel(image_paths, force, max_workers)
     
     def _detect_multiple_images_gpu_batch(self, image_paths: List[Path], force: bool) -> List[DetectionResult]:
-        """Detect objects in multiple images using GPU batch processing."""
-        logger.info(f"Using GPU batch processing for {len(image_paths)} images")
-        
-        # Calculate optimal batch size based on GPU memory
-        optimal_batch_size = self._calculate_optimal_batch_size()
-        logger.info(f"Using GPU batch size: {optimal_batch_size}")
+        """Detect objects in multiple images using sequential processing with progress bar."""
+        logger.info(f"Processing {len(image_paths)} images sequentially")
         
         results = []
         
-        for i in range(0, len(image_paths), optimal_batch_size):
-            batch_paths = image_paths[i:i + optimal_batch_size]
-            logger.info(f"Processing GPU batch {i//optimal_batch_size + 1}: {len(batch_paths)} images")
-            
+        # Use tqdm for progress tracking
+        try:
+            progress_bar = tqdm(total=len(image_paths), desc="Detecting objects", unit="images")
+        except ImportError:
+            progress_bar = None
+        
+        for i, image_path in enumerate(image_paths):
             try:
-                batch_results = self._process_gpu_batch(batch_paths, force)
-                results.extend(batch_results)
+                result = self.detect_objects_in_image(image_path, force)
+                results.append(result)
+                
+                # Update progress bar
+                if progress_bar:
+                    progress_bar.update(1)
+                    
             except Exception as e:
-                logger.error(f"GPU batch processing failed: {e}")
-                # Fallback to individual processing
-                for image_path in batch_paths:
-                    try:
-                        result = self.detect_objects_in_image(image_path, force)
-                        results.append(result)
-                    except Exception as img_error:
-                        logger.error(f"Error processing {image_path}: {img_error}")
-                        error_result = DetectionResult(
-                            image_path=str(image_path),
-                            image_width=0,
-                            image_height=0,
-                            objects_found=0,
-                            detection_time=0.0,
-                            detected_objects=[],
-                            error=str(img_error)
-                        )
-                        results.append(error_result)
+                logger.error(f"Error processing {image_path}: {e}")
+                error_result = DetectionResult(
+                    image_path=str(image_path),
+                    image_width=0,
+                    image_height=0,
+                    objects_found=0,
+                    detection_time=0.0,
+                    detected_objects=[],
+                    error=str(e)
+                )
+                results.append(error_result)
+                # Update progress bar even on error
+                if progress_bar:
+                    progress_bar.update(1)
+        
+        # Close progress bar
+        if progress_bar:
+            progress_bar.close()
         
         return results
     
     def _detect_multiple_images_cpu_parallel(self, image_paths: List[Path], force: bool, max_workers: Optional[int]) -> List[DetectionResult]:
-        """Detect objects in multiple images with CPU parallel processing."""
-        if max_workers is None:
-            max_workers = os.cpu_count() or 4
-        max_workers = min(max_workers, len(image_paths))
-        
-        logger.info(f"Using CPU parallel processing with {max_workers} workers")
+        """Detect objects in multiple images using sequential processing with progress bar."""
+        logger.info(f"Processing {len(image_paths)} images sequentially")
         
         results = []
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all tasks
-            future_to_image = {
-                executor.submit(self.detect_objects_in_image, image_path, force): image_path 
-                for image_path in image_paths
-            }
-            
-            # Process completed tasks
-            for future in as_completed(future_to_image):
-                try:
-                    result = future.result()
-                    results.append(result)
-                except Exception as e:
-                    image_path = future_to_image[future]
-                    logger.error(f"Error processing {image_path}: {e}")
-                    error_result = DetectionResult(
-                        image_path=str(image_path),
-                        image_width=0,
-                        image_height=0,
-                        objects_found=0,
-                        detection_time=0.0,
-                        detected_objects=[],
-                        error=str(e)
-                    )
-                    results.append(error_result)
+        
+        # Use tqdm for progress tracking
+        try:
+            progress_bar = tqdm(total=len(image_paths), desc="Detecting objects", unit="images")
+        except ImportError:
+            progress_bar = None
+        
+        for i, image_path in enumerate(image_paths):
+            try:
+                result = self.detect_objects_in_image(image_path, force)
+                results.append(result)
+                
+                # Update progress bar
+                if progress_bar:
+                    progress_bar.update(1)
+                    
+            except Exception as e:
+                logger.error(f"Error processing {image_path}: {e}")
+                error_result = DetectionResult(
+                    image_path=str(image_path),
+                    image_width=0,
+                    image_height=0,
+                    objects_found=0,
+                    detection_time=0.0,
+                    detected_objects=[],
+                    error=str(e)
+                )
+                results.append(error_result)
+                # Update progress bar even on error
+                if progress_bar:
+                    progress_bar.update(1)
+        
+        # Close progress bar
+        if progress_bar:
+            progress_bar.close()
         
         return results
     

@@ -50,10 +50,13 @@ def object_group():
 @click.option('--batch-size', 'batch_size',
               type=int,
               default=8,
-              help='GPU batch size for processing multiple images (default: 8)')
+              help='Processing batch size (legacy parameter, not used in sequential mode)')
 @click.option('--force', '-f',
               is_flag=True,
               help='Force detection even if JSON sidecar exists')
+@click.option('--verbose', '-v', 
+              count=True, 
+              help='Enable verbose logging (-v for info, -vv for debug)')
 @click.pass_context
 def detect(ctx: click.Context, 
            input_path: Path, 
@@ -64,13 +67,20 @@ def detect(ctx: click.Context,
            extract_objects: bool,
            no_recursive: bool,
            batch_size: int,
-           force: bool):
+           force: bool,
+           verbose: int):
     """
     Detect objects in images using YOLOv8.
     
     INPUT_PATH can be a single image file or a directory containing images.
     By default, directories are processed recursively. Use --no-recursive to disable.
     """
+    
+    # Setup logging based on verbose level
+    if verbose >= 2:  # -vv: debug level
+        console.print("🔍 Debug logging enabled", style="blue")
+    elif verbose >= 1:  # -v: info level
+        console.print("ℹ️  Info logging enabled", style="blue")
     
     core = get_core(ctx)
     
@@ -130,7 +140,6 @@ def detect(ctx: click.Context,
         'confidence': confidence,
         'classes': classes,
         'save_sidecar': save_sidecar,
-        'gpu_batch_size': batch_size,
         'force': force
     }
     
