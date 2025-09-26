@@ -118,33 +118,22 @@ def cli(ctx: click.Context,
     ctx.obj['verbose'] = verbose
     ctx.obj['quiet'] = quiet
 
-# Ultra-minimal command loading - only load when accessed
-def _get_command(self, ctx, name):
-    """Load commands only when accessed to avoid ANY heavy imports."""
-    # Lazy load command groups - each import happens only when needed
-    if name == 'face':
-        from .commands import face_commands
-        return face_commands.face_group
-    elif name == 'object':
-        from .commands import object_commands
-        return object_commands.object_group
-    elif name == 'games':
-        from .commands import game_commands
-        return game_commands.game_group
-    elif name == 'quality':
-        from .commands import quality_commands
-        return quality_commands.quality_group
-    elif name == 'util':
-        from .commands import utility_commands
-        return utility_commands.utility_group
-    elif name == 'sidecar':
-        from .commands import sidecar_commands
-        return sidecar_commands.sidecar_group
-    
-    return None
+# Add command groups (import here to avoid circular imports)
+from .commands import (
+    face_commands,
+    object_commands,
+    game_commands,
+    quality_commands,
+    utility_commands,
+    sidecar_commands
+)
 
-# Override command resolution for lazy loading
-cli.get_command = _get_command.__get__(cli, type(cli))
+cli.add_command(face_commands.face_group, name='face')
+cli.add_command(object_commands.object_group, name='object')
+cli.add_command(game_commands.game_group, name='games')
+cli.add_command(quality_commands.quality_group, name='quality')
+cli.add_command(utility_commands.utility_group, name='util')
+cli.add_command(sidecar_commands.sidecar_group, name='sidecar')
 
 def main():
     """Main entry point for the CLI."""

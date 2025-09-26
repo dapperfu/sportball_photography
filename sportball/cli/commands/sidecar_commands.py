@@ -164,13 +164,13 @@ def display_table_stats(stats_data: Dict[str, Any]):
         console.print(ops_table)
     
     # Coverage analysis
-    if stats_data['file_coverage']:
+    if stats_data.get('file_coverage'):
         coverage_table = Table(title="File Coverage Analysis")
         coverage_table.add_column("Coverage Status", style="cyan")
         coverage_table.add_column("Count", style="green", justify="right")
         coverage_table.add_column("Percentage", style="yellow", justify="right")
         
-        covered_count = len(stats_data['file_coverage'])
+        covered_count = len(stats_data.get('file_coverage', []))
         uncovered_count = stats_data['total_images'] - covered_count
         
         coverage_table.add_row(
