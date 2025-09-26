@@ -51,6 +51,9 @@ def object_group():
               type=int,
               default=8,
               help='GPU batch size for processing multiple images (default: 8)')
+@click.option('--force', '-f',
+              is_flag=True,
+              help='Force detection even if JSON sidecar exists')
 @click.pass_context
 def detect(ctx: click.Context, 
            input_path: Path, 
@@ -60,7 +63,8 @@ def detect(ctx: click.Context,
            save_sidecar: bool,
            extract_objects: bool,
            no_recursive: bool,
-           batch_size: int):
+           batch_size: int,
+           force: bool):
     """
     Detect objects in images using YOLOv8.
     
@@ -83,7 +87,43 @@ def detect(ctx: click.Context,
     if class_names:
         classes = [name.strip() for name in class_names.split(',')]
     
-    console.print(f"🔍 Detecting objects in {len(image_paths)} images...", style="blue")
+    console.print(f"📊 Found {len(image_paths)} images to analyze", style="blue")
+    
+    # Check for existing sidecar files
+    skipped_files = []
+    files_to_process = []
+    
+    for image_path in image_paths:
+        # Check if JSON sidecar already exists and contains YOLOv8 data
+        original_image_path = image_path.resolve() if image_path.is_symlink() else image_path
+        json_path = original_image_path.parent / f"{original_image_path.stem}.json"
+        should_skip = False
+        
+        if json_path.exists() and not force:
+            try:
+                with open(json_path, 'r') as f:
+                    json_data = json.load(f)
+                if 'yolov8' in json_data:
+                    should_skip = True
+            except Exception:
+                pass
+        
+        if should_skip:
+            skipped_files.append(image_path)
+        else:
+            files_to_process.append(image_path)
+    
+    # Show skipping message after image discovery but before processing
+    if skipped_files:
+        console.print(f"⏭️  Skipping {len(skipped_files)} images - JSON sidecar already exists (use --force to override)", style="yellow")
+    
+    console.print(f"📊 Processing {len(files_to_process)} images ({len(skipped_files)} skipped)", style="blue")
+    
+    if not files_to_process:
+        console.print("✅ All images already processed (use --force to reprocess)", style="green")
+        return
+    
+    console.print(f"🔍 Starting object detection...", style="blue")
     
     # Prepare detection parameters
     detection_kwargs = {
@@ -94,7 +134,7 @@ def detect(ctx: click.Context,
     }
     
     # Perform detection
-    results = core.detect_objects(image_paths, **detection_kwargs)
+    results = core.detect_objects(files_to_process, **detection_kwargs)
     
     # Display results
     display_object_results(results, extract_objects, output)

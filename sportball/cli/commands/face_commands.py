@@ -61,9 +61,9 @@ def check_sidecar_file(image_file: Path, force: bool) -> Tuple[Path, bool]:
                 with open(json_path, 'r') as f:
                     data = json.load(f)
                 
-                if ("Face_detector" in data and 
-                    "metadata" in data["Face_detector"] and
-                    "extraction_timestamp" in data["Face_detector"]["metadata"]):
+                if ("face_detection" in data and 
+                    "metadata" in data["face_detection"] and
+                    "extraction_timestamp" in data["face_detection"]["metadata"]):
                     return (image_file, True)  # Should skip (already processed)
             except (json.JSONDecodeError, KeyError, TypeError):
                 pass
@@ -180,6 +180,10 @@ def detect(ctx: click.Context,
         else:
             files_to_process.append(image_file)
     
+    # Show skipping message after image discovery but before processing
+    if skipped_files:
+        console.print(f"⏭️  Skipping {len(skipped_files)} images - JSON sidecar already exists (use --force to override)", style="yellow")
+    
     console.print(f"📊 Processing {len(files_to_process)} images ({len(skipped_files)} skipped)", style="blue")
     
     if not files_to_process:
@@ -194,7 +198,7 @@ def detect(ctx: click.Context,
     # Prepare detection parameters
     detection_kwargs = {
         'confidence': 0.5,
-        'min_faces': 1,
+        'min_faces': 0,  # Allow 0 faces - "no face" is a valid result
         'face_size': 64
     }
     
