@@ -61,17 +61,26 @@ class SportballCore:
     
     @property
     def face_detector(self):
-        """Lazy-loaded face detector."""
+        """Lazy-loaded face detector (defaults to InsightFace)."""
         if self._face_detector is None:
-            from .detectors.face import FaceDetector
-            self._face_detector = FaceDetector(
+            from .detectors.face import InsightFaceDetector
+            self._face_detector = InsightFaceDetector(
                 enable_gpu=self.enable_gpu,
                 cache_enabled=self.cache_enabled
             )
         return self._face_detector
     
     def get_face_detector(self, batch_size: int = 8):
-        """Get face detector with custom batch size."""
+        """Get face detector with custom batch size (defaults to InsightFace)."""
+        from .detectors.face import InsightFaceDetector
+        return InsightFaceDetector(
+            enable_gpu=self.enable_gpu,
+            cache_enabled=self.cache_enabled,
+            batch_size=batch_size
+        )
+    
+    def get_opencv_detector(self, batch_size: int = 8):
+        """Get OpenCV face detector with custom batch size."""
         from .detectors.face import FaceDetector
         return FaceDetector(
             enable_gpu=self.enable_gpu,
