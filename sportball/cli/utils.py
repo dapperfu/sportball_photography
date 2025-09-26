@@ -138,7 +138,8 @@ def check_sidecar_files_parallel(image_files: List[Path],
                                 force: bool, 
                                 operation_type: str = "face_detection",
                                 max_workers: Optional[int] = None,
-                                use_processes: bool = False) -> Tuple[List[Path], List[Path]]:
+                                use_processes: bool = False,
+                                show_progress: bool = True) -> Tuple[List[Path], List[Path]]:
     """
     Check sidecar files in parallel to determine which files should be processed.
     
@@ -148,6 +149,7 @@ def check_sidecar_files_parallel(image_files: List[Path],
         operation_type: Type of operation to check for
         max_workers: Maximum number of parallel workers (defaults to CPU count)
         use_processes: Whether to use ProcessPoolExecutor instead of ThreadPoolExecutor
+        show_progress: Whether to show a progress bar during processing
         
     Returns:
         Tuple of (files_to_process, skipped_files)
@@ -165,6 +167,13 @@ def check_sidecar_files_parallel(image_files: List[Path],
     # Choose executor based on workload
     executor_class = ProcessPoolExecutor if use_processes else ThreadPoolExecutor
     
+    # Import tqdm for progress bar
+    if show_progress:
+        try:
+            from tqdm import tqdm
+        except ImportError:
+            show_progress = False
+    
     with executor_class(max_workers=max_workers) as executor:
         # Submit all tasks
         future_to_file = {
@@ -172,7 +181,15 @@ def check_sidecar_files_parallel(image_files: List[Path],
             for image_file in image_files
         }
         
-        # Collect results as they complete
+        # Collect results as they complete with progress bar
+        if show_progress:
+            progress_bar = tqdm(
+                total=len(image_files),
+                desc="Checking sidecar files",
+                unit="files",
+                leave=False
+            )
+        
         for future in as_completed(future_to_file):
             try:
                 image_file, should_skip = future.result()
@@ -184,5 +201,11 @@ def check_sidecar_files_parallel(image_files: List[Path],
                 # If checking fails, process the file to be safe
                 original_file = future_to_file[future]
                 files_to_process.append(original_file)
+            
+            if show_progress:
+                progress_bar.update(1)
+        
+        if show_progress:
+            progress_bar.close()
     
     return files_to_process, skipped_files
