@@ -1323,6 +1323,13 @@ class InsightFaceDetector:
         
         self.logger.info(f"Processing {len(image_paths)} images sequentially")
         
+        # Use tqdm for progress tracking
+        try:
+            from tqdm import tqdm
+            progress_bar = tqdm(total=len(image_paths), desc="Detecting faces", unit="images")
+        except ImportError:
+            progress_bar = None
+        
         for i, img_path in enumerate(image_paths):
             try:
                 # Check for shutdown request
@@ -1384,6 +1391,10 @@ class InsightFaceDetector:
                     error=None if success else f"Found {len(detected_faces)} faces, need at least {min_faces}"
                 )
                 
+                # Update progress bar
+                if progress_bar:
+                    progress_bar.update(1)
+                
                 if (i + 1) % 10 == 0:
                     self.logger.info(f"Processed {i + 1}/{len(image_paths)} images")
                 
@@ -1392,6 +1403,13 @@ class InsightFaceDetector:
                 results[str(img_path)] = FaceDetectionResult(
                     faces=[], face_count=0, success=False, processing_time=0.0, error=str(e)
                 )
+                # Update progress bar even on error
+                if progress_bar:
+                    progress_bar.update(1)
+        
+        # Close progress bar
+        if progress_bar:
+            progress_bar.close()
         
         total_time = time.time() - start_time
         avg_time_per_image = total_time / len(image_paths)
