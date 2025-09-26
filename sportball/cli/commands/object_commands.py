@@ -14,8 +14,8 @@ from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
-from ..utils import get_core, find_image_files, check_sidecar_files
-# Lazy import to avoid heavy dependencies at startup
+# Lazy imports to avoid heavy dependencies at startup
+# from ..utils import get_core, find_image_files, check_sidecar_files
 # from ...sidecar import Sidecar, OperationType
 
 console = Console()
@@ -83,10 +83,14 @@ def detect(ctx: click.Context,
     elif verbose >= 1:  # -v: info level
         console.print("ℹ️  Info logging enabled", style="blue")
     
+    # Lazy import to avoid heavy dependencies at startup
+    from ..utils import get_core
     core = get_core(ctx)
     
     # Find image files (recursive by default)
     recursive = not no_recursive
+    # Lazy import to avoid heavy dependencies at startup
+    from ..utils import find_image_files
     image_paths = find_image_files(input_path, recursive=recursive)
     
     if not image_paths:
@@ -102,7 +106,9 @@ def detect(ctx: click.Context,
     
     # Check for existing sidecar files
     console.print("🔍 Checking for existing sidecar files...", style="blue")
-    files_to_process, skipped_files = check_sidecar_files(
+    # Lazy import to avoid heavy dependencies at startup
+    from ..utils import check_sidecar_files_parallel
+    files_to_process, skipped_files = check_sidecar_files_parallel(
         image_paths, 
         force, 
         operation_type="object_detection"
@@ -234,6 +240,8 @@ def extract(ctx: click.Context,
     By default, directories are processed recursively. Use --no-recursive to disable.
     """
     
+    # Lazy import to avoid heavy dependencies at startup
+    from ..utils import get_core
     core = get_core(ctx)
     
     # Parse object types
@@ -245,6 +253,8 @@ def extract(ctx: click.Context,
     
     # Find image files (recursive by default)
     recursive = not no_recursive
+    # Lazy import to avoid heavy dependencies at startup
+    from ..utils import find_image_files
     image_paths = find_image_files(input_path, recursive=recursive)
     
     if not image_paths:
@@ -290,12 +300,16 @@ def analyze(ctx: click.Context,
     By default, directories are processed recursively. Use --no-recursive to disable.
     """
     
+    # Lazy import to avoid heavy dependencies at startup
+    from ..utils import get_core
     core = get_core(ctx)
     
     console.print(f"📊 Analyzing objects in {input_path}...", style="blue")
     
     # Find image files (recursive by default)
     recursive = not no_recursive
+    # Lazy import to avoid heavy dependencies at startup
+    from ..utils import find_image_files
     image_paths = find_image_files(input_path, recursive=recursive)
     
     if not image_paths:
