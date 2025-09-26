@@ -8,6 +8,7 @@ Generated via Cursor IDE (cursor.sh) with AI assistance
 """
 
 import click
+import warnings
 from pathlib import Path
 from typing import Optional
 from rich.console import Console
@@ -16,6 +17,10 @@ from loguru import logger
 
 from ..core import SportballCore
 # Import commands after CLI is defined to avoid circular imports
+
+# Suppress annoying deprecation warnings
+warnings.filterwarnings("ignore", message="pkg_resources is deprecated", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*pkg_resources.*", category=UserWarning)
 
 # Configure rich console
 console = Console()
