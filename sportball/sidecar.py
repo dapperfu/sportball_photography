@@ -150,6 +150,9 @@ class Sidecar:
     
     Handles symlink resolution, operation detection, and read/write operations
     for sidecar files associated with images.
+    
+    This class now automatically uses the high-performance Rust implementation
+    when available, falling back to Python implementations when needed.
     """
     
     # Supported image extensions
@@ -174,6 +177,13 @@ class Sidecar:
         """
         self.base_directory = base_directory
         self._cache: Dict[str, SidecarInfo] = {}
+        
+        # Initialize Rust sidecar manager for high-performance operations
+        try:
+            from .detection.rust_sidecar import RustSidecarManager, RustSidecarConfig
+            self.rust_manager = RustSidecarManager(RustSidecarConfig())
+        except ImportError:
+            self.rust_manager = None
     
     def find_sidecar_for_image(self, image_path: Path) -> Optional[SidecarInfo]:
         """
@@ -369,6 +379,15 @@ class Sidecar:
         Returns:
             Dictionary with comprehensive statistics
         """
+        # Try to use Rust implementation for better performance
+        if self.rust_manager and self.rust_manager.rust_available:
+            try:
+                operation_filter_str = operation_filter.value if operation_filter else None
+                return self.rust_manager.get_statistics(directory, operation_filter_str)
+            except Exception as e:
+                logger.warning(f"Rust statistics failed, falling back to Python: {e}")
+        
+        # Fall back to Python implementation
         sidecars = self.find_all_sidecars(directory)
         
         # Apply filter if specified
@@ -650,6 +669,14 @@ class Sidecar:
     
     def cleanup_orphaned_sidecars(self, directory: Path) -> int:
         """Clean up orphaned sidecar files for backward compatibility."""
+        # Try to use Rust implementation for better performance
+        if self.rust_manager and self.rust_manager.rust_available:
+            try:
+                return self.rust_manager.cleanup_orphaned_sidecars(directory, dry_run=False)
+            except Exception as e:
+                logger.warning(f"Rust cleanup failed, falling back to Python: {e}")
+        
+        # Fall back to Python implementation
         return self._cleanup_orphaned_sidecars_impl(directory)
 
 
