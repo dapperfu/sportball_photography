@@ -13,7 +13,8 @@ from pathlib import Path
 from typing import Optional
 from rich.console import Console
 from rich.panel import Panel
-from loguru import logger
+# Lazy import loguru to avoid heavy dependencies at startup
+# from loguru import logger
 
 # Import core only when needed to avoid heavy imports at startup
 # from ..core import SportballCore
@@ -95,7 +96,9 @@ def cli(ctx: click.Context,
     sportball sidecar stats /path/to/images
     """
     
-    # Configure logging
+    # Configure logging (lazy import)
+    from loguru import logger
+    
     if verbose:
         logger.add("sportball.log", level="DEBUG", rotation="10 MB")
         logger.info("Verbose logging enabled")

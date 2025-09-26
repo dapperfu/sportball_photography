@@ -106,8 +106,8 @@ Issues = "https://github.com/sportball/sportball/issues"
 Documentation = "https://sportball.readthedocs.io"
 
 [project.scripts]
-sportball = "sportball.cli.main:cli"
-sb = "sportball.cli.main:cli"
+sportball = "sportball.cli.__main__:main"
+sb = "sportball.cli.__main__:main"
 
 [tool.setuptools]
 packages = ["sportball", "sportball.cli", "sportball.cli.commands", "sportball.detectors"]

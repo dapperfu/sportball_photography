@@ -14,7 +14,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
-from ..utils import get_core, find_image_files, check_sidecar_files_parallel
+from ..utils import get_core, find_image_files, check_sidecar_files
 # Lazy import to avoid heavy dependencies at startup
 # from ...sidecar import Sidecar, OperationType
 
@@ -100,14 +100,12 @@ def detect(ctx: click.Context,
     
     console.print(f"📊 Found {len(image_paths)} images to analyze", style="blue")
     
-    # Check for existing sidecar files in parallel
+    # Check for existing sidecar files
     console.print("🔍 Checking for existing sidecar files...", style="blue")
-    files_to_process, skipped_files = check_sidecar_files_parallel(
+    files_to_process, skipped_files = check_sidecar_files(
         image_paths, 
         force, 
-        operation_type="object_detection",
-        use_processes=True,  # Use ProcessPoolExecutor for better I/O performance
-        show_progress=True   # Show progress bar during checking
+        operation_type="object_detection"
     )
     
     # Show skipping message after image discovery but before processing
