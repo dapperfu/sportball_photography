@@ -1,0 +1,46 @@
+{
+  "summary": {
+    "total_images": 100,
+    "detectors": [
+      "insightface"
+    ],
+    "performance_stats": {
+      "insightface": {
+        "avg_time": 0.6563033866882324,
+        "min_time": 0.18436408042907715,
+        "max_time": 1.733154296875,
+        "std_time": 0.29375568219805304,
+        "success_rate": 1.0,
+        "total_faces": 388,
+        "avg_faces_per_image": 3.88
+      }
+    },
+    "accuracy_stats": {
+      "insightface": {
+        "avg_confidence": 0.7592262241643729,
+        "min_confidence": 0.5020870566368103,
+        "max_confidence": 0.9166666269302368,
+        "std_confidence": 0.11085954701731628,
+        "avg_face_size": 69863.10824742269,
+        "min_face_size": 5184.0,
+        "max_face_size": 282777.0
+      }
+    }
+  },
+  "detailed_results": {
+    "insightface": [
+      {
+        "detector_name": "insightface",
+        "image_path": "/tun/pictures/incoming/2025/09-Sep/20250906_112606.000.jpg",
+        "faces_detected": 3,
+        "processing_time": 0.8526139259338379,
+        "success": true,
+        "error": null,
+        "confidence_scores": [
+          0.8871761560440063,
+          0.811671793460846,
+          0.7464346289634705
+        ],
+        "face_sizes": [
+          [
+            

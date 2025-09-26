@@ -560,6 +560,115 @@ class FaceDetector:
         # Process each image in the batch
         batch_processing_time = time.time() - start_time
         
+        # Use GPU batch processing if available
+        if self.device == "cuda" and self.gpu_model == "face_recognition":
+            self.logger.info("Using GPU batch processing")
+            return self._process_gpu_batch(batch_images, batch_metadata, confidence, min_faces, max_faces, face_size, start_time)
+        else:
+            self.logger.info(f"Using CPU batch processing (device={self.device}, gpu_model={self.gpu_model})")
+            # Fall back to CPU processing
+            return self._process_cpu_batch(batch_images, batch_metadata, confidence, min_faces, max_faces, face_size, start_time)
+    
+    def _process_gpu_batch(self, batch_images, batch_metadata, confidence, min_faces, max_faces, face_size, start_time):
+        """Process batch using GPU-accelerated face_recognition library."""
+        import time
+        results = {}
+        
+        try:
+            import face_recognition
+            import numpy as np
+            
+            # Monitor GPU memory usage
+            self._log_gpu_memory("Before GPU batch processing")
+            
+            # Process each image with face_recognition (it doesn't support true batch processing)
+            # but we can process them in parallel using GPU
+            for i, (image, metadata) in enumerate(zip(batch_images, batch_metadata)):
+                if i == 0:
+                    self._log_gpu_memory("After first image processing")
+                elif i == len(batch_images) // 2:
+                    self._log_gpu_memory("Mid-batch processing")
+                try:
+                    # Convert BGR to RGB for face_recognition
+                    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                    
+                    # Use CNN model for GPU acceleration
+                    try:
+                        face_locations = face_recognition.face_locations(
+                            image_rgb,
+                            model="cnn"  # CNN model uses GPU acceleration
+                        )
+                    except Exception:
+                        # Fall back to HOG model if CNN fails
+                        face_locations = face_recognition.face_locations(
+                            image_rgb,
+                            model="hog"
+                        )
+                    
+                    # Convert face_recognition format to our format
+                    detected_faces = []
+                    for j, (top, right, bottom, left) in enumerate(face_locations):
+                        x, y, w, h = left, top, right - left, bottom - top
+                        
+                        if w >= face_size and h >= face_size:
+                            face_confidence = 0.9  # face_recognition doesn't provide confidence
+                            
+                            if confidence is None or face_confidence >= confidence:
+                                detected_face = DetectedFace(
+                                    face_id=j,
+                                    bbox=(x, y, w, h),
+                                    confidence=face_confidence
+                                )
+                                
+                                # Add face encoding
+                                try:
+                                    face_encoding = face_recognition.face_encodings(image_rgb, [(top, right, bottom, left)])[0]
+                                    detected_face.encoding = face_encoding
+                                except Exception as e:
+                                    self.logger.warning(f"Failed to encode face: {e}")
+                                
+                                detected_faces.append(detected_face)
+                    
+                    # Apply face count limits
+                    if max_faces and len(detected_faces) > max_faces:
+                        detected_faces = detected_faces[:max_faces]
+                    
+                    # Check minimum face count
+                    success = len(detected_faces) >= min_faces
+                    
+                    results[str(metadata['path'])] = FaceDetectionResult(
+                        faces=detected_faces,
+                        face_count=len(detected_faces),
+                        success=success,
+                        processing_time=(time.time() - start_time) / len(batch_images),
+                        error=None if success else f"Found {len(detected_faces)} faces, need at least {min_faces}"
+                    )
+                    
+                except Exception as e:
+                    results[str(metadata['path'])] = FaceDetectionResult(
+                        faces=[],
+                        face_count=0,
+                        success=False,
+                        processing_time=0.0,
+                        error=str(e)
+                    )
+            
+        except Exception as e:
+            self.logger.error(f"GPU batch processing failed: {e}")
+            # Fall back to CPU processing
+            return self._process_cpu_batch(batch_images, batch_metadata, confidence, min_faces, max_faces, face_size, start_time)
+        
+        self._log_gpu_memory("After GPU batch processing")
+        return results
+    
+    def _process_cpu_batch(self, batch_images, batch_metadata, confidence, min_faces, max_faces, face_size, start_time):
+        """Process batch using CPU-based OpenCV."""
+        import time
+        results = {}
+        
+        # Process each image in the batch
+        batch_processing_time = time.time() - start_time
+        
         for i, (image, metadata) in enumerate(zip(batch_images, batch_metadata)):
             try:
                 # Convert to grayscale for face detection
@@ -831,6 +940,19 @@ class FaceDetector:
                 "confidence_threshold": float(getattr(self, 'confidence_threshold', 0.5))
             }
         }
+    
+    def _log_gpu_memory(self, context: str):
+        """Log current GPU memory usage."""
+        try:
+            import torch
+            if torch.cuda.is_available():
+                allocated = torch.cuda.memory_allocated() / 1024**2  # MB
+                reserved = torch.cuda.memory_reserved() / 1024**2     # MB
+                self.logger.info(f"GPU Memory [{context}]: {allocated:.1f}MB allocated, {reserved:.1f}MB reserved")
+            else:
+                self.logger.info(f"GPU Memory [{context}]: CUDA not available")
+        except Exception as e:
+            self.logger.warning(f"Failed to get GPU memory info [{context}]: {e}")
 
 
 class InsightFaceDetector:
