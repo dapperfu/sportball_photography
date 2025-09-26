@@ -28,7 +28,7 @@ warnings.filterwarnings("ignore", message=".*pkg_resources.*", category=UserWarn
 console = Console()
 
 
-@click.group()
+@click.group(context_settings={'help_option_names': ['-h', '--help']})
 @click.option('--base-dir', '-d', 
               type=click.Path(path_type=Path),
               help='Base directory for operations')
@@ -94,6 +94,13 @@ def cli(ctx: click.Context,
     
     # Analyze sidecar files
     sportball sidecar stats /path/to/images
+    
+    Bash Completion:
+    To enable bash completion, add this to your ~/.bashrc or ~/.bash_profile:
+    
+        eval "$(sportball --completion-script-bash)"
+    
+    Then restart your shell or run: source ~/.bashrc
     """
     
     # Configure logging (lazy import)

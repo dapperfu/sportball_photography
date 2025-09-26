@@ -1320,7 +1320,12 @@ class InsightFaceDetector:
         # Use tqdm for progress tracking
         try:
             from tqdm import tqdm
-            progress_bar = tqdm(total=len(image_paths), desc="Detecting faces", unit="images")
+            progress_bar = tqdm(
+                total=len(image_paths), 
+                desc="Detecting faces", 
+                unit="images",
+                bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]'
+            )
         except ImportError:
             progress_bar = None
         
@@ -1392,8 +1397,9 @@ class InsightFaceDetector:
                     error=None if success else f"Found {len(detected_faces)} faces, need at least {min_faces}"
                 )
                 
-                # Update progress bar
+                # Update progress bar with current image name
                 if progress_bar:
+                    progress_bar.set_postfix(file=img_path.name)
                     progress_bar.update(1)
                 
                 if (i + 1) % 10 == 0:
@@ -1406,6 +1412,7 @@ class InsightFaceDetector:
                 )
                 # Update progress bar even on error
                 if progress_bar:
+                    progress_bar.set_postfix(file=img_path.name)
                     progress_bar.update(1)
         
         # Close progress bar

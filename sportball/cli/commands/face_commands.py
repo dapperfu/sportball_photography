@@ -40,7 +40,7 @@ signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
 
-@click.group()
+@click.group(context_settings={'help_option_names': ['-h', '--help']})
 def face_group():
     """Face detection and recognition commands."""
     pass

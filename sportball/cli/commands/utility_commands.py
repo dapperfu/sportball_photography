@@ -20,7 +20,7 @@ from ..utils import get_core
 console = Console()
 
 
-@click.group()
+@click.group(context_settings={'help_option_names': ['-h', '--help']})
 def utility_group():
     """Utility commands for cache management and system operations."""
     pass
