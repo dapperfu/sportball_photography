@@ -8,8 +8,9 @@ Generated via Cursor IDE (cursor.sh) with AI assistance
 """
 
 import click
+import shutil
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict
 from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
@@ -149,8 +150,7 @@ def display_game_results(results: dict, output_dir: Path, copy_files: bool):
     
     # Create organized folders
     console.print(f"\n📁 Creating organized folders in {output_dir}...", style="blue")
-    # TODO: Implement folder creation
-    console.print("Folder creation not yet implemented", style="yellow")
+    create_organized_folders(games, output_dir, copy_files)
 
 
 @game_group.command()
@@ -192,8 +192,11 @@ def split(ctx: click.Context,
     manual_splits = []
     if split_file and split_file.exists():
         console.print(f"📄 Loading manual splits from {split_file}...", style="blue")
-        # TODO: Implement split file loading
-        console.print("Split file loading not yet implemented", style="yellow")
+        manual_splits = core.game_detector.load_split_file(split_file)
+        if manual_splits:
+            console.print(f"✅ Loaded {len(manual_splits)} manual splits", style="green")
+        else:
+            console.print("⚠️  No valid splits found in file", style="yellow")
     elif split_file:
         console.print(f"⚠️  Split file not found: {split_file}", style="yellow")
     
@@ -221,7 +224,18 @@ def split(ctx: click.Context,
         
         progress.update(task, completed=True, description="Game splitting complete")
     
-    # Display results
+    # Apply manual splits if provided
+    if manual_splits and results.get('success', False):
+        console.print(f"🔧 Applying {len(manual_splits)} manual splits...", style="blue")
+        # Get the games from the detector
+        games = core.game_detector.games
+        if games:
+            final_games = core.game_detector.apply_manual_splits(manual_splits)
+            # Update results with final games
+            results['games'] = core.game_detector._format_games_for_output(final_games)
+            console.print(f"✅ Applied manual splits. Final games: {len(final_games)}", style="green")
+    
+    # Display results and create folders
     display_game_results(results, output_dir, copy)
 
 
@@ -275,3 +289,67 @@ def analyze(ctx: click.Context,
         console.print(f"💾 Saving report to {output}...", style="blue")
         # TODO: Implement report saving
         console.print("Report saving not yet implemented", style="yellow")
+
+
+def create_organized_folders(games: List[Dict], output_dir: Path, copy_files: bool = False) -> Dict[str, Path]:
+    """
+    Create organized folders for games.
+    
+    Args:
+        games: List of game dictionaries from detection results
+        output_dir: Output directory for organized games
+        copy_files: Whether to copy files (True) or create symlinks (False)
+        
+    Returns:
+        Dictionary mapping game IDs to folder paths
+    """
+    if not games:
+        console.print("❌ No games to organize", style="red")
+        return {}
+    
+    console.print(f"📁 Creating organized folders for {len(games)} games...", style="blue")
+    
+    # Create output directory
+    output_dir.mkdir(parents=True, exist_ok=True)
+    game_folders = {}
+    
+    for game in games:
+        # Create game folder name
+        game_id = game.get('game_id', 1)
+        start_time = game.get('start_time_formatted', '00:00:00')
+        end_time = game.get('end_time_formatted', '00:00:00')
+        
+        game_folder_name = f"Game_{game_id:02d}_{start_time.replace(':', '')}-{end_time.replace(':', '')}"
+        game_folder = output_dir / game_folder_name
+        game_folder.mkdir(exist_ok=True)
+        
+        photo_count = game.get('photo_count', 0)
+        console.print(f"📂 Creating {game_folder_name} with {photo_count} photos", style="green")
+        
+        # Copy or symlink photos
+        photo_files = game.get('photo_files', [])
+        for photo_path_str in photo_files:
+            photo_path = Path(photo_path_str)
+            if photo_path.exists():
+                dest_path = game_folder / photo_path.name
+                
+                if copy_files:
+                    # Copy file
+                    if dest_path.exists():
+                        dest_path.unlink()  # Remove existing file
+                    shutil.copy2(photo_path, dest_path)
+                else:
+                    # Create symlink
+                    if dest_path.exists():
+                        dest_path.unlink()  # Remove existing symlink/file
+                    try:
+                        dest_path.symlink_to(photo_path)
+                    except Exception as e:
+                        console.print(f"⚠️  Warning: Could not create symlink {dest_path}: {e}", style="yellow")
+                        # Fallback to copying
+                        shutil.copy2(photo_path, dest_path)
+        
+        game_folders[f"Game_{game_id:02d}"] = game_folder
+    
+    console.print(f"✅ Created {len(game_folders)} organized game folders", style="green")
+    return game_folders
