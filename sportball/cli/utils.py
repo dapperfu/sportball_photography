@@ -10,10 +10,11 @@ Generated via Cursor IDE (cursor.sh) with AI assistance
 import click
 from pathlib import Path
 from typing import List
-from ..core import SportballCore
+# Lazy import SportballCore to avoid heavy imports at startup
+# from ..core import SportballCore
 
 
-def get_core(ctx: click.Context) -> SportballCore:
+def get_core(ctx: click.Context):
     """
     Get or create SportballCore instance from context.
     
@@ -24,6 +25,8 @@ def get_core(ctx: click.Context) -> SportballCore:
         SportballCore instance
     """
     if 'core' not in ctx.obj:
+        # Lazy import to avoid heavy imports at startup
+        from ..core import SportballCore
         ctx.obj['core'] = SportballCore(
             base_dir=ctx.obj.get('base_dir'),
             enable_gpu=ctx.obj.get('gpu', True),

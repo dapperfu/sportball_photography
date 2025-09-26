@@ -19,8 +19,9 @@ from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
 from ..utils import get_core, find_image_files
-from ...sidecar import Sidecar, OperationType
-from ...detectors.face_benchmark import FaceDetectionBenchmark
+# Lazy imports to avoid heavy dependencies at startup
+# from ...sidecar import Sidecar, OperationType
+# from ...detectors.face_benchmark import FaceDetectionBenchmark
 
 console = Console()
 
@@ -348,7 +349,8 @@ def benchmark(ctx: click.Context,
     
     console.print(f"📊 Found {len(image_files)} images for benchmarking", style="blue")
     
-    # Initialize benchmark
+    # Initialize benchmark (lazy import)
+    from ...detectors.face_benchmark import FaceDetectionBenchmark
     benchmark = FaceDetectionBenchmark(
         enable_gpu=gpu,
         confidence_threshold=confidence,
