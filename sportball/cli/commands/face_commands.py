@@ -116,6 +116,13 @@ def detect(ctx: click.Context,
     elif verbose >= 1:  # -v: info level
         console.print("ℹ️  Info logging enabled", style="blue")
     
+    # Set environment variable for progress bar control
+    import os
+    if verbose >= 1:
+        os.environ['SPORTBALL_VERBOSE'] = 'true'
+    else:
+        os.environ.pop('SPORTBALL_VERBOSE', None)
+    
     core = get_core(ctx)
     
     # Find image files
@@ -291,6 +298,13 @@ def benchmark(ctx: click.Context,
         console.print("🔍 Debug logging enabled", style="blue")
     elif verbose >= 1:  # -v: info level
         console.print("ℹ️  Info logging enabled", style="blue")
+    
+    # Set environment variable for progress bar control
+    import os
+    if verbose >= 1:
+        os.environ['SPORTBALL_VERBOSE'] = 'true'
+    else:
+        os.environ.pop('SPORTBALL_VERBOSE', None)
     
     # Parse detector list
     detector_list = None

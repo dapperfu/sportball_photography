@@ -149,7 +149,8 @@ def parallel_processing(max_workers: Optional[int] = None,
 def progress_tracked(description: str = "Processing", 
                     unit: str = "items",
                     show_eta: bool = True,
-                    show_rate: bool = True):
+                    show_rate: bool = True,
+                    verbose: bool = True):
     """
     Decorator to add progress tracking to functions that process iterables.
     
@@ -158,6 +159,7 @@ def progress_tracked(description: str = "Processing",
         unit: Unit of measurement
         show_eta: Show estimated time remaining
         show_rate: Show processing rate
+        verbose: Whether to show progress bar (False to suppress when not in verbose mode)
         
     Example:
         @progress_tracked(description="Detecting faces", unit="images")
@@ -180,11 +182,22 @@ def progress_tracked(description: str = "Processing",
             if not items:
                 return []
             
+            # Check if we should show progress bar based on verbose setting
+            # If verbose=False, check if we're in a non-verbose context
+            show_progress = verbose
+            if not verbose:
+                # Check if we're in a verbose context by looking for verbose in kwargs or context
+                show_progress = kwargs.get('verbose', False)
+                # Also check if we're in a CLI context with verbose enabled
+                import os
+                if os.getenv('SPORTBALL_VERBOSE', '').lower() in ('true', '1', 'yes'):
+                    show_progress = True
+            
             # Create progress bar
             with tqdm(total=len(items), 
                     desc=description, 
                     unit=unit,
-                    disable=not TQDM_AVAILABLE) as pbar:
+                    disable=not (TQDM_AVAILABLE and show_progress)) as pbar:
                 
                 # Wrap the function to update progress
                 def progress_wrapper(*inner_args, **inner_kwargs):

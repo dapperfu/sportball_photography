@@ -28,7 +28,8 @@ def get_core(ctx: click.Context) -> SportballCore:
             base_dir=ctx.obj.get('base_dir'),
             enable_gpu=ctx.obj.get('gpu', True),
             max_workers=ctx.obj.get('workers'),
-            cache_enabled=ctx.obj.get('cache', True)
+            cache_enabled=ctx.obj.get('cache', True),
+            verbose=ctx.obj.get('verbose', False)
         )
     
     return ctx.obj['core']
