@@ -179,7 +179,8 @@ def detect(ctx: click.Context,
         image_files, 
         force, 
         operation_type="face_detection",
-        use_processes=True  # Use ProcessPoolExecutor for better I/O performance
+        use_processes=True,  # Use ProcessPoolExecutor for better I/O performance
+        show_progress=True   # Show progress bar during checking
     )
     
     # Show skipping message after image discovery but before processing
