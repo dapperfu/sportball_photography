@@ -903,15 +903,13 @@ class FaceDetector:
     def extract_faces(self, 
                      image_path: Path, 
                      output_dir: Path,
-                     face_size: int = 64,
                      padding: int = 10) -> Dict[str, Any]:
         """
-        Extract detected faces from an image.
+        Extract detected faces from an image at their natural detected size.
         
         Args:
             image_path: Path to the input image
             output_dir: Directory to save extracted faces
-            face_size: Size of extracted faces
             padding: Padding around face in pixels
             
         Returns:
@@ -951,12 +949,8 @@ class FaceDetector:
                 x_end = min(image.shape[1], x + w + padding)
                 y_end = min(image.shape[0], y + h + padding)
                 
-                # Extract face
+                # Extract face at its natural detected size from full-resolution image
                 face_image = image[y_start:y_end, x_start:x_end]
-                
-                # Resize if needed
-                if face_size > 0:
-                    face_image = cv2.resize(face_image, (face_size, face_size))
                 
                 # Save face
                 face_filename = f"{image_path.stem}_face_{i:02d}.jpg"
@@ -1559,15 +1553,13 @@ class InsightFaceDetector:
     def extract_faces(self, 
                      image_path: Path, 
                      output_dir: Path,
-                     face_size: int = 64,
                      padding: int = 10) -> Dict[str, Any]:
         """
-        Extract detected faces from an image.
+        Extract detected faces from an image at their natural detected size.
         
         Args:
             image_path: Path to the input image
             output_dir: Directory to save extracted faces
-            face_size: Size of extracted faces
             padding: Padding around face in pixels
             
         Returns:
@@ -1607,12 +1599,8 @@ class InsightFaceDetector:
                 x_end = min(image.shape[1], x + w + padding)
                 y_end = min(image.shape[0], y + h + padding)
                 
-                # Extract face
+                # Extract face at its natural detected size from full-resolution image
                 face_image = image[y_start:y_end, x_start:x_end]
-                
-                # Resize if needed
-                if face_size > 0:
-                    face_image = cv2.resize(face_image, (face_size, face_size))
                 
                 # Save face
                 face_filename = f"{image_path.stem}_insightface_face_{i:02d}.jpg"

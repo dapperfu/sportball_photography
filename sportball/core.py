@@ -398,7 +398,6 @@ class SportballCore:
     def extract_faces(self, 
                      image_paths: Union[Path, List[Path]], 
                      output_dir: Path,
-                     face_size: int = 256,
                      padding: int = 20,
                      max_workers: Optional[int] = None,
                      **kwargs) -> Dict[str, Any]:
@@ -408,7 +407,6 @@ class SportballCore:
         Args:
             image_paths: Single image path or list of image paths
             output_dir: Directory to save extracted faces
-            face_size: Size of extracted faces (default: 256px for better quality)
             padding: Padding around face in pixels (default: 20px)
             max_workers: Maximum number of parallel workers (None for auto)
             **kwargs: Additional arguments for extraction
@@ -449,7 +447,6 @@ class SportballCore:
                     extraction_result = face_detector.extract_faces(
                         image_path, 
                         output_dir,
-                        face_size=face_size,
                         padding=padding,
                         **kwargs
                     )
@@ -498,7 +495,6 @@ class SportballCore:
                     extraction_result = face_detector.extract_faces(
                         image_path, 
                         output_dir,
-                        face_size=face_size,
                         padding=padding,
                         **kwargs
                     )
