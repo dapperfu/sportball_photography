@@ -311,27 +311,33 @@ class ObjectDetector:
         # Process images
         if len(image_paths) == 1:
             # Single image processing
-            result = self._detect_single_image(image_paths[0], force)
+            result = self._detect_single_image(image_paths[0], force, save_sidecar)
             return {str(image_paths[0]): self._format_result(result)}
         else:
             # Multiple images processing
-            results = self._detect_multiple_images(image_paths, force, max_workers)
+            results = self._detect_multiple_images(image_paths, force, max_workers, save_sidecar)
             return {str(path): self._format_result(result) for path, result in zip(image_paths, results)}
     
-    def _detect_single_image(self, image_path: Path, force: bool = False) -> DetectionResult:
+    def _detect_single_image(self, image_path: Path, force: bool = False, save_sidecar: bool = True) -> DetectionResult:
         """Detect objects in a single image."""
-        return self.detect_objects_in_image(image_path, force)
+        result = self.detect_objects_in_image(image_path, force)
+        
+        # Save sidecar if requested
+        if save_sidecar:
+            self._save_sidecar(result)
+        
+        return result
     
-    def _detect_multiple_images(self, image_paths: List[Path], force: bool, max_workers: Optional[int]) -> List[DetectionResult]:
+    def _detect_multiple_images(self, image_paths: List[Path], force: bool, max_workers: Optional[int], save_sidecar: bool = True) -> List[DetectionResult]:
         """Detect objects in multiple images with optimized processing."""
         if self.enable_gpu and self.device == "cuda":
             # Use GPU batch processing for better GPU utilization
-            return self._detect_multiple_images_gpu_batch(image_paths, force)
+            return self._detect_multiple_images_gpu_batch(image_paths, force, save_sidecar)
         else:
             # Use CPU parallel processing
-            return self._detect_multiple_images_cpu_parallel(image_paths, force, max_workers)
+            return self._detect_multiple_images_cpu_parallel(image_paths, force, max_workers, save_sidecar)
     
-    def _detect_multiple_images_gpu_batch(self, image_paths: List[Path], force: bool) -> List[DetectionResult]:
+    def _detect_multiple_images_gpu_batch(self, image_paths: List[Path], force: bool, save_sidecar: bool = True) -> List[DetectionResult]:
         """Detect objects in multiple images using sequential processing with progress bar."""
         logger.info(f"Processing {len(image_paths)} images sequentially")
         
@@ -347,6 +353,10 @@ class ObjectDetector:
             try:
                 result = self.detect_objects_in_image(image_path, force)
                 results.append(result)
+                
+                # Save sidecar if requested
+                if save_sidecar:
+                    self._save_sidecar(result)
                 
                 # Update progress bar
                 if progress_bar:
@@ -374,7 +384,7 @@ class ObjectDetector:
         
         return results
     
-    def _detect_multiple_images_cpu_parallel(self, image_paths: List[Path], force: bool, max_workers: Optional[int]) -> List[DetectionResult]:
+    def _detect_multiple_images_cpu_parallel(self, image_paths: List[Path], force: bool, max_workers: Optional[int], save_sidecar: bool = True) -> List[DetectionResult]:
         """Detect objects in multiple images using sequential processing with progress bar."""
         logger.info(f"Processing {len(image_paths)} images sequentially")
         
@@ -390,6 +400,10 @@ class ObjectDetector:
             try:
                 result = self.detect_objects_in_image(image_path, force)
                 results.append(result)
+                
+                # Save sidecar if requested
+                if save_sidecar:
+                    self._save_sidecar(result)
                 
                 # Update progress bar
                 if progress_bar:
@@ -597,7 +611,7 @@ class ObjectDetector:
                 results.append(detection_result)
                 
                 # Save sidecar if requested
-                if self.cache_enabled:
+                if save_sidecar:
                     self._save_sidecar(detection_result)
         
         except Exception as e:
