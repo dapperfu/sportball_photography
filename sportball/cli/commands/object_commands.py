@@ -21,7 +21,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeEl
 console = Console()
 
 
-@click.group()
+@click.group(context_settings={'help_option_names': ['-h', '--help']})
 def object_group():
     """Object detection and extraction commands."""
     pass

@@ -24,7 +24,7 @@ import json
 console = Console()
 
 
-@click.group()
+@click.group(context_settings={'help_option_names': ['-h', '--help']})
 def sidecar_group():
     """Sidecar file management and statistics commands."""
     pass

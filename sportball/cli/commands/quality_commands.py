@@ -19,7 +19,7 @@ from ..utils import get_core, find_image_files
 console = Console()
 
 
-@click.group()
+@click.group(context_settings={'help_option_names': ['-h', '--help']})
 def quality_group():
     """Photo quality assessment commands."""
     pass

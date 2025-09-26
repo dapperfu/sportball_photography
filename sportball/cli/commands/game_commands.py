@@ -20,7 +20,7 @@ from ..utils import get_core
 console = Console()
 
 
-@click.group()
+@click.group(context_settings={'help_option_names': ['-h', '--help']})
 def game_group():
     """Game detection and splitting commands."""
     pass

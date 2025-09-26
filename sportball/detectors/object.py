@@ -345,7 +345,12 @@ class ObjectDetector:
         
         # Use tqdm for progress tracking
         try:
-            progress_bar = tqdm(total=len(image_paths), desc="Detecting objects", unit="images")
+            progress_bar = tqdm(
+                total=len(image_paths), 
+                desc="Detecting objects", 
+                unit="images",
+                bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]'
+            )
         except ImportError:
             progress_bar = None
         
@@ -358,8 +363,9 @@ class ObjectDetector:
                 if save_sidecar:
                     self._save_sidecar(result)
                 
-                # Update progress bar
+                # Update progress bar with current image name
                 if progress_bar:
+                    progress_bar.set_postfix(file=image_path.name)
                     progress_bar.update(1)
                     
             except Exception as e:
@@ -376,6 +382,7 @@ class ObjectDetector:
                 results.append(error_result)
                 # Update progress bar even on error
                 if progress_bar:
+                    progress_bar.set_postfix(file=image_path.name)
                     progress_bar.update(1)
         
         # Close progress bar
@@ -392,7 +399,12 @@ class ObjectDetector:
         
         # Use tqdm for progress tracking
         try:
-            progress_bar = tqdm(total=len(image_paths), desc="Detecting objects", unit="images")
+            progress_bar = tqdm(
+                total=len(image_paths), 
+                desc="Detecting objects", 
+                unit="images",
+                bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]'
+            )
         except ImportError:
             progress_bar = None
         
@@ -405,8 +417,9 @@ class ObjectDetector:
                 if save_sidecar:
                     self._save_sidecar(result)
                 
-                # Update progress bar
+                # Update progress bar with current image name
                 if progress_bar:
+                    progress_bar.set_postfix(file=image_path.name)
                     progress_bar.update(1)
                     
             except Exception as e:
@@ -423,6 +436,7 @@ class ObjectDetector:
                 results.append(error_result)
                 # Update progress bar even on error
                 if progress_bar:
+                    progress_bar.set_postfix(file=image_path.name)
                     progress_bar.update(1)
         
         # Close progress bar
