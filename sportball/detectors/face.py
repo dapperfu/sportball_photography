@@ -479,17 +479,34 @@ class FaceDetector:
                 "faces_extracted": 0
             }
     
-    def _format_result(self, result: FaceDetectionResult, image_path: Path) -> Dict[str, Any]:
+    def _format_result(self, result: FaceDetectionResult, image_path: Path, image_width: int = None, image_height: int = None) -> Dict[str, Any]:
         """
         Format face detection result for JSON serialization.
         
         Args:
             result: Face detection result
             image_path: Path to the image file
+            image_width: Image width in pixels (for ratio calculation)
+            image_height: Image height in pixels (for ratio calculation)
             
         Returns:
             Dictionary containing formatted face detection data
         """
+        # Load image dimensions if not provided
+        if image_width is None or image_height is None:
+            try:
+                import cv2
+                image = cv2.imread(str(image_path))
+                if image is not None:
+                    image_height, image_width = image.shape[:2]
+                else:
+                    # Fallback to default dimensions if image can't be loaded
+                    image_width = 1920
+                    image_height = 1080
+            except Exception:
+                # Fallback to default dimensions
+                image_width = 1920
+                image_height = 1080
         if not result.success:
             return {
                 "success": False,
@@ -506,13 +523,16 @@ class FaceDetector:
         # Format faces for sportball compatibility
         faces = []
         for face in result.faces:
+            # Convert pixel coordinates to normalized ratios (0-1)
+            x_pixel, y_pixel, w_pixel, h_pixel = face.bbox
+            
             face_data = {
                 "face_id": int(face.face_id),
                 "bbox": {
-                    "x": int(face.bbox[0]),
-                    "y": int(face.bbox[1]),
-                    "width": int(face.bbox[2]),
-                    "height": int(face.bbox[3])
+                    "x": float(x_pixel) / image_width,
+                    "y": float(y_pixel) / image_height,
+                    "width": float(w_pixel) / image_width,
+                    "height": float(h_pixel) / image_height
                 },
                 "confidence": float(face.confidence)
             }
@@ -532,6 +552,8 @@ class FaceDetector:
             "faces": faces,
             "metadata": {
                 "image_path": str(image_path),
+                "image_width": int(image_width),
+                "image_height": int(image_height),
                 "faces_found": int(result.face_count),
                 "processing_time": float(result.processing_time),
                 "extraction_timestamp": __import__('datetime').datetime.now().isoformat(),

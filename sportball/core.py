@@ -154,10 +154,23 @@ class SportballCore:
         if save_sidecar:
             for image_path in image_paths:
                 if str(image_path) in results:
+                    # Load image dimensions for ratio calculation
+                    try:
+                        import cv2
+                        image = cv2.imread(str(image_path))
+                        if image is not None:
+                            image_height, image_width = image.shape[:2]
+                        else:
+                            image_width = image_height = None
+                    except Exception:
+                        image_width = image_height = None
+                    
                     # Format the result for JSON serialization
                     formatted_result = face_detector._format_result(
                         results[str(image_path)], 
-                        image_path
+                        image_path,
+                        image_width,
+                        image_height
                     )
                     self.sidecar.save_data(
                         image_path, 
