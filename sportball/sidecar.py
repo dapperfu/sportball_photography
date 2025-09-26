@@ -59,15 +59,42 @@ class SidecarInfo:
             # Ensure directory exists
             self.sidecar_path.parent.mkdir(parents=True, exist_ok=True)
             
-            with open(self.sidecar_path, 'w') as f:
-                json.dump(data, f, indent=2)
+            # Convert data to JSON-serializable format
+            serializable_data = self._make_serializable(data)
             
-            self.data = data
+            with open(self.sidecar_path, 'w') as f:
+                json.dump(serializable_data, f, indent=2)
+            
+            self.data = serializable_data
             self._loaded = True
             return True
         except Exception as e:
             logger.error(f"Failed to save sidecar {self.sidecar_path}: {e}")
             return False
+    
+    def _make_serializable(self, obj):
+        """Convert object to JSON-serializable format."""
+        if hasattr(obj, 'as_dict'):
+            return obj.as_dict()
+        elif hasattr(obj, 'to_dict'):  # fallback for older convention
+            return obj.to_dict()
+        elif hasattr(obj, '__dict__'):  # fallback to instance dict
+            return {key: self._make_serializable(value) for key, value in obj.__dict__.items()}
+        elif isinstance(obj, dict):
+            return {key: self._make_serializable(value) for key, value in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [self._make_serializable(item) for item in obj]
+        elif hasattr(obj, 'tolist'):  # numpy arrays
+            return obj.tolist()
+        else:
+            # Try dataclasses.asdict as last resort
+            try:
+                from dataclasses import asdict
+                if hasattr(obj, '__dataclass_fields__'):
+                    return asdict(obj)
+            except (ImportError, TypeError):
+                pass
+            return obj
     
     def get_processing_time(self) -> Optional[float]:
         """Extract processing time from sidecar data."""
