@@ -80,7 +80,173 @@ class FaceDetector:
         self.face_recognition_available = FACE_RECOGNITION_AVAILABLE
         
         self.logger = logger.bind(component="face_detector")
-        self.logger.info("Initialized FaceDetector")
+    
+    def tune_gpu_batch_size(self, 
+                           test_image_paths: Optional[List[Path]] = None,
+                           max_test_images: int = 50,
+                           start_batch_size: int = 1,
+                           max_batch_size: int = 64,
+                           image_size: tuple = (1920, 1080)) -> int:
+        """
+        Automatically tune GPU batch size by testing until memory limit is reached.
+        
+        Args:
+            test_image_paths: List of test image paths (if None, creates synthetic images)
+            max_test_images: Maximum number of test images to use
+            start_batch_size: Starting batch size for testing
+            max_batch_size: Maximum batch size to test
+            image_size: Size of test images (width, height)
+            
+        Returns:
+            Optimal batch size that doesn't cause memory errors
+        """
+        if not self.enable_gpu:
+            self.logger.info("GPU not enabled, skipping batch size tuning")
+            return self.batch_size
+        
+        try:
+            import torch
+            import cv2
+            import numpy as np
+            
+            if not torch.cuda.is_available():
+                self.logger.info("CUDA not available, skipping batch size tuning")
+                return self.batch_size
+            
+            self.logger.info(f"Starting GPU batch size tuning (max: {max_batch_size})")
+            
+            # Create test images if not provided
+            if test_image_paths is None:
+                test_image_paths = self._create_test_images(max_test_images, image_size)
+            
+            # Limit test images
+            test_image_paths = test_image_paths[:max_test_images]
+            
+            optimal_batch_size = start_batch_size
+            last_successful_batch_size = start_batch_size
+            
+            # Binary search approach for efficiency
+            low, high = start_batch_size, max_batch_size
+            
+            while low <= high:
+                mid_batch_size = (low + high) // 2
+                
+                self.logger.info(f"Testing batch size: {mid_batch_size}")
+                
+                if self._test_batch_size(test_image_paths, mid_batch_size):
+                    # Success - try larger batch size
+                    optimal_batch_size = mid_batch_size
+                    last_successful_batch_size = mid_batch_size
+                    low = mid_batch_size + 1
+                    self.logger.info(f"✅ Batch size {mid_batch_size} successful")
+                else:
+                    # Failure - try smaller batch size
+                    high = mid_batch_size - 1
+                    self.logger.warning(f"❌ Batch size {mid_batch_size} failed (GPU memory)")
+            
+            # Clean up test images if we created them
+            if test_image_paths and len(test_image_paths) > 0:
+                self._cleanup_test_images(test_image_paths)
+            
+            self.logger.info(f"🎯 Optimal GPU batch size: {optimal_batch_size}")
+            return optimal_batch_size
+            
+        except Exception as e:
+            self.logger.error(f"GPU batch size tuning failed: {e}")
+            return self.batch_size
+    
+    def _create_test_images(self, count: int, image_size: tuple) -> List[Path]:
+        """Create synthetic test images for batch size tuning."""
+        import cv2
+        import numpy as np
+        import tempfile
+        from pathlib import Path
+        
+        test_images = []
+        temp_dir = Path(tempfile.mkdtemp(prefix="sportball_gpu_tuning_"))
+        
+        try:
+            for i in range(count):
+                # Create a synthetic image with some faces (rectangles)
+                image = np.random.randint(0, 255, (image_size[1], image_size[0], 3), dtype=np.uint8)
+                
+                # Add some rectangular "faces" for detection
+                for _ in range(np.random.randint(1, 4)):
+                    x = np.random.randint(0, image_size[0] - 100)
+                    y = np.random.randint(0, image_size[1] - 100)
+                    w = np.random.randint(50, 150)
+                    h = np.random.randint(50, 150)
+                    cv2.rectangle(image, (x, y), (x + w, y + h), (255, 255, 255), -1)
+                
+                # Save test image
+                test_path = temp_dir / f"test_image_{i:03d}.jpg"
+                cv2.imwrite(str(test_path), image)
+                test_images.append(test_path)
+                
+        except Exception as e:
+            self.logger.error(f"Failed to create test images: {e}")
+            # Clean up on error
+            self._cleanup_test_images(test_images)
+            return []
+        
+        return test_images
+    
+    def _cleanup_test_images(self, test_image_paths: List[Path]):
+        """Clean up temporary test images."""
+        import shutil
+        
+        try:
+            if test_image_paths:
+                # Get the temp directory from the first image
+                temp_dir = test_image_paths[0].parent
+                if temp_dir.name.startswith("sportball_gpu_tuning_"):
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+        except Exception as e:
+            self.logger.warning(f"Failed to cleanup test images: {e}")
+    
+    def _test_batch_size(self, test_image_paths: List[Path], batch_size: int) -> bool:
+        """Test if a specific batch size works without GPU memory errors."""
+        try:
+            import torch
+            
+            # Clear GPU cache before test
+            torch.cuda.empty_cache()
+            
+            # Test with a subset of images
+            test_batch = test_image_paths[:batch_size]
+            
+            # Try to process the batch
+            results = self._process_face_batch(
+                test_batch, 
+                confidence=0.5, 
+                min_faces=0,  # Allow 0 faces for test
+                max_faces=None, 
+                face_size=64
+            )
+            
+            # Check if we got results
+            success = len(results) == len(test_batch)
+            
+            # Clear GPU cache after test
+            torch.cuda.empty_cache()
+            
+            return success
+            
+        except RuntimeError as e:
+            if "out of memory" in str(e).lower():
+                # Clear GPU cache on memory error
+                try:
+                    import torch
+                    torch.cuda.empty_cache()
+                except:
+                    pass
+                return False
+            else:
+                # Other runtime errors
+                return False
+        except Exception:
+            # Any other error
+            return False
     
     @gpu_accelerated(fallback_cpu=True)
     @cached_result(expire_seconds=3600)  # Cache for 1 hour
