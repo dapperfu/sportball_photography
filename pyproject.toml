@@ -50,6 +50,7 @@ dependencies = [
     # Face recognition
     "face-recognition>=1.3.0",
     "dlib>=19.24.0",
+    "insightface>=0.7.3",
     
     # Object detection
     "ultralytics>=8.0.0",
