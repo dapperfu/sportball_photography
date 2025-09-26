@@ -106,8 +106,8 @@ Issues = "https://github.com/sportball/sportball/issues"
 Documentation = "https://sportball.readthedocs.io"
 
 [project.scripts]
-sportball = "sportball.cli.minimal_main:main"
-sb = "sportball.cli.minimal_main:main"
+sportball = "sportball.cli.ultra_minimal_main:main"
+sb = "sportball.cli.ultra_minimal_main:main"
 
 [tool.setuptools]
 packages = ["sportball", "sportball.cli", "sportball.cli.commands", "sportball.detectors"]
