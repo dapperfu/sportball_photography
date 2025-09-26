@@ -468,19 +468,75 @@ def cluster(ctx: click.Context,
     console.print(f"👥 Min cluster size: {min_cluster_size}", style="blue")
     console.print(f"🧮 Algorithm: {algorithm}", style="blue")
     
-    # Check if input path contains face detection sidecar files
-    sidecar_files = list(input_path.glob("*_face_detection.json"))
+    # Check if input path contains sidecar files with face detection data
+    # Handle both direct sidecar files and symlinked images
+    sidecar_files = []
+    
+    # First, look for direct sidecar files in the directory
+    direct_sidecar_files = list(input_path.glob("*.json"))
+    sidecar_files.extend(direct_sidecar_files)
+    
+    # Also check for sidecar files next to symlinked images
+    image_files = list(input_path.glob("*.jpg")) + list(input_path.glob("*.jpeg")) + list(input_path.glob("*.png"))
+    for image_file in image_files:
+        if image_file.is_symlink():
+            try:
+                # Resolve symlink and look for sidecar next to target
+                target_path = image_file.resolve()
+                target_sidecar = target_path.with_suffix('.json')
+                if target_sidecar.exists() and target_sidecar not in sidecar_files:
+                    sidecar_files.append(target_sidecar)
+            except Exception:
+                continue
+    
     if not sidecar_files:
-        console.print("❌ No face detection sidecar files found", style="red")
+        console.print("❌ No sidecar files found", style="red")
         console.print("💡 Run 'sportball face detect' first to detect faces", style="yellow")
         return
     
-    console.print(f"📊 Found {len(sidecar_files)} face detection files", style="blue")
+    # Check if any sidecar files contain face detection data
+    face_detection_files = []
+    for sidecar_file in sidecar_files:
+        try:
+            import json
+            with open(sidecar_file, 'r') as f:
+                data = json.load(f)
+                if 'face_detection' in data and data['face_detection'].get('success', False):
+                    face_detection_files.append(sidecar_file)
+        except Exception:
+            continue
+    
+    if not face_detection_files:
+        console.print("❌ No face detection data found in sidecar files", style="red")
+        console.print("💡 Run 'sportball face detect' first to detect faces", style="yellow")
+        return
+    
+    console.print(f"📊 Found {len(face_detection_files)} sidecar files with face detection data", style="blue")
+    
+    # Load detection results from sidecar files
+    detection_results = {}
+    for sidecar_file in face_detection_files:
+        try:
+            import json
+            with open(sidecar_file, 'r') as f:
+                data = json.load(f)
+                if 'face_detection' in data and data['face_detection'].get('success', False):
+                    # Extract image path from sidecar filename
+                    image_path = sidecar_file.stem
+                    detection_results[image_path] = data['face_detection']
+        except Exception as e:
+            console.print(f"⚠️  Failed to load sidecar file {sidecar_file}: {e}", style="yellow")
+    
+    if not detection_results:
+        console.print("❌ No valid face detection data found", style="red")
+        return
+    
+    console.print(f"📊 Loaded face detection data for {len(detection_results)} images", style="blue")
     
     # Perform clustering
     try:
         clustering_result = core.cluster_faces(
-            input_path,
+            detection_results,
             similarity_threshold=similarity,
             min_cluster_size=min_cluster_size,
             algorithm=algorithm,
