@@ -110,10 +110,9 @@ def check_sidecar_file_parallel(image_file: Path, force: bool, operation_type: s
                 
                 # Check for face detection data
                 if operation_type == "face_detection":
-                    if ("data" in data and 
-                        "metadata" in data["data"] and
-                        "extraction_timestamp" in data["data"]["metadata"] and
-                        "detector" in data["data"]["metadata"]):
+                    if ("face_detection" in data and 
+                        data["face_detection"].get("success", False) and
+                        "faces" in data["face_detection"]):
                         return (image_file, True)  # Should skip (already processed)
                 
                 # Check for object detection data (YOLOv8)
