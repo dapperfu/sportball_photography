@@ -261,6 +261,26 @@ class ParallelJSONValidator:
         Returns:
             List of ValidationResult objects
         """
+        # Try to use Rust implementation for better performance
+        try:
+            from .rust_sidecar import RustSidecarManager, RustSidecarConfig
+            rust_manager = RustSidecarManager(RustSidecarConfig())
+            if rust_manager.rust_available:
+                rust_results = rust_manager.validate_sidecars(directory, operation_type)
+                # Convert Rust results to ValidationResult objects
+                return [ValidationResult(
+                    file_path=Path(r['file_path']),
+                    is_valid=r['is_valid'],
+                    error=r.get('error'),
+                    processing_time=r.get('processing_time', 0.0),
+                    file_size=r.get('file_size', 0),
+                    detection_count=r.get('detection_count', 0),
+                    tool_name=r.get('tool_name')
+                ) for r in rust_results]
+        except Exception as e:
+            self.logger.warning(f"Rust validation failed, falling back to Python: {e}")
+        
+        # Fall back to Python implementation
         # Find all JSON files
         json_files = list(directory.glob('*.json'))
         
