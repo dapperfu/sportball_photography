@@ -88,6 +88,9 @@ def face_group():
               type=int,
               default=8,
               help='Batch size for processing multiple images (default: 8)')
+@click.option('--auto-tune', 'auto_tune',
+              is_flag=True,
+              help='Automatically tune GPU batch size for optimal performance')
 @click.pass_context
 def detect(ctx: click.Context, 
            input_pattern: str,
@@ -97,7 +100,8 @@ def detect(ctx: click.Context,
            force: bool,
            no_recursive: bool,
            verbose: int,
-           batch_size: int):
+           batch_size: int,
+           auto_tune: bool):
     """
     Detect faces in images and save comprehensive data to JSON sidecar files.
     
@@ -137,6 +141,20 @@ def detect(ctx: click.Context,
         image_files = image_files[:max_images]
     
     console.print(f"📊 Found {len(image_files)} images to analyze", style="blue")
+    
+    # Auto-tune GPU batch size if requested
+    if auto_tune and gpu:
+        console.print("🔧 Auto-tuning GPU batch size...", style="blue")
+        try:
+            face_detector = core.get_face_detector()
+            optimal_batch_size = face_detector.tune_gpu_batch_size(
+                max_test_images=min(20, len(image_files)),
+                max_batch_size=min(32, batch_size * 4)
+            )
+            batch_size = optimal_batch_size
+            console.print(f"🎯 Using optimized batch size: {batch_size}", style="green")
+        except Exception as e:
+            console.print(f"⚠️  Auto-tuning failed, using default batch size: {e}", style="yellow")
     
     # Check for existing sidecar files
     skipped_files = []

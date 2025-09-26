@@ -374,6 +374,105 @@ def system_info(ctx: click.Context):
 
 
 @utility_group.command()
+@click.option('--max-batch-size', 'max_batch_size',
+              type=int,
+              default=64,
+              help='Maximum batch size to test (default: 64)')
+@click.option('--start-batch-size', 'start_batch_size',
+              type=int,
+              default=1,
+              help='Starting batch size for testing (default: 1)')
+@click.option('--max-test-images', 'max_test_images',
+              type=int,
+              default=50,
+              help='Maximum number of test images to use (default: 50)')
+@click.option('--image-size', 'image_size',
+              default='1920x1080',
+              help='Size of test images in format WIDTHxHEIGHT (default: 1920x1080)')
+@click.option('--test-images', 'test_images_path',
+              type=click.Path(exists=True, path_type=Path),
+              help='Use existing images for testing instead of synthetic ones')
+@click.pass_context
+def gpu_tune(ctx: click.Context,
+             max_batch_size: int,
+             start_batch_size: int,
+             max_test_images: int,
+             image_size: str,
+             test_images_path: Optional[Path]):
+    """
+    Automatically tune GPU batch size by testing until memory limit is reached.
+    
+    This command will test different batch sizes to find the optimal setting
+    for your GPU hardware, maximizing performance without running out of memory.
+    """
+    
+    console.print("🔧 Starting GPU batch size tuning...", style="blue")
+    
+    # Parse image size
+    try:
+        width, height = map(int, image_size.split('x'))
+        parsed_image_size = (width, height)
+    except ValueError:
+        console.print(f"❌ Invalid image size format: {image_size}. Use WIDTHxHEIGHT (e.g., 1920x1080)", style="red")
+        return
+    
+    # Get core and face detector
+    core = get_core(ctx)
+    face_detector = core.get_face_detector()
+    
+    # Check GPU availability
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            console.print("❌ CUDA not available. GPU tuning requires CUDA-enabled PyTorch.", style="red")
+            return
+        
+        gpu_name = torch.cuda.get_device_name(0)
+        gpu_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+        console.print(f"🎮 GPU: {gpu_name} ({gpu_memory:.1f} GB)", style="green")
+        
+    except ImportError:
+        console.print("❌ PyTorch not available. GPU tuning requires PyTorch.", style="red")
+        return
+    
+    # Prepare test images
+    test_image_paths = None
+    if test_images_path:
+        if test_images_path.is_dir():
+            from ..utils import find_image_files
+            test_image_paths = find_image_files(test_images_path, recursive=False)
+            console.print(f"📁 Using {len(test_image_paths)} images from {test_images_path}", style="blue")
+        else:
+            test_image_paths = [test_images_path]
+            console.print(f"📁 Using single test image: {test_images_path}", style="blue")
+    
+    # Run GPU tuning
+    console.print(f"🧪 Testing batch sizes from {start_batch_size} to {max_batch_size}", style="blue")
+    console.print(f"🖼️  Image size: {parsed_image_size[0]}x{parsed_image_size[1]}", style="blue")
+    
+    try:
+        optimal_batch_size = face_detector.tune_gpu_batch_size(
+            test_image_paths=test_image_paths,
+            max_test_images=max_test_images,
+            start_batch_size=start_batch_size,
+            max_batch_size=max_batch_size,
+            image_size=parsed_image_size
+        )
+        
+        console.print(f"🎯 Optimal GPU batch size: {optimal_batch_size}", style="green")
+        console.print(f"💡 You can use this batch size with: --batch-size {optimal_batch_size}", style="blue")
+        
+        # Show performance improvement estimate
+        if optimal_batch_size > 1:
+            improvement = (optimal_batch_size - 1) * 100
+            console.print(f"📈 Estimated performance improvement: ~{improvement}%", style="green")
+        
+    except Exception as e:
+        console.print(f"❌ GPU tuning failed: {e}", style="red")
+        return
+
+
+@utility_group.command()
 @click.argument('input_path', type=click.Path(exists=True, path_type=Path))
 @click.option('--output', '-o',
               type=click.Path(path_type=Path),
