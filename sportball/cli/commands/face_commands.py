@@ -104,10 +104,10 @@ def face_group():
 @click.option('--batch-size', 'batch_size',
               type=int,
               default=8,
-              help='Batch size for processing multiple images (default: 8)')
+              help='Processing batch size (legacy parameter, not used in sequential mode)')
 @click.option('--auto-tune', 'auto_tune',
               is_flag=True,
-              help='Automatically tune GPU batch size for optimal performance')
+              help='Automatically tune processing parameters for optimal performance')
 @click.pass_context
 def detect(ctx: click.Context, 
            input_pattern: str,
@@ -159,19 +159,15 @@ def detect(ctx: click.Context,
     
     console.print(f"📊 Found {len(image_files)} images to analyze", style="blue")
     
-    # Auto-tune GPU batch size if requested
+    # Auto-tune processing parameters if requested
     if auto_tune and gpu:
-        console.print("🔧 Auto-tuning GPU batch size...", style="blue")
+        console.print("🔧 Auto-tuning processing parameters...", style="blue")
         try:
-            face_detector = core.get_face_detector()
-            optimal_batch_size = face_detector.tune_gpu_batch_size(
-                max_test_images=min(20, len(image_files)),
-                max_batch_size=min(32, batch_size * 4)
-            )
-            batch_size = optimal_batch_size
-            console.print(f"🎯 Using optimized batch size: {batch_size}", style="green")
+            # For sequential processing, we don't need batch size tuning
+            # This is kept for compatibility but doesn't affect performance
+            console.print("ℹ️  Sequential processing mode - batch size tuning not needed", style="blue")
         except Exception as e:
-            console.print(f"⚠️  Auto-tuning failed, using default batch size: {e}", style="yellow")
+            console.print(f"⚠️  Auto-tuning failed: {e}", style="yellow")
     
     # Check for existing sidecar files
     skipped_files = []
@@ -190,20 +186,19 @@ def detect(ctx: click.Context,
         console.print("✅ All images already processed (use --force to reprocess)", style="green")
         return
     
-    console.print(f"🔍 Starting face detection with batch size {batch_size}...", style="blue")
+    console.print(f"🔍 Starting face detection...", style="blue")
     
-    # Use core's batch processing for face detection
+    # Use core's sequential processing for face detection
     core = get_core(ctx)
     
     # Prepare detection parameters
     detection_kwargs = {
         'confidence': 0.5,
         'min_faces': 1,
-        'face_size': 64,
-        'batch_size': batch_size
+        'face_size': 64
     }
     
-    # Perform batch detection with graceful shutdown handling
+    # Perform sequential detection with graceful shutdown handling
     try:
         results_dict = core.detect_faces(files_to_process, **detection_kwargs)
     except KeyboardInterrupt:
@@ -437,9 +432,9 @@ def display_face_detection_results(results, total_images: int, total_faces_found
     if skipped_count > 0:
         console.print(f"⏭️  {skipped_count} images skipped (existing sidecar data)", style="blue")
     
-    # Show batch processing info
+    # Show processing info
     if total_images > 1:
-        console.print(f"🔄 Used batch processing for efficiency", style="blue")
+        console.print(f"🔄 Used sequential processing for optimal performance", style="blue")
 
 
 def display_benchmark_results(summary):

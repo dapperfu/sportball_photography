@@ -149,15 +149,13 @@ class SportballCore:
     def detect_faces(self, 
                      image_paths: Union[Path, List[Path]], 
                      save_sidecar: bool = True,
-                     batch_size: int = 8,
                      **kwargs) -> Dict[str, Any]:
         """
-        Detect faces in images.
+        Detect faces in images using sequential processing.
         
         Args:
             image_paths: Single image path or list of image paths
             save_sidecar: Whether to save results to sidecar files
-            batch_size: Batch size for processing multiple images
             **kwargs: Additional arguments for face detection
             
         Returns:
@@ -171,7 +169,7 @@ class SportballCore:
         # Use InsightFace detector (default and most reliable)
         face_detector = self.face_detector
         
-        # Perform batch detection
+        # Perform sequential detection
         results = face_detector.detect_faces_batch(image_paths, **kwargs)
         
         # Save to sidecar if requested
@@ -200,7 +198,7 @@ class SportballCore:
                         image_path, 
                         "face_detection", 
                         formatted_result,
-                        metadata={"kwargs": kwargs, "batch_size": batch_size}
+                        metadata={"kwargs": kwargs}
                     )
         
         return results
