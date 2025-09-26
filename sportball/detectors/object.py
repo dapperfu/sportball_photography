@@ -349,7 +349,7 @@ class ObjectDetector:
                 total=len(image_paths), 
                 desc="Detecting objects", 
                 unit="images",
-                bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]'
+                bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}'
             )
         except ImportError:
             progress_bar = None
@@ -403,7 +403,7 @@ class ObjectDetector:
                 total=len(image_paths), 
                 desc="Detecting objects", 
                 unit="images",
-                bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]'
+                bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}'
             )
         except ImportError:
             progress_bar = None
