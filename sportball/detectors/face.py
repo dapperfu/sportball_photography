@@ -1689,9 +1689,20 @@ class InsightFaceDetector:
                 "confidence": float(face.confidence)
             }
             
-            # Add landmarks if available
+            # Add landmarks if available (normalize to percentages like bbox)
             if face.landmarks is not None:
-                face_data["landmarks"] = face.landmarks
+                # Normalize landmarks from pixel coordinates to percentages (0-1)
+                normalized_landmarks = []
+                for landmark in face.landmarks:
+                    if isinstance(landmark, (list, tuple)) and len(landmark) >= 2:
+                        # Normalize x and y coordinates
+                        norm_x = float(landmark[0]) / image_width
+                        norm_y = float(landmark[1]) / image_height
+                        normalized_landmarks.append([norm_x, norm_y])
+                    else:
+                        # Keep original format if not a coordinate pair
+                        normalized_landmarks.append(landmark)
+                face_data["landmarks"] = normalized_landmarks
             
             # Add encoding if available
             if face.encoding is not None:
