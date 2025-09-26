@@ -9,6 +9,8 @@ Generated via Cursor IDE (cursor.sh) with AI assistance
 
 import click
 import json
+import signal
+import sys
 from pathlib import Path
 from typing import Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
@@ -21,6 +23,20 @@ from ...sidecar import Sidecar, OperationType
 from ...detectors.face_benchmark import FaceDetectionBenchmark
 
 console = Console()
+
+# Global flag for graceful shutdown
+shutdown_requested = False
+
+def signal_handler(signum, frame):
+    """Handle interrupt signals gracefully."""
+    global shutdown_requested
+    shutdown_requested = True
+    console.print("\n🛑 Shutdown requested. Finishing current operations...", style="yellow")
+    sys.exit(0)
+
+# Register signal handlers
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 
 def check_sidecar_file(image_file: Path, force: bool) -> Tuple[Path, bool]:
@@ -187,8 +203,15 @@ def detect(ctx: click.Context,
         'batch_size': batch_size
     }
     
-    # Perform batch detection
-    results_dict = core.detect_faces(files_to_process, **detection_kwargs)
+    # Perform batch detection with graceful shutdown handling
+    try:
+        results_dict = core.detect_faces(files_to_process, **detection_kwargs)
+    except KeyboardInterrupt:
+        console.print("\n🛑 Face detection interrupted by user", style="yellow")
+        return
+    except Exception as e:
+        console.print(f"❌ Face detection failed: {e}", style="red")
+        return
     
     # Convert results to list format for compatibility
     results = []
