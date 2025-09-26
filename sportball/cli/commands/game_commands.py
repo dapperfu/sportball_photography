@@ -28,10 +28,10 @@ def game_group():
 
 @game_group.command()
 @click.argument('input_path', type=click.Path(exists=True, file_okay=False, path_type=Path))
-@click.option('--output', '-o',
+@click.argument('output_dir', type=click.Path(path_type=Path))
+@click.option('--split-file', '-s',
               type=click.Path(path_type=Path),
-              default=Path('./games'),
-              help='Output directory for organized games')
+              help='Text file with manual split points (one timestamp per line)')
 @click.option('--pattern', '-p',
               default='*_*',
               help='File pattern to match (e.g., "202509*_*" for Sep 2025)')
@@ -53,27 +53,70 @@ def game_group():
 @click.option('--save-sidecar/--no-sidecar',
               default=True,
               help='Save results to sidecar files')
+@click.option('--analyze-only', 'analyze_only',
+              is_flag=True,
+              help='Only analyze and display results without creating folders')
 @click.pass_context
-def detect(ctx: click.Context, 
-           input_path: Path, 
-           output: Path,
-           pattern: str,
-           min_duration: int,
-           min_gap: int,
-           min_photos: int,
-           copy: bool,
-           save_sidecar: bool):
+def split(ctx: click.Context, 
+          input_path: Path, 
+          output_dir: Path,
+          split_file: Optional[Path],
+          pattern: str,
+          min_duration: int,
+          min_gap: int,
+          min_photos: int,
+          copy: bool,
+          save_sidecar: bool,
+          analyze_only: bool):
     """
-    Detect game boundaries in photos based on timestamps.
+    Split photos into games with optional manual split points.
+    
+    This is the main game organization command that detects game boundaries
+    based on photo timestamps and organizes them into folders.
     
     INPUT_PATH should be a directory containing photos with timestamp filenames.
+    OUTPUT_DIR is where organized games will be created (unless --analyze-only is used).
+    
+    Examples:
+    
+    \b
+    # Basic game splitting
+    sb games split /path/to/photos /path/to/games
+    
+    \b
+    # With manual splits
+    sb games split /path/to/photos /path/to/games --split-file splits.txt
+    
+    \b
+    # Only analyze without creating folders
+    sb games split /path/to/photos /path/to/games --analyze-only
+    
+    \b
+    # Copy files instead of symlinks
+    sb games split /path/to/photos /path/to/games --copy
     """
     
     core = get_core(ctx)
     
-    console.print(f"🎮 Detecting games in {input_path}...", style="blue")
+    if analyze_only:
+        console.print(f"📊 Analyzing games in {input_path}...", style="blue")
+    else:
+        console.print(f"✂️  Splitting photos in {input_path} into games...", style="blue")
+        console.print(f"Output: {output_dir}")
+    
     console.print(f"Pattern: {pattern}")
-    console.print(f"Output: {output}")
+    
+    # Load manual splits if provided
+    manual_splits = []
+    if split_file and split_file.exists():
+        console.print(f"📄 Loading manual splits from {split_file}...", style="blue")
+        manual_splits = core.game_detector.load_split_file(split_file)
+        if manual_splits:
+            console.print(f"✅ Loaded {len(manual_splits)} manual splits", style="green")
+        else:
+            console.print("⚠️  No valid splits found in file", style="yellow")
+    elif split_file:
+        console.print(f"⚠️  Split file not found: {split_file}", style="yellow")
     
     # Perform game detection
     with Progress(
@@ -84,8 +127,9 @@ def detect(ctx: click.Context,
         console=console
     ) as progress:
         
-        task = progress.add_task("Analyzing photos...", total=None)
+        task = progress.add_task("Processing photos...", total=None)
         
+        # Detect games automatically
         results = core.detect_games(
             input_path,
             pattern=pattern,
@@ -97,11 +141,22 @@ def detect(ctx: click.Context,
         
         progress.update(task, completed=True, description="Game detection complete")
     
+    # Apply manual splits if provided
+    if manual_splits and results.get('success', False):
+        console.print(f"🔧 Applying {len(manual_splits)} manual splits...", style="blue")
+        # Get the games from the detector
+        games = core.game_detector.games
+        if games:
+            final_games = core.game_detector.apply_manual_splits(manual_splits)
+            # Update results with final games
+            results['games'] = core.game_detector._format_games_for_output(final_games)
+            console.print(f"✅ Applied manual splits. Final games: {len(final_games)}", style="green")
+    
     # Display results
-    display_game_results(results, output, copy)
+    display_game_results(results, output_dir, copy, analyze_only)
 
 
-def display_game_results(results: dict, output_dir: Path, copy_files: bool):
+def display_game_results(results: dict, output_dir: Path, copy_files: bool, analyze_only: bool = False):
     """Display game detection results."""
     
     if not results.get('success', False):
@@ -148,147 +203,12 @@ def display_game_results(results: dict, output_dir: Path, copy_files: bool):
     console.print(table)
     console.print(f"\n📊 Summary: {len(games)} games detected, {total_photos} photos, {total_duration:.1f} minutes total")
     
-    # Create organized folders
-    console.print(f"\n📁 Creating organized folders in {output_dir}...", style="blue")
-    create_organized_folders(games, output_dir, copy_files)
-
-
-@game_group.command()
-@click.argument('input_path', type=click.Path(exists=True, file_okay=False, path_type=Path))
-@click.argument('output_dir', type=click.Path(path_type=Path))
-@click.option('--split-file', '-s',
-              type=click.Path(path_type=Path),
-              help='Text file with manual split points (one timestamp per line)')
-@click.option('--pattern', '-p',
-              default='*_*',
-              help='File pattern to match')
-@click.option('--copy/--symlink',
-              default=False,
-              help='Copy files instead of creating symlinks')
-@click.option('--interactive', '-i',
-              is_flag=True,
-              help='Interactive mode for adding splits')
-@click.pass_context
-def split(ctx: click.Context, 
-          input_path: Path, 
-          output_dir: Path,
-          split_file: Optional[Path],
-          pattern: str,
-          copy: bool,
-          interactive: bool):
-    """
-    Split photos into games with optional manual split points.
-    
-    INPUT_PATH should be a directory containing photos.
-    OUTPUT_DIR is where organized games will be created.
-    """
-    
-    core = get_core(ctx)
-    
-    console.print(f"✂️  Splitting photos in {input_path} into games...", style="blue")
-    console.print(f"Output: {output_dir}")
-    
-    # Load manual splits if provided
-    manual_splits = []
-    if split_file and split_file.exists():
-        console.print(f"📄 Loading manual splits from {split_file}...", style="blue")
-        manual_splits = core.game_detector.load_split_file(split_file)
-        if manual_splits:
-            console.print(f"✅ Loaded {len(manual_splits)} manual splits", style="green")
-        else:
-            console.print("⚠️  No valid splits found in file", style="yellow")
-    elif split_file:
-        console.print(f"⚠️  Split file not found: {split_file}", style="yellow")
-    
-    # Interactive mode
-    if interactive:
-        console.print("🖱️  Interactive mode not yet implemented", style="yellow")
-    
-    # Perform game splitting
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TimeElapsedColumn(),
-        console=console
-    ) as progress:
-        
-        task = progress.add_task("Processing photos...", total=None)
-        
-        # First detect games automatically
-        results = core.detect_games(
-            input_path,
-            pattern=pattern,
-            save_sidecar=True
-        )
-        
-        progress.update(task, completed=True, description="Game splitting complete")
-    
-    # Apply manual splits if provided
-    if manual_splits and results.get('success', False):
-        console.print(f"🔧 Applying {len(manual_splits)} manual splits...", style="blue")
-        # Get the games from the detector
-        games = core.game_detector.games
-        if games:
-            final_games = core.game_detector.apply_manual_splits(manual_splits)
-            # Update results with final games
-            results['games'] = core.game_detector._format_games_for_output(final_games)
-            console.print(f"✅ Applied manual splits. Final games: {len(final_games)}", style="green")
-    
-    # Display results and create folders
-    display_game_results(results, output_dir, copy)
-
-
-@game_group.command()
-@click.argument('input_path', type=click.Path(exists=True, file_okay=False, path_type=Path))
-@click.option('--pattern', '-p',
-              default='*_*',
-              help='File pattern to match')
-@click.option('--output', '-o',
-              type=click.Path(path_type=Path),
-              help='Output file for report')
-@click.pass_context
-def analyze(ctx: click.Context, 
-            input_path: Path, 
-            pattern: str,
-            output: Optional[Path]):
-    """
-    Analyze photos and generate game statistics without splitting.
-    
-    INPUT_PATH should be a directory containing photos.
-    """
-    
-    core = get_core(ctx)
-    
-    console.print(f"📊 Analyzing photos in {input_path}...", style="blue")
-    
-    # Perform analysis
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TimeElapsedColumn(),
-        console=console
-    ) as progress:
-        
-        task = progress.add_task("Analyzing photos...", total=None)
-        
-        results = core.detect_games(
-            input_path,
-            pattern=pattern,
-            save_sidecar=True
-        )
-        
-        progress.update(task, completed=True, description="Analysis complete")
-    
-    # Display results
-    display_game_results(results, Path.cwd(), False)
-    
-    # Save report if requested
-    if output:
-        console.print(f"💾 Saving report to {output}...", style="blue")
-        # TODO: Implement report saving
-        console.print("Report saving not yet implemented", style="yellow")
+    # Create organized folders (unless analyze-only mode)
+    if not analyze_only:
+        console.print(f"\n📁 Creating organized folders in {output_dir}...", style="blue")
+        create_organized_folders(games, output_dir, copy_files)
+    else:
+        console.print(f"\n📊 Analysis complete - no folders created (use without --analyze-only to create folders)", style="blue")
 
 
 def create_organized_folders(games: List[Dict], output_dir: Path, copy_files: bool = False) -> Dict[str, Path]:
