@@ -18,7 +18,8 @@ from collections import defaultdict, Counter
 import json
 
 from ..utils import get_core
-from ...sidecar import Sidecar, OperationType
+# Lazy import to avoid heavy dependencies at startup
+# from ...sidecar import Sidecar, OperationType
 
 console = Console()
 
@@ -90,6 +91,9 @@ def collect_sidecar_statistics(directory: Path,
                               progress: Progress,
                               task_id: int) -> Dict[str, Any]:
     """Collect comprehensive sidecar statistics using the new Sidecar class."""
+    
+    # Lazy import to avoid heavy dependencies at startup
+    from ...sidecar import Sidecar, OperationType
     
     # Convert operation filter to OperationType enum
     operation_type_filter = None

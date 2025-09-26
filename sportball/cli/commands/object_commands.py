@@ -15,7 +15,8 @@ from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
 from ..utils import get_core, find_image_files
-from ...sidecar import Sidecar, OperationType
+# Lazy import to avoid heavy dependencies at startup
+# from ...sidecar import Sidecar, OperationType
 
 console = Console()
 

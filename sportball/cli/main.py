@@ -15,7 +15,8 @@ from rich.console import Console
 from rich.panel import Panel
 from loguru import logger
 
-from ..core import SportballCore
+# Import core only when needed to avoid heavy imports at startup
+# from ..core import SportballCore
 # Import commands after CLI is defined to avoid circular imports
 
 # Suppress annoying deprecation warnings
@@ -124,22 +125,44 @@ def cli(ctx: click.Context,
         ))
 
 
-# Add command groups (import here to avoid circular imports)
-from .commands import (
-    face_commands,
-    object_commands,
-    game_commands,
-    quality_commands,
-    utility_commands,
-    sidecar_commands
-)
+# Lazy loading of command groups to avoid heavy imports at startup
+def _lazy_load_face_commands():
+    """Load face commands only when needed."""
+    from .commands import face_commands
+    return face_commands.face_group
 
-cli.add_command(face_commands.face_group, name='face')
-cli.add_command(object_commands.object_group, name='object')
-cli.add_command(game_commands.game_group, name='games')
-cli.add_command(quality_commands.quality_group, name='quality')
-cli.add_command(utility_commands.utility_group, name='util')
-cli.add_command(sidecar_commands.sidecar_group, name='sidecar')
+def _lazy_load_object_commands():
+    """Load object commands only when needed."""
+    from .commands import object_commands
+    return object_commands.object_group
+
+def _lazy_load_game_commands():
+    """Load game commands only when needed."""
+    from .commands import game_commands
+    return game_commands.game_group
+
+def _lazy_load_quality_commands():
+    """Load quality commands only when needed."""
+    from .commands import quality_commands
+    return quality_commands.quality_group
+
+def _lazy_load_utility_commands():
+    """Load utility commands only when needed."""
+    from .commands import utility_commands
+    return utility_commands.utility_group
+
+def _lazy_load_sidecar_commands():
+    """Load sidecar commands only when needed."""
+    from .commands import sidecar_commands
+    return sidecar_commands.sidecar_group
+
+# Add lazy-loaded command groups
+cli.add_command(_lazy_load_face_commands, name='face')
+cli.add_command(_lazy_load_object_commands, name='object')
+cli.add_command(_lazy_load_game_commands, name='games')
+cli.add_command(_lazy_load_quality_commands, name='quality')
+cli.add_command(_lazy_load_utility_commands, name='util')
+cli.add_command(_lazy_load_sidecar_commands, name='sidecar')
 
 
 
