@@ -215,10 +215,6 @@ def detect(ctx: click.Context,
 @click.option('--output', '-o',
               type=click.Path(path_type=Path),
               help='Output directory for extracted faces')
-@click.option('--face-size', 'face_size',
-              type=int,
-              default=256,
-              help='Size of extracted faces in pixels (default: 256)')
 @click.option('--padding', '-p',
               type=int,
               default=20,
@@ -236,13 +232,12 @@ def detect(ctx: click.Context,
 def extract(ctx: click.Context, 
            input_path: Path, 
            output: Optional[Path],
-           face_size: int,
            padding: int,
            workers: Optional[int],
            no_recursive: bool,
            verbose: int):
     """
-    Extract detected faces to separate images.
+    Extract detected faces to separate images at their natural detected size.
     
     INPUT_PATH should be a directory containing images with face detection sidecar files.
     """
@@ -263,7 +258,6 @@ def extract(ctx: click.Context,
     
     console.print(f"✂️  Extracting faces from {input_path}...", style="blue")
     console.print(f"📁 Output directory: {output}", style="blue")
-    console.print(f"🖼️  Face size: {face_size}px", style="blue")
     console.print(f"📏 Padding: {padding}px", style="blue")
     
     # Find image files (recursive by default)
@@ -282,7 +276,6 @@ def extract(ctx: click.Context,
     extraction_results = core.extract_faces(
         image_files,
         output,
-        face_size=face_size,
         padding=padding,
         max_workers=workers
     )
