@@ -85,6 +85,10 @@ def cli(ctx: click.Context,
     Bash Completion:
     To enable bash completion, add this to your ~/.bashrc or ~/.bash_profile:
     
+        # For virtual environment (recommended):
+        eval "$(python -m sportball.cli.main --completion-script-bash)"
+        
+        # Or if sportball is in your PATH:
         eval "$(sportball --completion-script-bash)"
     
     Then restart your shell or run: source ~/.bashrc

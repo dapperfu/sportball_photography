@@ -221,7 +221,7 @@ def check_sidecar_files_parallel(image_files: List[Path],
                 desc="Checking sidecar files",
                 unit="files",
                 leave=False,
-                bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]'
+                bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}'
             )
         
         for future in as_completed(future_to_file):
@@ -297,7 +297,7 @@ def check_sidecar_files(image_files: List[Path],
                     desc="Checking sidecar files",
                     unit="files",
                     leave=False,
-                    bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]'
+                    bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}'
                 )
             except ImportError:
                 progress_bar = None
