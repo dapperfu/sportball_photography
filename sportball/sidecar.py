@@ -339,6 +339,24 @@ class Sidecar:
         
         return None
     
+    def _make_serializable_standalone(self, obj):
+        """Convert object to JSON-serializable format (standalone version)."""
+        if hasattr(obj, 'as_dict'):
+            return obj.as_dict()
+        elif hasattr(obj, 'to_dict'):  # fallback for older convention
+            return obj.to_dict()
+        elif hasattr(obj, '__dict__'):  # fallback to instance dict
+            return {key: self._make_serializable_standalone(value) for key, value in obj.__dict__.items()}
+        elif isinstance(obj, dict):
+            return {key: self._make_serializable_standalone(value) for key, value in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [self._make_serializable_standalone(item) for item in obj]
+        elif isinstance(obj, (str, int, float, bool, type(None))):
+            return obj
+        else:
+            # For other types, try to convert to string
+            return str(obj)
+    
     def get_statistics(self, directory: Path, 
                       operation_filter: Optional[OperationType] = None) -> Dict[str, Any]:
         """
@@ -540,6 +558,87 @@ class Sidecar:
         
         sidecar_info = self.create_sidecar(image_path, operation, data)
         return sidecar_info is not None
+    
+    def save_data_merge(self, image_path: Path, operation_type: str, data: Dict[str, Any], 
+                       metadata: Optional[Dict] = None) -> bool:
+        """Save data to sidecar file, merging with existing data to preserve other operations."""
+        try:
+            operation = OperationType(operation_type)
+        except ValueError:
+            operation = OperationType.UNKNOWN
+        
+        # Resolve symlink if needed
+        if image_path.is_symlink():
+            try:
+                target_path = image_path.resolve()
+                symlink_info = {
+                    'symlink_path': str(image_path),
+                    'target_path': str(target_path),
+                    'is_symlink': True,
+                    'broken': not target_path.exists()
+                }
+                actual_image_path = target_path
+            except Exception as e:
+                logger.error(f"Failed to resolve symlink {image_path}: {e}")
+                return False
+        else:
+            actual_image_path = image_path
+            symlink_info = {
+                'symlink_path': str(image_path),
+                'target_path': str(image_path),
+                'is_symlink': False
+            }
+        
+        # Create sidecar path next to actual image
+        sidecar_path = actual_image_path.with_suffix('.json')
+        
+        # Load existing data if file exists
+        existing_data = {}
+        if sidecar_path.exists():
+            try:
+                with open(sidecar_path, 'r') as f:
+                    existing_data = json.load(f)
+            except Exception as e:
+                logger.warning(f"Could not read existing sidecar {sidecar_path}: {e}")
+                existing_data = {}
+        
+        # Merge the new data with existing data
+        # The new data goes into the root level with the operation_type as key
+        merged_data = existing_data.copy()
+        merged_data[operation_type] = data
+        
+        # Update sidecar_info if it exists, otherwise create new
+        if 'sidecar_info' in existing_data:
+            merged_data['sidecar_info'].update({
+                'last_updated': datetime.now().isoformat(),
+                'last_operation': operation.value
+            })
+        else:
+            merged_data['sidecar_info'] = {
+                'operation_type': operation.value,
+                'created_at': datetime.now().isoformat(),
+                'last_updated': datetime.now().isoformat(),
+                'last_operation': operation.value,
+                'image_path': str(actual_image_path),
+                'symlink_path': str(image_path),
+                'symlink_info': symlink_info
+            }
+        
+        # Save the merged data
+        try:
+            # Ensure directory exists
+            sidecar_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Convert data to JSON-serializable format
+            serializable_data = self._make_serializable_standalone(merged_data)
+            
+            with open(sidecar_path, 'w') as f:
+                json.dump(serializable_data, f, indent=2)
+            
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save merged sidecar {sidecar_path}: {e}")
+            return False
     
     def get_operation_summary(self, directory: Path) -> Dict[str, Any]:
         """Get operation summary for backward compatibility."""

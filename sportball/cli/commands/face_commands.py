@@ -61,9 +61,12 @@ def check_sidecar_file(image_file: Path, force: bool) -> Tuple[Path, bool]:
                 with open(json_path, 'r') as f:
                     data = json.load(f)
                 
-                if ("face_detection" in data and 
-                    "metadata" in data["face_detection"] and
-                    "extraction_timestamp" in data["face_detection"]["metadata"]):
+                # Check if face detection data exists
+                # The data is stored under 'data' key with face detection metadata
+                if ("data" in data and 
+                    "metadata" in data["data"] and
+                    "extraction_timestamp" in data["data"]["metadata"] and
+                    "detector" in data["data"]["metadata"]):
                     return (image_file, True)  # Should skip (already processed)
             except (json.JSONDecodeError, KeyError, TypeError):
                 pass

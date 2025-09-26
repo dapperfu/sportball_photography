@@ -1114,3 +1114,68 @@ class ObjectDetector:
         print("  --classes person,sports ball  # Detect people and sports balls")
         print("  --classes car,truck,bus        # Detect vehicles")
         print("  --classes person              # Detect only people")
+    
+    def _save_sidecar(self, detection_result: DetectionResult) -> bool:
+        """
+        Save detection result to sidecar file.
+        
+        Args:
+            detection_result: Detection result to save
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            image_path = Path(detection_result.image_path)
+            
+            # Format the result for JSON serialization
+            formatted_result = self._format_result(detection_result)
+            
+            # Save to sidecar file
+            sidecar_path = image_path.with_suffix('.json')
+            
+            # Load existing data if file exists
+            existing_data = {}
+            if sidecar_path.exists():
+                try:
+                    with open(sidecar_path, 'r') as f:
+                        existing_data = json.load(f)
+                except Exception as e:
+                    logger.warning(f"Could not read existing sidecar {sidecar_path}: {e}")
+                    existing_data = {}
+            
+            # Merge the new data with existing data
+            merged_data = existing_data.copy()
+            merged_data['yolov8'] = formatted_result
+            
+            # Update sidecar_info if it exists, otherwise create new
+            if 'sidecar_info' in existing_data:
+                merged_data['sidecar_info'].update({
+                    'last_updated': __import__('datetime').datetime.now().isoformat(),
+                    'last_operation': 'yolov8'
+                })
+            else:
+                merged_data['sidecar_info'] = {
+                    'operation_type': 'yolov8',
+                    'created_at': __import__('datetime').datetime.now().isoformat(),
+                    'last_updated': __import__('datetime').datetime.now().isoformat(),
+                    'last_operation': 'yolov8',
+                    'image_path': str(image_path),
+                    'symlink_path': str(image_path),
+                    'symlink_info': {
+                        'symlink_path': str(image_path),
+                        'target_path': str(image_path),
+                        'is_symlink': False
+                    }
+                }
+            
+            # Save the merged data
+            with open(sidecar_path, 'w') as f:
+                json.dump(merged_data, f, indent=2, cls=NumpyEncoder)
+            
+            logger.debug(f"Saved YOLOv8 detection results to {sidecar_path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to save sidecar for {detection_result.image_path}: {e}")
+            return False

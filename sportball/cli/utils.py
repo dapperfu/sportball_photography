@@ -56,11 +56,18 @@ def find_image_files(input_path: Path, recursive: bool = True) -> List[Path]:
     
     image_files = []
     
+    # Directories to exclude from search
+    exclude_dirs = {'venv', '__pycache__', '.git', '.sportball_cache', 'node_modules'}
+    
     if recursive:
-        # Recursive search
+        # Recursive search with exclusions
         for ext in image_extensions:
-            image_files.extend(input_path.rglob(f'*{ext}'))
-            image_files.extend(input_path.rglob(f'*{ext.upper()}'))
+            for pattern in [f'*{ext}', f'*{ext.upper()}']:
+                for file_path in input_path.rglob(pattern):
+                    # Skip files in excluded directories
+                    if any(exclude_dir in file_path.parts for exclude_dir in exclude_dirs):
+                        continue
+                    image_files.append(file_path)
     else:
         # Non-recursive search
         for ext in image_extensions:
