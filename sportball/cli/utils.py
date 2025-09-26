@@ -138,7 +138,8 @@ def check_sidecar_files_parallel(image_files: List[Path],
                                 operation_type: str = "face_detection",
                                 max_workers: Optional[int] = None,
                                 use_processes: bool = False,
-                                show_progress: bool = True) -> Tuple[List[Path], List[Path]]:
+                                show_progress: bool = True,
+                                use_rust: bool = True) -> Tuple[List[Path], List[Path]]:
     """
     Check sidecar files in parallel to determine which files should be processed.
     
@@ -149,12 +150,45 @@ def check_sidecar_files_parallel(image_files: List[Path],
         max_workers: Maximum number of parallel workers (defaults to CPU count)
         use_processes: Whether to use ProcessPoolExecutor instead of ThreadPoolExecutor
         show_progress: Whether to show a progress bar during processing
+        use_rust: Whether to use Rust implementation if available
         
     Returns:
         Tuple of (files_to_process, skipped_files)
     """
     if not image_files:
         return [], []
+    
+    # Try Rust implementation first if available and requested
+    if use_rust:
+        try:
+            # Lazy import to avoid heavy dependencies at startup
+            from ..detection.integration import DetectionIntegration
+            detection = DetectionIntegration(max_workers=max_workers)
+            
+            if detection.rust_module and detection.rust_module.rust_available:
+                # Use Rust implementation for massively parallel validation
+                validation_results = detection.validate_sidecar_files(
+                    image_files[0].parent if image_files else Path.cwd(),
+                    operation_type=operation_type,
+                    use_rust=True
+                )
+                
+                # Convert validation results to file lists
+                files_to_process = []
+                skipped_files = []
+                
+                for result in validation_results:
+                    file_path = Path(result['file_path'])
+                    if result['is_valid'] and not force:
+                        skipped_files.append(file_path)
+                    else:
+                        files_to_process.append(file_path)
+                
+                return files_to_process, skipped_files
+                
+        except Exception as e:
+            # Fall back to Python implementation
+            pass
     
     # Determine optimal number of workers
     if max_workers is None:
@@ -214,12 +248,13 @@ def check_sidecar_files(image_files: List[Path],
                        force: bool, 
                        operation_type: str = "face_detection",
                        use_parallel: bool = True,
-                       show_progress: bool = True) -> Tuple[List[Path], List[Path]]:
+                       show_progress: bool = True,
+                       use_rust: bool = True) -> Tuple[List[Path], List[Path]]:
     """
     High-level function to check sidecar files and determine which files should be processed.
     
     This is the main entry point for sidecar checking that all commands should use.
-    It automatically chooses the best approach (parallel vs sequential) based on the number of files.
+    It automatically chooses the best approach (Rust vs Python, parallel vs sequential) based on availability and file count.
     
     Args:
         image_files: List of image file paths to check
@@ -227,6 +262,7 @@ def check_sidecar_files(image_files: List[Path],
         operation_type: Type of operation to check for ("face_detection", "object_detection", etc.)
         use_parallel: Whether to use parallel processing (default: True)
         show_progress: Whether to show a progress bar during processing
+        use_rust: Whether to use Rust implementation if available (default: True)
         
     Returns:
         Tuple of (files_to_process, skipped_files)
@@ -242,7 +278,8 @@ def check_sidecar_files(image_files: List[Path],
             force, 
             operation_type, 
             use_processes=True,  # Use ProcessPoolExecutor for better I/O performance
-            show_progress=show_progress
+            show_progress=show_progress,
+            use_rust=use_rust
         )
     else:
         # Sequential processing for small file sets
