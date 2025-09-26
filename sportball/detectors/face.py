@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from loguru import logger
 
 try:
@@ -39,6 +39,26 @@ class DetectedFace:
     confidence: float
     landmarks: Optional[List[tuple]] = None
     encoding: Optional[List[float]] = None
+    
+    def as_dict(self) -> Dict[str, Any]:
+        """Convert to JSON-serializable dictionary."""
+        result = asdict(self)
+        
+        # Convert tuples to lists for JSON serialization
+        if 'bbox' in result:
+            result['bbox'] = list(result['bbox'])
+        
+        if 'landmarks' in result and result['landmarks'] is not None:
+            result['landmarks'] = [list(landmark) if isinstance(landmark, tuple) else landmark for landmark in result['landmarks']]
+        
+        if 'encoding' in result and result['encoding'] is not None:
+            # Convert numpy array to list for JSON serialization
+            if hasattr(result['encoding'], 'tolist'):
+                result['encoding'] = result['encoding'].tolist()
+            else:
+                result['encoding'] = list(result['encoding'])
+        
+        return result
 
 
 @dataclass
@@ -49,6 +69,16 @@ class FaceDetectionResult:
     success: bool
     processing_time: float
     error: Optional[str] = None
+    
+    def as_dict(self) -> Dict[str, Any]:
+        """Convert to JSON-serializable dictionary."""
+        result = asdict(self)
+        
+        # Ensure faces are properly serialized
+        if 'faces' in result:
+            result['faces'] = [face.as_dict() for face in self.faces]
+        
+        return result
 
 
 class FaceDetector:
@@ -594,21 +624,24 @@ class FaceDetector:
                 image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                 batch_images_rgb.append(image_rgb)
             
-            self._log_gpu_memory("After loading images to GPU memory")
-            
-            # Use true batch processing with face_recognition
-            # This will load multiple images into GPU memory and process them together
-            batch_face_locations = face_recognition.batch_face_locations(
-                batch_images_rgb,
-                number_of_times_to_upsample=1,
-                batch_size=len(batch_images_rgb)  # Process all images in one batch
-            )
-            
-            self._log_gpu_memory("After batch face detection")
-            
-            # Process results for each image
-            for i, (face_locations, metadata) in enumerate(zip(batch_face_locations, batch_metadata)):
+            # Use sequential processing for GPU acceleration
+            # Sequential is often faster for GPU operations due to internal parallelization
+            for i, (image_rgb, metadata) in enumerate(zip(batch_images_rgb, batch_metadata)):
+                
                 try:
+                    # Use CNN model for GPU acceleration
+                    try:
+                        face_locations = face_recognition.face_locations(
+                            image_rgb,
+                            model="cnn"  # CNN model uses GPU acceleration
+                        )
+                    except Exception:
+                        # Fall back to HOG model if CNN fails
+                        face_locations = face_recognition.face_locations(
+                            image_rgb,
+                            model="hog"
+                        )
+                    
                     # Convert face_recognition format to our format
                     detected_faces = []
                     for j, (top, right, bottom, left) in enumerate(face_locations):
@@ -627,7 +660,7 @@ class FaceDetector:
                                 # Add face encoding
                                 try:
                                     face_encoding = face_recognition.face_encodings(
-                                        batch_images_rgb[i], 
+                                        image_rgb, 
                                         [(top, right, bottom, left)]
                                     )[0]
                                     detected_face.encoding = face_encoding
@@ -661,20 +694,98 @@ class FaceDetector:
                     )
             
         except Exception as e:
-            self.logger.error(f"GPU batch processing failed: {e}")
+            self.logger.error(f"GPU parallel batch processing failed: {e}")
             # Fall back to CPU processing
             return self._process_cpu_batch(batch_images, batch_metadata, confidence, min_faces, max_faces, face_size, start_time)
         
-        self._log_gpu_memory("After GPU batch processing")
         return results
     
+    def _process_single_image_gpu(self, data):
+        """Process a single image with GPU acceleration."""
+        import time
+        import face_recognition
+        import cv2
+        
+        start_time = time.time()
+        image_rgb = data['image_rgb']
+        metadata = data['metadata']
+        confidence = data['confidence']
+        min_faces = data['min_faces']
+        max_faces = data['max_faces']
+        face_size = data['face_size']
+        
+        try:
+            # Use CNN model for GPU acceleration
+            try:
+                face_locations = face_recognition.face_locations(
+                    image_rgb,
+                    model="cnn"  # CNN model uses GPU acceleration
+                )
+            except Exception:
+                # Fall back to HOG model if CNN fails
+                face_locations = face_recognition.face_locations(
+                    image_rgb,
+                    model="hog"
+                )
+            
+            # Convert face_recognition format to our format
+            detected_faces = []
+            for j, (top, right, bottom, left) in enumerate(face_locations):
+                x, y, w, h = left, top, right - left, bottom - top
+                
+                if w >= face_size and h >= face_size:
+                    face_confidence = 0.9  # face_recognition doesn't provide confidence
+                    
+                    if confidence is None or face_confidence >= confidence:
+                        detected_face = DetectedFace(
+                            face_id=j,
+                            bbox=(x, y, w, h),
+                            confidence=face_confidence
+                        )
+                        
+                        # Add face encoding
+                        try:
+                            face_encoding = face_recognition.face_encodings(
+                                image_rgb, 
+                                [(top, right, bottom, left)]
+                            )[0]
+                            detected_face.encoding = face_encoding
+                        except Exception as e:
+                            self.logger.warning(f"Failed to encode face: {e}")
+                        
+                        detected_faces.append(detected_face)
+            
+            # Apply face count limits
+            if max_faces and len(detected_faces) > max_faces:
+                detected_faces = detected_faces[:max_faces]
+            
+            # Check minimum face count
+            success = len(detected_faces) >= min_faces
+            
+            return FaceDetectionResult(
+                faces=detected_faces,
+                face_count=len(detected_faces),
+                success=success,
+                processing_time=time.time() - start_time,
+                error=None if success else f"Found {len(detected_faces)} faces, need at least {min_faces}"
+            )
+            
+        except Exception as e:
+            return FaceDetectionResult(
+                faces=[],
+                face_count=0,
+                success=False,
+                processing_time=time.time() - start_time,
+                error=str(e)
+            )
+    
     def _process_cpu_batch(self, batch_images, batch_metadata, confidence, min_faces, max_faces, face_size, start_time):
-        """Process batch using CPU-based face_recognition."""
+        """Process batch using individual face_recognition processing."""
         import time
         import face_recognition
         results = {}
         
-        # Process each image in the batch
+        # Process each image individually (more reliable than batch_face_locations)
         batch_processing_time = time.time() - start_time
         
         for i, (image, metadata) in enumerate(zip(batch_images, batch_metadata)):
@@ -682,8 +793,12 @@ class FaceDetector:
                 # Convert BGR to RGB for face_recognition
                 rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                 
-                # Detect face locations
-                face_locations = face_recognition.face_locations(rgb_image, model="hog")
+                # Use CNN model for GPU acceleration if available
+                try:
+                    face_locations = face_recognition.face_locations(rgb_image, model="cnn")
+                except Exception:
+                    # Fall back to HOG model if CNN fails
+                    face_locations = face_recognition.face_locations(rgb_image, model="hog")
                 
                 # Filter faces by confidence and size
                 detected_faces = []
