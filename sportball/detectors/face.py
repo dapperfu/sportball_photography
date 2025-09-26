@@ -1341,6 +1341,13 @@ class InsightFaceDetector:
                     continue
                 
                 # Process with InsightFace
+                if self.app is None:
+                    results[str(img_path)] = FaceDetectionResult(
+                        faces=[], face_count=0, success=False, processing_time=0.0,
+                        error="InsightFace not initialized - check installation and dependencies"
+                    )
+                    continue
+                
                 faces = self.app.get(image)
                 
                 # Filter faces by confidence and size
@@ -1457,6 +1464,16 @@ class InsightFaceDetector:
             
             # Process all images in parallel using GPU
             self.logger.info(f"Processing {len(batch_images)} images simultaneously on GPU")
+            
+            # Check if InsightFace is initialized
+            if self.app is None:
+                # Fall back to individual processing with error handling
+                for i, (image, metadata) in enumerate(zip(batch_images, batch_metadata)):
+                    results[str(metadata['path'])] = FaceDetectionResult(
+                        faces=[], face_count=0, success=False, processing_time=0.0,
+                        error="InsightFace not initialized - check installation and dependencies"
+                    )
+                return results
             
             # Use InsightFace's batch processing capability
             batch_faces = self.app.get(batch_images)
