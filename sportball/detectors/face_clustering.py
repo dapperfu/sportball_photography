@@ -56,6 +56,13 @@ class FaceCluster:
     def as_dict(self) -> Dict[str, Any]:
         """Convert to JSON-serializable dictionary."""
         result = asdict(self)
+        
+        # Convert numpy types to Python native types
+        if 'cluster_id' in result:
+            result['cluster_id'] = int(result['cluster_id'])
+        if 'face_count' in result:
+            result['face_count'] = int(result['face_count'])
+        
         return result
 
 
@@ -75,6 +82,15 @@ class FaceClusteringResult:
     def as_dict(self) -> Dict[str, Any]:
         """Convert to JSON-serializable dictionary."""
         result = asdict(self)
+        
+        # Convert numpy types to Python native types
+        if 'total_faces' in result:
+            result['total_faces'] = int(result['total_faces'])
+        if 'cluster_count' in result:
+            result['cluster_count'] = int(result['cluster_count'])
+        if 'processing_time' in result:
+            result['processing_time'] = float(result['processing_time'])
+        
         if 'clusters' in result:
             result['clusters'] = [cluster.as_dict() for cluster in self.clusters]
         return result
