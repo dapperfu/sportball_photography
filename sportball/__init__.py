@@ -66,16 +66,15 @@ class LazyDecorators:
 SportballCore = LazySportballCore()
 SidecarManager = LazySidecarManager()
 decorators = LazyDecorators()
-gpu_accelerated = decorators.gpu_accelerated
-parallel_processing = decorators.parallel_processing
-progress_tracked = decorators.progress_tracked
-cached_result = decorators.cached_result
+
+# Don't access decorators immediately - keep them truly lazy
+# gpu_accelerated = decorators.gpu_accelerated
+# parallel_processing = decorators.parallel_processing
+# progress_tracked = decorators.progress_tracked
+# cached_result = decorators.cached_result
 
 __all__ = [
     "SportballCore",
     "SidecarManager", 
-    "gpu_accelerated",
-    "parallel_processing",
-    "progress_tracked",
-    "cached_result"
+    "decorators"
 ]

@@ -11,21 +11,10 @@ import click
 import warnings
 from pathlib import Path
 from typing import Optional
-from rich.console import Console
-from rich.panel import Panel
-# Lazy import loguru to avoid heavy dependencies at startup
-# from loguru import logger
-
-# Import core only when needed to avoid heavy imports at startup
-# from ..core import SportballCore
-# Import commands after CLI is defined to avoid circular imports
 
 # Suppress annoying deprecation warnings
 warnings.filterwarnings("ignore", message="pkg_resources is deprecated", category=UserWarning)
 warnings.filterwarnings("ignore", message=".*pkg_resources.*", category=UserWarning)
-
-# Configure rich console
-console = Console()
 
 
 @click.group(context_settings={'help_option_names': ['-h', '--help']})
@@ -99,7 +88,7 @@ def cli(ctx: click.Context,
     To enable bash completion, add this to your ~/.bashrc or ~/.bash_profile:
     
         # For virtual environment (recommended):
-        eval "$(python -m sportball.cli.main completion --bash)"
+        eval "$(python3 -m sportball.cli.main completion --bash)"
         
         # Or if sportball is in your PATH:
         eval "$(sportball completion --bash)"
@@ -130,8 +119,11 @@ def cli(ctx: click.Context,
     ctx.obj['verbose'] = verbose
     ctx.obj['quiet'] = quiet
     
-    # Display header if not quiet
+    # Display header if not quiet (lazy import rich)
     if not quiet:
+        from rich.console import Console
+        from rich.panel import Panel
+        console = Console()
         console.print(Panel.fit(
             "[bold blue]Sportball[/bold blue] - Unified Sports Photo Analysis\n"
             "AI-powered sports photo processing and organization",
@@ -139,22 +131,27 @@ def cli(ctx: click.Context,
         ))
 
 
-# Add command groups (import here to avoid circular imports)
-from .commands import (
-    face_commands,
-    object_commands,
-    game_commands,
-    quality_commands,
-    utility_commands,
-    sidecar_commands
-)
+# Lazy load command groups to avoid heavy imports at startup
+def _load_commands():
+    """Load command groups only when needed."""
+    from .commands import (
+        face_commands,
+        object_commands,
+        game_commands,
+        quality_commands,
+        utility_commands,
+        sidecar_commands
+    )
+    
+    cli.add_command(face_commands.face_group, name='face')
+    cli.add_command(object_commands.object_group, name='object')
+    cli.add_command(game_commands.game_group, name='games')
+    cli.add_command(quality_commands.quality_group, name='quality')
+    cli.add_command(utility_commands.utility_group, name='util')
+    cli.add_command(sidecar_commands.sidecar_group, name='sidecar')
 
-cli.add_command(face_commands.face_group, name='face')
-cli.add_command(object_commands.object_group, name='object')
-cli.add_command(game_commands.game_group, name='games')
-cli.add_command(quality_commands.quality_group, name='quality')
-cli.add_command(utility_commands.utility_group, name='util')
-cli.add_command(sidecar_commands.sidecar_group, name='sidecar')
+# Load commands immediately for now, but this can be moved to lazy loading later
+_load_commands()
 
 
 @cli.command()

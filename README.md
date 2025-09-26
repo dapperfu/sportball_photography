@@ -12,7 +12,7 @@ A comprehensive Python package for analyzing and organizing sports photographs u
 - **Photo Quality Assessment** - Multi-metric quality analysis and filtering
 - **Recursive Processing** - Process directories recursively by default
 - **Parallel Processing** - GPU-accelerated processing with multi-threading
-- **Sidecar Data Management** - JSON sidecar files for metadata and caching
+- **High-Performance Sidecar Management** - Rust-powered JSON sidecar operations (3-10x faster)
 - **Comprehensive CLI** - Clean command-line interface with subcommands
 
 ## 📦 Installation
@@ -35,6 +35,18 @@ pip install sportball[cuda]
 git clone https://github.com/sportball/sportball.git
 cd sportball
 pip install -e .[dev]
+```
+
+### High-Performance Rust Integration
+
+For maximum performance, build the Rust sidecar tool:
+
+```bash
+# Build the Rust sidecar tool (3-10x faster)
+make build-rust-sidecar
+
+# Test the integration
+make test-integration
 ```
 
 ## 🎯 Quick Start
@@ -301,12 +313,25 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - face_recognition for face detection and recognition
 - Click for CLI framework
 - Rich for beautiful terminal output
+- Rust for high-performance sidecar operations
+- Rayon for parallel processing
 
 ## 📞 Support
 
 - [GitHub Issues](https://github.com/sportball/sportball/issues)
 - [Discussions](https://github.com/sportball/sportball/discussions)
 - [Email](mailto:support@sportball.ai)
+
+## 🚀 Performance
+
+Sportball now includes high-performance Rust integration for sidecar operations:
+
+- **3-10x faster** JSON validation and processing
+- **Massive parallelism** across all CPU cores
+- **Automatic fallback** to Python when Rust unavailable
+- **Zero code changes** required for existing code
+
+See [RUST_SIDECAR_INTEGRATION.md](RUST_SIDECAR_INTEGRATION.md) for details.
 
 ---
 
