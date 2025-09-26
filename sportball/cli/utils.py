@@ -209,3 +209,72 @@ def check_sidecar_files_parallel(image_files: List[Path],
             progress_bar.close()
     
     return files_to_process, skipped_files
+
+
+def check_sidecar_files(image_files: List[Path], 
+                       force: bool, 
+                       operation_type: str = "face_detection",
+                       use_parallel: bool = True,
+                       show_progress: bool = True) -> Tuple[List[Path], List[Path]]:
+    """
+    High-level function to check sidecar files and determine which files should be processed.
+    
+    This is the main entry point for sidecar checking that all commands should use.
+    It automatically chooses the best approach (parallel vs sequential) based on the number of files.
+    
+    Args:
+        image_files: List of image file paths to check
+        force: Whether to force processing even if sidecar exists
+        operation_type: Type of operation to check for ("face_detection", "object_detection", etc.)
+        use_parallel: Whether to use parallel processing (default: True)
+        show_progress: Whether to show a progress bar during processing
+        
+    Returns:
+        Tuple of (files_to_process, skipped_files)
+    """
+    if not image_files:
+        return [], []
+    
+    # For small numbers of files, sequential might be faster due to overhead
+    # For large numbers, parallel is definitely faster
+    if use_parallel and len(image_files) >= 50:
+        return check_sidecar_files_parallel(
+            image_files, 
+            force, 
+            operation_type, 
+            use_processes=True,  # Use ProcessPoolExecutor for better I/O performance
+            show_progress=show_progress
+        )
+    else:
+        # Sequential processing for small file sets
+        files_to_process = []
+        skipped_files = []
+        
+        if show_progress:
+            try:
+                from tqdm import tqdm
+                progress_bar = tqdm(
+                    total=len(image_files),
+                    desc="Checking sidecar files",
+                    unit="files",
+                    leave=False
+                )
+            except ImportError:
+                progress_bar = None
+        else:
+            progress_bar = None
+        
+        for image_file in image_files:
+            _, should_skip = check_sidecar_file_parallel(image_file, force, operation_type)
+            if should_skip:
+                skipped_files.append(image_file)
+            else:
+                files_to_process.append(image_file)
+            
+            if progress_bar:
+                progress_bar.update(1)
+        
+        if progress_bar:
+            progress_bar.close()
+        
+        return files_to_process, skipped_files

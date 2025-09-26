@@ -18,7 +18,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
-from ..utils import get_core, find_image_files, check_sidecar_files_parallel
+from ..utils import get_core, find_image_files, check_sidecar_files
 # Lazy imports to avoid heavy dependencies at startup
 # from ...sidecar import Sidecar, OperationType
 # from ...detectors.face_benchmark import FaceDetectionBenchmark
@@ -38,44 +38,6 @@ def signal_handler(signum, frame):
 # Register signal handlers
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
-
-
-def check_sidecar_file(image_file: Path, force: bool) -> Tuple[Path, bool]:
-    """
-    Check if a sidecar file exists and contains face detection data.
-    
-    Args:
-        image_file: Path to the image file
-        force: Whether to force processing even if sidecar exists
-        
-    Returns:
-        Tuple of (image_file, should_skip)
-    """
-    try:
-        # Resolve symlink if needed
-        original_image_path = image_file.resolve() if image_file.is_symlink() else image_file
-        json_path = original_image_path.parent / f"{original_image_path.stem}.json"
-        
-        if json_path.exists() and not force:
-            # Check if JSON contains face detection data
-            try:
-                with open(json_path, 'r') as f:
-                    data = json.load(f)
-                
-                # Check if face detection data exists
-                # The data is stored under 'data' key with face detection metadata
-                if ("data" in data and 
-                    "metadata" in data["data"] and
-                    "extraction_timestamp" in data["data"]["metadata"] and
-                    "detector" in data["data"]["metadata"]):
-                    return (image_file, True)  # Should skip (already processed)
-            except (json.JSONDecodeError, KeyError, TypeError):
-                pass
-        
-        return (image_file, False)  # Should process
-        
-    except Exception:
-        return (image_file, False)  # Should process on error
 
 
 @click.group()
@@ -173,14 +135,12 @@ def detect(ctx: click.Context,
         except Exception as e:
             console.print(f"⚠️  Auto-tuning failed: {e}", style="yellow")
     
-    # Check for existing sidecar files in parallel
+    # Check for existing sidecar files
     console.print("🔍 Checking for existing sidecar files...", style="blue")
-    files_to_process, skipped_files = check_sidecar_files_parallel(
+    files_to_process, skipped_files = check_sidecar_files(
         image_files, 
         force, 
-        operation_type="face_detection",
-        use_processes=True,  # Use ProcessPoolExecutor for better I/O performance
-        show_progress=True   # Show progress bar during checking
+        operation_type="face_detection"
     )
     
     # Show skipping message after image discovery but before processing

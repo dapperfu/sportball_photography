@@ -5,6 +5,7 @@ pyproject.toml
 ./sportball/decorators.py
 ./sportball/sidecar.py
 ./sportball/cli/__init__.py
+./sportball/cli/__main__.py
 ./sportball/cli/main.py
 ./sportball/cli/utils.py
 ./sportball/cli/commands/__init__.py
@@ -17,6 +18,7 @@ pyproject.toml
 ./sportball/detectors/__init__.py
 ./sportball/detectors/face.py
 ./sportball/detectors/face_benchmark.py
+./sportball/detectors/game.py
 ./sportball/detectors/object.py
 ./sportball/detectors/quality.py
 sportball/__init__.py
@@ -41,6 +43,7 @@ sportball/cli/commands/sidecar_commands.py
 sportball/cli/commands/utility_commands.py
 sportball/detectors/__init__.py
 sportball/detectors/face.py
+sportball/detectors/face_benchmark.py
 sportball/detectors/object.py
 sportball/detectors/quality.py
 tests/test_sportball.py
