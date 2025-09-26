@@ -111,15 +111,28 @@ class FaceClustering:
         Initialize face clustering.
         
         Args:
-            similarity_threshold: Minimum similarity for faces to be in same cluster
-            min_cluster_size: Minimum number of faces required to form a cluster
+            similarity_threshold: Minimum similarity for faces to be in same cluster (0.0-1.0)
+            min_cluster_size: Minimum number of faces required to form a cluster (>= 1)
             algorithm: Clustering algorithm ('dbscan', 'agglomerative', 'kmeans')
             cache_enabled: Whether to enable result caching
             verbose: Whether to show verbose output
         """
+        # Validate parameters
+        if not 0.0 <= similarity_threshold <= 1.0:
+            raise ValueError(f"similarity_threshold must be between 0.0 and 1.0, got {similarity_threshold}")
+        
+        if min_cluster_size < 1:
+            raise ValueError(f"min_cluster_size must be >= 1, got {min_cluster_size}")
+        
+        # Validate algorithm
+        valid_algorithms = ['dbscan', 'agglomerative', 'kmeans']
+        algorithm = algorithm.lower()
+        if algorithm not in valid_algorithms:
+            raise ValueError(f"Invalid algorithm '{algorithm}'. Must be one of: {valid_algorithms}")
+        
         self.similarity_threshold = similarity_threshold
         self.min_cluster_size = min_cluster_size
-        self.algorithm = algorithm.lower()
+        self.algorithm = algorithm
         self.cache_enabled = cache_enabled
         self.verbose = verbose
         
@@ -129,11 +142,6 @@ class FaceClustering:
         if not SKLEARN_AVAILABLE:
             self.logger.error("scikit-learn not available - install with: pip install scikit-learn")
             raise ImportError("scikit-learn is required for face clustering")
-        
-        # Validate algorithm
-        valid_algorithms = ['dbscan', 'agglomerative', 'kmeans']
-        if self.algorithm not in valid_algorithms:
-            raise ValueError(f"Invalid algorithm '{self.algorithm}'. Must be one of: {valid_algorithms}")
         
         self.logger.info(f"Face clustering initialized with {self.algorithm} algorithm")
     
@@ -169,6 +177,23 @@ class FaceClustering:
                     parameters=self._get_algorithm_parameters(),
                     error="No face encodings found in detection results"
                 )
+            
+            # Check for identical encodings (performance optimization)
+            if len(face_encodings) > 1:
+                first_encoding = face_encodings[0]
+                if all(np.array_equal(encoding, first_encoding) for encoding in face_encodings[1:]):
+                    self.logger.warning("All face encodings are identical - no meaningful clustering possible")
+                    return FaceClusteringResult(
+                        clusters=[],
+                        unclustered_faces=[metadata['face_id'] for metadata in face_metadata],
+                        total_faces=len(face_encodings),
+                        cluster_count=0,
+                        success=True,
+                        processing_time=time.time() - start_time,
+                        algorithm_used=self.algorithm,
+                        parameters=self._get_algorithm_parameters(),
+                        error="All face encodings are identical"
+                    )
             
             # Perform clustering
             cluster_labels = self._perform_clustering(face_encodings)

@@ -17,6 +17,7 @@ from .decorators import (
     gpu_accelerated,
     timing_decorator
 )
+from .detection.integration import DetectionIntegration
 
 
 class SportballCore:
@@ -52,6 +53,13 @@ class SportballCore:
         
         # Initialize sidecar manager
         self.sidecar = SidecarManager(self.base_dir)
+        
+        # Initialize tool-agnostic detection integration
+        self.detection = DetectionIntegration(
+            base_dir=self.base_dir,
+            enable_rust=True,
+            max_workers=self.max_workers
+        )
         
         # Initialize detectors (lazy loading)
         self._face_detector = None
@@ -703,3 +711,86 @@ class SportballCore:
         removed_count = self.sidecar.cleanup_orphaned_sidecars(target_dir)
         self.logger.info(f"Removed {removed_count} orphaned sidecar files")
         return removed_count
+    
+    # Tool-agnostic detection methods
+    
+    def detect_with_tool(self, tool_name: str, image_paths: Union[Path, List[Path]], 
+                        config_override: Optional[Dict[str, Any]] = None,
+                        **kwargs) -> Union[Any, Dict[str, Any]]:
+        """
+        Perform detection using a specific tool (tool-agnostic).
+        
+        Args:
+            tool_name: Name of the detection tool
+            image_paths: Single image path or list of image paths
+            config_override: Optional configuration overrides
+            **kwargs: Additional detection parameters
+            
+        Returns:
+            Detection result(s)
+        """
+        return self.detection.detect_with_tool(tool_name, image_paths, config_override, **kwargs)
+    
+    def validate_sidecar_files(self, directory: Path, 
+                             operation_type: Optional[str] = None,
+                             use_rust: bool = True) -> List[Dict[str, Any]]:
+        """
+        Validate sidecar files in a directory (massively parallel).
+        
+        Args:
+            directory: Directory to search for sidecar files
+            operation_type: Optional operation type filter
+            use_rust: Whether to use Rust implementation if available
+            
+        Returns:
+            List of validation results
+        """
+        return self.detection.validate_sidecar_files(directory, operation_type, use_rust)
+    
+    def get_available_detection_tools(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Get information about all available detection tools.
+        
+        Returns:
+            Dictionary mapping tool names to their information
+        """
+        return self.detection.get_available_tools()
+    
+    def register_custom_detection_tool(self, tool_name: str, tool_class, 
+                                     config: Optional[Dict[str, Any]] = None) -> None:
+        """
+        Register a custom detection tool.
+        
+        Args:
+            tool_name: Name of the tool
+            tool_class: DetectionTool subclass
+            config: Optional configuration for the tool
+        """
+        from .detection.base import DetectionConfig
+        detection_config = DetectionConfig()
+        if config:
+            detection_config.update_from_dict(config)
+        self.detection.register_custom_tool(tool_name, tool_class, detection_config)
+    
+    def get_detection_performance_info(self) -> Dict[str, Any]:
+        """
+        Get performance information about the detection system.
+        
+        Returns:
+            Dictionary with performance information
+        """
+        return self.detection.get_performance_info()
+    
+    def benchmark_detection_performance(self, test_files: List[Path], 
+                                      iterations: int = 3) -> Dict[str, Any]:
+        """
+        Benchmark performance of the detection system.
+        
+        Args:
+            test_files: List of test files to use
+            iterations: Number of benchmark iterations
+            
+        Returns:
+            Dictionary with benchmark results
+        """
+        return self.detection.benchmark_performance(test_files, iterations)
