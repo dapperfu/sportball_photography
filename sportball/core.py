@@ -154,10 +154,15 @@ class SportballCore:
         if save_sidecar:
             for image_path in image_paths:
                 if str(image_path) in results:
+                    # Format the result for JSON serialization
+                    formatted_result = face_detector._format_result(
+                        results[str(image_path)], 
+                        image_path
+                    )
                     self.sidecar.save_data(
                         image_path, 
                         "face_detection", 
-                        results[str(image_path)],
+                        formatted_result,
                         metadata={"kwargs": kwargs, "batch_size": batch_size}
                     )
         

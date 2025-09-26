@@ -478,3 +478,64 @@ class FaceDetector:
                 "error": str(e),
                 "faces_extracted": 0
             }
+    
+    def _format_result(self, result: FaceDetectionResult, image_path: Path) -> Dict[str, Any]:
+        """
+        Format face detection result for JSON serialization.
+        
+        Args:
+            result: Face detection result
+            image_path: Path to the image file
+            
+        Returns:
+            Dictionary containing formatted face detection data
+        """
+        if not result.success:
+            return {
+                "success": False,
+                "error": result.error,
+                "faces": [],
+                "metadata": {
+                    "image_path": str(image_path),
+                    "faces_found": 0,
+                    "processing_time": float(result.processing_time),
+                    "extraction_timestamp": __import__('datetime').datetime.now().isoformat()
+                }
+            }
+        
+        # Format faces for sportball compatibility
+        faces = []
+        for face in result.faces:
+            face_data = {
+                "face_id": int(face.face_id),
+                "bbox": {
+                    "x": int(face.bbox[0]),
+                    "y": int(face.bbox[1]),
+                    "width": int(face.bbox[2]),
+                    "height": int(face.bbox[3])
+                },
+                "confidence": float(face.confidence)
+            }
+            
+            # Add encoding if available
+            if face.encoding is not None:
+                # Convert numpy array to list for JSON serialization
+                if hasattr(face.encoding, 'tolist'):
+                    face_data["encoding"] = face.encoding.tolist()
+                else:
+                    face_data["encoding"] = list(face.encoding)
+            
+            faces.append(face_data)
+        
+        return {
+            "success": True,
+            "faces": faces,
+            "metadata": {
+                "image_path": str(image_path),
+                "faces_found": int(result.face_count),
+                "processing_time": float(result.processing_time),
+                "extraction_timestamp": __import__('datetime').datetime.now().isoformat(),
+                "face_size_threshold": int(getattr(self, 'face_size', 64)),
+                "confidence_threshold": float(getattr(self, 'confidence_threshold', 0.5))
+            }
+        }
