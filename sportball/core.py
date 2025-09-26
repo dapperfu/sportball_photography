@@ -32,7 +32,8 @@ class SportballCore:
                  base_dir: Optional[Path] = None,
                  enable_gpu: bool = True,
                  max_workers: Optional[int] = None,
-                 cache_enabled: bool = True):
+                 cache_enabled: bool = True,
+                 verbose: bool = False):
         """
         Initialize the SportballCore.
         
@@ -41,11 +42,13 @@ class SportballCore:
             enable_gpu: Whether to enable GPU acceleration
             max_workers: Maximum number of parallel workers
             cache_enabled: Whether to enable result caching
+            verbose: Whether to show verbose output
         """
         self.base_dir = base_dir or Path.cwd()
         self.enable_gpu = enable_gpu
         self.max_workers = max_workers
         self.cache_enabled = cache_enabled
+        self.verbose = verbose
         
         # Initialize sidecar manager
         self.sidecar = SidecarManager(self.base_dir)
@@ -66,7 +69,8 @@ class SportballCore:
             from .detectors.face import InsightFaceDetector
             self._face_detector = InsightFaceDetector(
                 enable_gpu=self.enable_gpu,
-                cache_enabled=self.cache_enabled
+                cache_enabled=self.cache_enabled,
+                verbose=self.verbose
             )
         return self._face_detector
     
@@ -95,7 +99,8 @@ class SportballCore:
             enable_gpu=self.enable_gpu,
             cache_enabled=self.cache_enabled,
             batch_size=batch_size,
-            model_name=model_name
+            model_name=model_name,
+            verbose=self.verbose
         )
     
     @property
@@ -163,8 +168,8 @@ class SportballCore:
         
         self.logger.info(f"Detecting faces in {len(image_paths)} images")
         
-        # Use custom face detector with specified batch size
-        face_detector = self.get_face_detector(batch_size=batch_size)
+        # Use InsightFace detector (default and most reliable)
+        face_detector = self.face_detector
         
         # Perform batch detection
         results = face_detector.detect_faces_batch(image_paths, **kwargs)
