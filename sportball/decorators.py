@@ -10,6 +10,8 @@ Generated via Cursor IDE (cursor.sh) with AI assistance
 
 import functools
 import time
+import signal
+import sys
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -128,17 +130,35 @@ def parallel_processing(max_workers: Optional[int] = None,
                     future = executor.submit(func, chunk, *args[1:], **kwargs)
                     futures.append(future)
                 
-                # Collect results
-                for future in as_completed(futures):
-                    try:
-                        result = future.result()
-                        if isinstance(result, list):
-                            results.extend(result)
-                        else:
-                            results.append(result)
-                    except Exception as e:
-                        logger.error(f"Parallel processing error: {e}")
-                        raise
+                # Collect results with graceful shutdown handling
+                try:
+                    for future in as_completed(futures):
+                        try:
+                            result = future.result()
+                            if isinstance(result, list):
+                                results.extend(result)
+                            else:
+                                results.append(result)
+                        except KeyboardInterrupt:
+                            logger.warning("Parallel processing interrupted by user")
+                            # Cancel remaining futures
+                            for f in futures:
+                                f.cancel()
+                            raise
+                        except Exception as e:
+                            logger.error(f"Parallel processing error: {e}")
+                            # Cancel remaining futures on error
+                            for f in futures:
+                                f.cancel()
+                            raise
+                except KeyboardInterrupt:
+                    logger.warning("Shutting down parallel processing gracefully")
+                    # Cancel all remaining futures
+                    for f in futures:
+                        f.cancel()
+                    # Wait a bit for cleanup
+                    executor.shutdown(wait=True, timeout=5)
+                    raise
             
             return results
         

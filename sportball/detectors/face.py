@@ -528,6 +528,10 @@ class FaceDetector:
                     batch_paths, confidence, min_faces, max_faces, face_size
                 )
                 results.update(batch_results)
+            except KeyboardInterrupt:
+                self.logger.warning("Face detection interrupted by user")
+                # Return partial results
+                return results
             except Exception as e:
                 self.logger.error(f"Face batch processing failed: {e}")
                 # Fallback to individual processing
@@ -535,6 +539,9 @@ class FaceDetector:
                     try:
                         result = self.detect_faces(image_path, confidence, min_faces, max_faces, face_size)
                         results[str(image_path)] = result
+                    except KeyboardInterrupt:
+                        self.logger.warning("Face detection interrupted during fallback processing")
+                        return results
                     except Exception as img_error:
                         self.logger.error(f"Error processing {image_path}: {img_error}")
                         results[str(image_path)] = FaceDetectionResult(
@@ -1318,6 +1325,11 @@ class InsightFaceDetector:
         
         for i, img_path in enumerate(image_paths):
             try:
+                # Check for shutdown request
+                if hasattr(self, '_shutdown_requested') and self._shutdown_requested:
+                    self.logger.warning("Shutdown requested, stopping sequential processing")
+                    break
+                
                 # Load image
                 image = cv2.imread(str(img_path))
                 if image is None:
