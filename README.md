@@ -336,3 +336,4 @@ See [RUST_SIDECAR_INTEGRATION.md](RUST_SIDECAR_INTEGRATION.md) for details.
 ---
 
 **Sportball** - Making sports photo analysis simple, fast, and powerful! 🏈⚽📸
+# Version bump to 1.1.0
