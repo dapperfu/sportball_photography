@@ -106,9 +106,9 @@ def cli(ctx: click.Context,
         logger.remove()
         logger.add(lambda msg: None, level="ERROR")
     else:
-        # Default: WARNING level, suppress INFO and DEBUG messages
+        # Default: ERROR level, suppress INFO, DEBUG, and WARNING messages
         logger.remove()
-        logger.add(lambda msg: None, level="WARNING")
+        logger.add(lambda msg: None, level="ERROR")
     
     # Store configuration in context
     ctx.ensure_object(dict)
