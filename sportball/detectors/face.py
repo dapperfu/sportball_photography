@@ -122,7 +122,7 @@ class FaceDetector:
                 if torch.cuda.is_available():
                     self.device = "cuda"
                     self._initialize_gpu_models()
-                    self.logger.info("GPU-based face detection initialized")
+                    self.logger.debug("GPU-based face detection initialized")
                 else:
                     self.logger.warning("CUDA not available, falling back to CPU")
                     self._initialize_cpu_models()
@@ -140,7 +140,7 @@ class FaceDetector:
         try:
             import insightface
             self.gpu_model = "insightface"
-            self.logger.info("InsightFace model loaded with CUDA support")
+            self.logger.debug("InsightFace model loaded with CUDA support")
             
             # Also initialize CPU models as fallback
             self._initialize_cpu_models()
@@ -151,7 +151,7 @@ class FaceDetector:
         if FACE_RECOGNITION_AVAILABLE:
             # Use face_recognition library with CUDA-enabled dlib
             self.gpu_model = "face_recognition"
-            self.logger.info("face_recognition model loaded with CUDA support")
+            self.logger.debug("face_recognition model loaded with CUDA support")
             
             # Also initialize CPU models as fallback
             self._initialize_cpu_models()
@@ -168,11 +168,11 @@ class FaceDetector:
         try:
             import insightface
             self.gpu_model = "insightface"
-            self.logger.info("InsightFace model loaded for CPU processing")
+            self.logger.debug("InsightFace model loaded for CPU processing")
         except ImportError:
             if FACE_RECOGNITION_AVAILABLE:
                 self.gpu_model = "face_recognition"
-                self.logger.info("face_recognition model loaded for CPU processing")
+                self.logger.debug("face_recognition model loaded for CPU processing")
             else:
                 raise ImportError("Neither InsightFace nor face_recognition library is available. Please install one of them.")
     
@@ -304,7 +304,7 @@ class FaceDetector:
             Optimal batch size that doesn't cause memory errors
         """
         if not self.enable_gpu:
-            self.logger.info("GPU not enabled, skipping batch size tuning")
+            self.logger.debug("GPU not enabled, skipping batch size tuning")
             return self.batch_size
         
         try:
@@ -313,10 +313,10 @@ class FaceDetector:
             import numpy as np
             
             if not torch.cuda.is_available():
-                self.logger.info("CUDA not available, skipping batch size tuning")
+                self.logger.debug("CUDA not available, skipping batch size tuning")
                 return self.batch_size
             
-            self.logger.info(f"Starting GPU batch size tuning (max: {max_batch_size})")
+            self.logger.debug(f"Starting GPU batch size tuning (max: {max_batch_size})")
             
             # Create test images if not provided
             if test_image_paths is None:
@@ -334,14 +334,14 @@ class FaceDetector:
             while low <= high:
                 mid_batch_size = (low + high) // 2
                 
-                self.logger.info(f"Testing batch size: {mid_batch_size}")
+                self.logger.debug(f"Testing batch size: {mid_batch_size}")
                 
                 if self._test_batch_size(test_image_paths, mid_batch_size):
                     # Success - try larger batch size
                     optimal_batch_size = mid_batch_size
                     last_successful_batch_size = mid_batch_size
                     low = mid_batch_size + 1
-                    self.logger.info(f"✅ Batch size {mid_batch_size} successful")
+                    self.logger.debug(f"✅ Batch size {mid_batch_size} successful")
                 else:
                     # Failure - try smaller batch size
                     high = mid_batch_size - 1
@@ -351,7 +351,7 @@ class FaceDetector:
             if test_image_paths and len(test_image_paths) > 0:
                 self._cleanup_test_images(test_image_paths)
             
-            self.logger.info(f"🎯 Optimal GPU batch size: {optimal_batch_size}")
+            self.logger.debug(f"🎯 Optimal GPU batch size: {optimal_batch_size}")
             return optimal_batch_size
             
         except Exception as e:
@@ -570,14 +570,14 @@ class FaceDetector:
         Returns:
             Dictionary mapping image paths to detection results
         """
-        self.logger.info(f"Processing {len(image_paths)} images in batches of {self.batch_size}")
+        self.logger.debug(f"Processing {len(image_paths)} images in batches of {self.batch_size}")
         
         results = {}
         
         # Process images in batches
         for i in range(0, len(image_paths), self.batch_size):
             batch_paths = image_paths[i:i + self.batch_size]
-            self.logger.info(f"Processing face detection batch {i//self.batch_size + 1}: {len(batch_paths)} images")
+            self.logger.debug(f"Processing face detection batch {i//self.batch_size + 1}: {len(batch_paths)} images")
             
             try:
                 batch_results = self._process_face_batch(
@@ -662,10 +662,10 @@ class FaceDetector:
         
         # Use GPU batch processing if available
         if self.device == "cuda" and self.gpu_model == "face_recognition":
-            self.logger.info("Using GPU batch processing")
+            self.logger.debug("Using GPU batch processing")
             return self._process_gpu_batch(batch_images, batch_metadata, confidence, min_faces, max_faces, face_size, start_time)
         else:
-            self.logger.info(f"Using CPU batch processing (device={self.device}, gpu_model={self.gpu_model})")
+            self.logger.debug(f"Using CPU batch processing (device={self.device}, gpu_model={self.gpu_model})")
             # Fall back to CPU processing
             return self._process_cpu_batch(batch_images, batch_metadata, confidence, min_faces, max_faces, face_size, start_time)
     
@@ -1125,9 +1125,9 @@ class FaceDetector:
             if torch.cuda.is_available():
                 allocated = torch.cuda.memory_allocated() / 1024**2  # MB
                 reserved = torch.cuda.memory_reserved() / 1024**2     # MB
-                self.logger.info(f"GPU Memory [{context}]: {allocated:.1f}MB allocated, {reserved:.1f}MB reserved")
+                self.logger.debug(f"GPU Memory [{context}]: {allocated:.1f}MB allocated, {reserved:.1f}MB reserved")
             else:
-                self.logger.info(f"GPU Memory [{context}]: CUDA not available")
+                self.logger.debug(f"GPU Memory [{context}]: CUDA not available")
         except Exception as e:
             self.logger.warning(f"Failed to get GPU memory info [{context}]: {e}")
 
@@ -1184,7 +1184,7 @@ class InsightFaceDetector:
                     if torch.cuda.is_available():
                         self.device = "cuda:0"
                         if self.verbose:
-                            self.logger.info("Using GPU for InsightFace")
+                            self.logger.debug("Using GPU for InsightFace")
                     else:
                         self.device = "cpu"
                         if self.verbose:
@@ -1196,7 +1196,7 @@ class InsightFaceDetector:
             else:
                 self.device = "cpu"
                 if self.verbose:
-                    self.logger.info("Using CPU for InsightFace")
+                    self.logger.debug("Using CPU for InsightFace")
             
             # Suppress InsightFace verbose output if not in verbose mode
             import sys
@@ -1221,7 +1221,7 @@ class InsightFaceDetector:
                 self.app.prepare(ctx_id=0 if self.device == "cpu" else 0, det_size=(640, 640))
             
             if self.verbose:
-                self.logger.info(f"InsightFace initialized with model: {self.model_name}")
+                self.logger.debug(f"InsightFace initialized with model: {self.model_name}")
             
         except Exception as e:
             self.logger.error(f"Failed to initialize InsightFace: {e}")
@@ -1494,7 +1494,7 @@ class InsightFaceDetector:
                 return results
             
             # Process all images in parallel using GPU
-            self.logger.info(f"Processing {len(batch_images)} images simultaneously on GPU")
+            self.logger.debug(f"Processing {len(batch_images)} images simultaneously on GPU")
             
             # Check if InsightFace is initialized
             if self.app is None:
@@ -1564,7 +1564,7 @@ class InsightFaceDetector:
                     )
             
             total_time = time.time() - start_time
-            self.logger.info(f"GPU batch processing completed: {len(batch_images)} images in {total_time:.2f}s ({total_time/len(batch_images):.3f}s per image)")
+            self.logger.debug(f"GPU batch processing completed: {len(batch_images)} images in {total_time:.2f}s ({total_time/len(batch_images):.3f}s per image)")
             
         except Exception as e:
             self.logger.error(f"GPU batch processing failed: {e}")
