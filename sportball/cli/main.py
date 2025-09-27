@@ -98,6 +98,7 @@ def cli(ctx: click.Context,
     """
     
     # Configure logging (lazy import)
+    import logging
     from loguru import logger
     
     if verbose:
@@ -109,11 +110,17 @@ def cli(ctx: click.Context,
         os.environ.pop('SPORTBALL_VERBOSE', None)
         logger.remove()
         logger.add(lambda msg: None, level="ERROR")
+        # Also suppress standard logging
+        logging.getLogger().setLevel(logging.ERROR)
+        logging.getLogger().handlers = []
     else:
         # Default: ERROR level, suppress INFO, DEBUG, and WARNING messages
         os.environ.pop('SPORTBALL_VERBOSE', None)
         logger.remove()
         logger.add(lambda msg: None, level="ERROR")
+        # Also suppress standard logging
+        logging.getLogger().setLevel(logging.ERROR)
+        logging.getLogger().handlers = []
     
     # Store configuration in context
     ctx.ensure_object(dict)
