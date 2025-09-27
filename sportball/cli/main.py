@@ -9,6 +9,7 @@ Generated via Cursor IDE (cursor.sh) with AI assistance
 
 import click
 import warnings
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -100,13 +101,17 @@ def cli(ctx: click.Context,
     from loguru import logger
     
     if verbose:
+        os.environ['SPORTBALL_VERBOSE'] = '1'
+        logger.remove()
         logger.add("sportball.log", level="DEBUG", rotation="10 MB")
         logger.info("Verbose logging enabled")
     elif quiet:
+        os.environ.pop('SPORTBALL_VERBOSE', None)
         logger.remove()
         logger.add(lambda msg: None, level="ERROR")
     else:
         # Default: ERROR level, suppress INFO, DEBUG, and WARNING messages
+        os.environ.pop('SPORTBALL_VERBOSE', None)
         logger.remove()
         logger.add(lambda msg: None, level="ERROR")
     
