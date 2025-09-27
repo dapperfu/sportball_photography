@@ -1353,8 +1353,6 @@ class InsightFaceDetector:
         Returns:
             Dictionary mapping image paths to detection results
         """
-        self.logger.info(f"Processing {len(image_paths)} images with InsightFace sequential processing")
-        
         # Use sequential processing - it's faster than pseudo-batching
         return self._process_sequential(image_paths, confidence, min_faces, max_faces, face_size)
     
@@ -1371,19 +1369,7 @@ class InsightFaceDetector:
         start_time = time.time()
         results = {}
         
-        self.logger.info(f"Processing {len(image_paths)} images sequentially")
-        
-        # Use tqdm for progress tracking
-        try:
-            from tqdm import tqdm
-            progress_bar = tqdm(
-                total=len(image_paths), 
-                desc="Detecting faces", 
-                unit="images",
-                bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}'
-            )
-        except ImportError:
-            progress_bar = None
+        # Process images sequentially without progress bar (main CLI handles progress)
         
         for i, img_path in enumerate(image_paths):
             try:
@@ -1453,11 +1439,7 @@ class InsightFaceDetector:
                     error=None if success else f"Found {len(detected_faces)} faces, need at least {min_faces}"
                 )
                 
-                # Update progress bar with current image name
-                if progress_bar:
-                    progress_bar.set_postfix(file=img_path.name)
-                    progress_bar.update(1)
-                
+                # Log progress every 10 images
                 if (i + 1) % 10 == 0:
                     self.logger.info(f"Processed {i + 1}/{len(image_paths)} images")
                 
@@ -1466,19 +1448,8 @@ class InsightFaceDetector:
                 results[str(img_path)] = FaceDetectionResult(
                     faces=[], face_count=0, success=False, processing_time=0.0, error=str(e)
                 )
-                # Update progress bar even on error
-                if progress_bar:
-                    progress_bar.set_postfix(file=img_path.name)
-                    progress_bar.update(1)
-        
-        # Close progress bar
-        if progress_bar:
-            progress_bar.close()
         
         total_time = time.time() - start_time
-        avg_time_per_image = total_time / len(image_paths)
-        
-        self.logger.info(f"Sequential processing completed: {len(image_paths)} images in {total_time:.2f}s ({avg_time_per_image:.3f}s per image)")
         
         return results
     
