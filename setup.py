@@ -3,7 +3,21 @@
 Setup script for sportball package using versioneer for version management.
 """
 
-import versioneer
+try:
+    import versioneer
+except ImportError:
+    # Fallback for when versioneer is not available
+    class MockVersioneer:
+        @staticmethod
+        def get_version():
+            return "1.1.0"
+        
+        @staticmethod
+        def get_cmdclass():
+            return {}
+    
+    versioneer = MockVersioneer()
+
 from setuptools import setup, find_packages
 
 # Read the README file
