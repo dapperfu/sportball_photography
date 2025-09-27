@@ -19,7 +19,6 @@ try:
     FACE_RECOGNITION_AVAILABLE = True
 except ImportError:
     FACE_RECOGNITION_AVAILABLE = False
-    logger.debug("face_recognition not available - will use InsightFace for face detection")
 
 try:
     import insightface
