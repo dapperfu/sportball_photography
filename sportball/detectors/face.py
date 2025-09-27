@@ -19,14 +19,14 @@ try:
     FACE_RECOGNITION_AVAILABLE = True
 except ImportError:
     FACE_RECOGNITION_AVAILABLE = False
-    logger.warning("face_recognition not available - face encodings will be skipped")
+    logger.debug("face_recognition not available - will use InsightFace for face detection")
 
 try:
     import insightface
     INSIGHTFACE_AVAILABLE = True
 except ImportError:
     INSIGHTFACE_AVAILABLE = False
-    logger.warning("insightface not available - InsightFace detection will be skipped")
+    logger.warning("insightface not available - face detection will be limited")
 
 from ..decorators import gpu_accelerated, cached_result
 
