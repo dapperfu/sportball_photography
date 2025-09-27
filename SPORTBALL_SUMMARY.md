@@ -10,7 +10,7 @@ The **Sportball** unified package has been successfully created and is fully fun
 /projects/soccer_photo_sorter/sportball/
 ├── README.md                    # Comprehensive documentation
 ├── pyproject.toml              # Package configuration
-├── setup_sportball.py          # Setup script
+├── Makefile                    # Development commands and build system
 ├── Makefile                    # Development commands
 ├── docs/                       # Documentation directory
 ├── tests/                      # Test suite
@@ -106,7 +106,7 @@ The **Sportball** unified package has been successfully created and is fully fun
 ### Development Setup
 ```bash
 cd /projects/soccer_photo_sorter/sportball
-python setup_sportball.py
+make install-dev
 ```
 
 ### Using the CLI
