@@ -17,6 +17,15 @@ Author: Claude Sonnet 4 (claude-3-5-sonnet-20241022)
 Generated via Cursor IDE (cursor.sh) with AI assistance
 """
 
+# Configure logging early to suppress verbose output by default
+import os
+from loguru import logger
+
+# Set default logging level to ERROR unless explicitly overridden
+if not os.environ.get('SPORTBALL_VERBOSE'):
+    logger.remove()
+    logger.add(lambda msg: None, level="ERROR")
+
 __version__ = "1.0.0"
 __author__ = "Sportball Team"
 __email__ = "team@sportball.ai"
