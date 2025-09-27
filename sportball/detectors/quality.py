@@ -22,6 +22,7 @@ class QualityMetrics:
     """Photo quality metrics."""
     overall_score: float  # Overall quality score (0-1)
     sharpness_score: float  # Sharpness/blur assessment (0-1)
+    focus_score: float  # Focus quality using multiple algorithms (0-1)
     exposure_score: float  # Exposure quality (0-1)
     composition_score: float  # Composition quality (0-1)
     action_score: float  # Action timing quality (0-1)
@@ -129,6 +130,7 @@ class QualityAssessor:
                 "quality": {
                     "overall_score": assessment.metrics.overall_score,
                     "sharpness": assessment.metrics.sharpness_score,
+                    "focus": assessment.metrics.focus_score,
                     "exposure": assessment.metrics.exposure_score,
                     "composition": assessment.metrics.composition_score,
                     "action": assessment.metrics.action_score,
@@ -175,6 +177,7 @@ class QualityAssessor:
             
             # Assess individual quality metrics
             sharpness_score = self._assess_sharpness(image)
+            focus_score = self._assess_focus(image)
             exposure_score = self._assess_exposure(image)
             composition_score = self._assess_composition(image)
             action_score = self._assess_action_timing(image)
@@ -183,18 +186,21 @@ class QualityAssessor:
             contrast_score = self._assess_contrast(image)
             
             # Calculate overall score (weighted average)
+            # Focus and sharpness are both important for image quality
             weights = {
-                'sharpness': 0.25,
+                'sharpness': 0.15,
+                'focus': 0.20,  # Focus is critical for sports photography
                 'exposure': 0.20,
                 'composition': 0.15,
                 'action': 0.15,
                 'color': 0.10,
-                'noise': 0.10,
+                'noise': 0.05,
                 'contrast': 0.05
             }
             
             overall_score = (
                 sharpness_score * weights['sharpness'] +
+                focus_score * weights['focus'] +
                 exposure_score * weights['exposure'] +
                 composition_score * weights['composition'] +
                 action_score * weights['action'] +
@@ -207,6 +213,7 @@ class QualityAssessor:
             metrics = QualityMetrics(
                 overall_score=overall_score,
                 sharpness_score=sharpness_score,
+                focus_score=focus_score,
                 exposure_score=exposure_score,
                 composition_score=composition_score,
                 action_score=action_score,
@@ -274,6 +281,94 @@ class QualityAssessor:
             return 0.2
         else:
             return 0.0
+    
+    def _assess_focus(self, image: np.ndarray) -> float:
+        """
+        Assess image focus using multiple established algorithms.
+        
+        Implements several focus detection algorithms from computer vision literature:
+        - Tenengrad (gradient-based)
+        - Sobel variance
+        - Brenner gradient
+        - Laplacian variance (enhanced)
+        - Variance of Laplacian
+        - Modified Laplacian
+        
+        Args:
+            image: Input image array
+            
+        Returns:
+            Focus score (0-1, higher is more focused)
+        """
+        # Convert to grayscale
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        # Normalize to 0-1 range
+        gray = gray.astype(np.float64) / 255.0
+        
+        # 1. Tenengrad Algorithm (Tenenbaum, 1970)
+        # Uses gradient magnitude to measure focus
+        grad_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+        grad_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+        tenengrad_score = np.sum(grad_x**2 + grad_y**2)
+        
+        # 2. Sobel Variance
+        sobel_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+        sobel_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+        sobel_magnitude = np.sqrt(sobel_x**2 + sobel_y**2)
+        sobel_variance = np.var(sobel_magnitude)
+        
+        # 3. Brenner Gradient
+        # Measures focus by calculating sum of squared differences
+        brenner_score = np.sum((gray[:-2, :] - gray[2:, :])**2)
+        
+        # 4. Enhanced Laplacian Variance
+        laplacian = cv2.Laplacian(gray, cv2.CV_64F, ksize=3)
+        laplacian_variance = np.var(laplacian)
+        
+        # 5. Variance of Laplacian (Pech-Pacheco et al., 2000)
+        laplacian_mean = np.mean(laplacian)
+        variance_of_laplacian = np.mean((laplacian - laplacian_mean)**2)
+        
+        # 6. Modified Laplacian (Nayar & Nakagawa, 1994)
+        # Uses second derivatives in both directions
+        mod_laplacian_x = np.abs(cv2.Laplacian(gray, cv2.CV_64F, ksize=1))
+        mod_laplacian_y = np.abs(cv2.Laplacian(gray.T, cv2.CV_64F, ksize=1).T)
+        modified_laplacian = np.sum(mod_laplacian_x + mod_laplacian_y)
+        
+        # Normalize scores to 0-1 range using adaptive thresholds
+        # These thresholds are based on typical image sizes and characteristics
+        height, width = gray.shape
+        image_size_factor = height * width / (1000 * 1000)  # Normalize for image size
+        
+        # Normalize each algorithm score
+        scores = {
+            'tenengrad': min(1.0, tenengrad_score / (10000 * image_size_factor)),
+            'sobel_var': min(1.0, sobel_variance / (0.1 * image_size_factor)),
+            'brenner': min(1.0, brenner_score / (5000 * image_size_factor)),
+            'laplacian_var': min(1.0, laplacian_variance / (0.1 * image_size_factor)),
+            'var_of_laplacian': min(1.0, variance_of_laplacian / (0.01 * image_size_factor)),
+            'modified_laplacian': min(1.0, modified_laplacian / (1000 * image_size_factor))
+        }
+        
+        # Weighted combination of algorithms
+        # Tenengrad and Sobel variance are generally most reliable
+        weights = {
+            'tenengrad': 0.25,
+            'sobel_var': 0.25,
+            'brenner': 0.15,
+            'laplacian_var': 0.15,
+            'var_of_laplacian': 0.10,
+            'modified_laplacian': 0.10
+        }
+        
+        # Calculate weighted average
+        focus_score = sum(scores[algo] * weights[algo] for algo in scores)
+        
+        # Apply sigmoid-like function to map to 0-1 range more smoothly
+        focus_score = 1 / (1 + np.exp(-10 * (focus_score - 0.5)))
+        
+        return focus_score
     
     def _assess_exposure(self, image: np.ndarray) -> float:
         """
@@ -488,6 +583,9 @@ class QualityAssessor:
         
         if metrics.sharpness_score < 0.5:
             recommendations.append("Consider using faster shutter speed or better focus technique")
+        
+        if metrics.focus_score < 0.5:
+            recommendations.append("Image appears out of focus - check autofocus settings or manual focus")
         
         if metrics.exposure_score < 0.5:
             recommendations.append("Adjust exposure settings - image may be over/under exposed")

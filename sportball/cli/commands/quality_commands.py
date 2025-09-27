@@ -108,7 +108,8 @@ def display_quality_results(results: dict, filter_low_quality: bool, output_dir:
     table.add_column("Overall Score", style="green", justify="right")
     table.add_column("Grade", style="yellow")
     table.add_column("Sharpness", style="blue", justify="right")
-    table.add_column("Brightness", style="blue", justify="right")
+    table.add_column("Focus", style="magenta", justify="right")
+    table.add_column("Exposure", style="blue", justify="right")
     table.add_column("Contrast", style="blue", justify="right")
     table.add_column("Success", style="green")
     table.add_column("Error", style="red")
@@ -124,7 +125,8 @@ def display_quality_results(results: dict, filter_low_quality: bool, output_dir:
             overall_score = quality_data.get('overall_score', 0)
             grade = quality_data.get('grade', 'F')
             sharpness = quality_data.get('sharpness', 0)
-            brightness = quality_data.get('brightness', 0)
+            focus = quality_data.get('focus', 0)
+            exposure = quality_data.get('exposure', 0)
             contrast = quality_data.get('contrast', 0)
             
             total_score += overall_score
@@ -140,7 +142,8 @@ def display_quality_results(results: dict, filter_low_quality: bool, output_dir:
                 f"{overall_score:.2f}",
                 grade,
                 f"{sharpness:.2f}",
-                f"{brightness:.2f}",
+                f"{focus:.2f}",
+                f"{exposure:.2f}",
                 f"{contrast:.2f}",
                 "✅",
                 ""
@@ -149,6 +152,7 @@ def display_quality_results(results: dict, filter_low_quality: bool, output_dir:
             error_msg = result.get('error', 'Unknown error')
             table.add_row(
                 Path(image_path).name,
+                "N/A",
                 "N/A",
                 "N/A",
                 "N/A",

@@ -116,7 +116,7 @@ cli-help: install
 	${VENV}/bin/sportball util --help
 
 # Rust sidecar tool targets
-RUST_SIDECAR_DIR = ../sportball-sidecar-rust
+RUST_SIDECAR_DIR = ../image-sidecar-rust
 RUST_SIDECAR_BINARY = $(RUST_SIDECAR_DIR)/target/release/sportball-sidecar-rust
 
 # Build Rust sidecar tool
