@@ -19,12 +19,28 @@ Generated via Cursor IDE (cursor.sh) with AI assistance
 
 # Configure logging early to suppress verbose output by default
 import os
+import logging
 from loguru import logger
 
 # Set default logging level to ERROR unless explicitly overridden
 if not os.environ.get('SPORTBALL_VERBOSE'):
+    # Suppress loguru
     logger.remove()
     logger.add(lambda msg: None, level="ERROR")
+    
+    # Suppress standard Python logging
+    logging.getLogger().setLevel(logging.ERROR)
+    logging.getLogger().handlers = []
+    
+    # Suppress specific noisy loggers
+    logging.getLogger('PIL').setLevel(logging.ERROR)
+    logging.getLogger('matplotlib').setLevel(logging.ERROR)
+    logging.getLogger('torch').setLevel(logging.ERROR)
+    logging.getLogger('torchvision').setLevel(logging.ERROR)
+    logging.getLogger('ultralytics').setLevel(logging.ERROR)
+    logging.getLogger('insightface').setLevel(logging.ERROR)
+    logging.getLogger('onnxruntime').setLevel(logging.ERROR)
+    logging.getLogger('cv2').setLevel(logging.ERROR)
 
 __version__ = "1.0.0"
 __author__ = "Sportball Team"
