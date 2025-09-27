@@ -137,6 +137,17 @@ class FaceDetector:
     
     def _initialize_gpu_models(self):
         """Initialize GPU-based face detection models."""
+        try:
+            import insightface
+            self.gpu_model = "insightface"
+            self.logger.info("InsightFace model loaded with CUDA support")
+            
+            # Also initialize CPU models as fallback
+            self._initialize_cpu_models()
+            return
+        except ImportError:
+            pass
+        
         if FACE_RECOGNITION_AVAILABLE:
             # Use face_recognition library with CUDA-enabled dlib
             self.gpu_model = "face_recognition"
@@ -146,87 +157,132 @@ class FaceDetector:
             self._initialize_cpu_models()
             return
         
-        # If face_recognition not available, fall back to CPU
-        self.logger.warning("face_recognition not available, falling back to CPU")
+        # If neither available, fall back to CPU
+        self.logger.warning("Neither InsightFace nor face_recognition available, falling back to CPU")
         self.device = "cpu"
         self._initialize_cpu_models()
     
     def _initialize_cpu_models(self):
-        """Initialize CPU-based face detection models using face_recognition."""
+        """Initialize CPU-based face detection models using InsightFace."""
         self.device = "cpu"
-        if FACE_RECOGNITION_AVAILABLE:
-            self.gpu_model = "face_recognition"
-            self.logger.info("face_recognition model loaded for CPU processing")
-        else:
-            raise ImportError("face_recognition library is required but not available. Please install it with: pip install face_recognition")
+        try:
+            import insightface
+            self.gpu_model = "insightface"
+            self.logger.info("InsightFace model loaded for CPU processing")
+        except ImportError:
+            if FACE_RECOGNITION_AVAILABLE:
+                self.gpu_model = "face_recognition"
+                self.logger.info("face_recognition model loaded for CPU processing")
+            else:
+                raise ImportError("Neither InsightFace nor face_recognition library is available. Please install one of them.")
     
     def _detect_faces_gpu(self, image, confidence: Optional[float], face_size: int):
-        """Detect faces using GPU-based face_recognition library."""
+        """Detect faces using GPU-based models (InsightFace or face_recognition)."""
+        if self.gpu_model == "insightface":
+            return self._detect_faces_insightface(image, confidence, face_size)
+        else:
+            # Fall back to face_recognition
+            try:
+                import face_recognition
+                import numpy as np
+                
+                # Convert BGR to RGB for face_recognition
+                image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                
+                # Use face_recognition library for detection
+                # Try CNN model first (GPU-accelerated), fall back to HOG if needed
+                try:
+                    face_locations = face_recognition.face_locations(
+                        image_rgb,
+                        model="cnn"  # CNN model uses GPU acceleration
+                    )
+                except Exception:
+                    # Fall back to HOG model if CNN fails
+                    face_locations = face_recognition.face_locations(
+                        image_rgb,
+                        model="hog"
+                    )
+                
+                faces = []
+                for (top, right, bottom, left) in face_locations:
+                    # Convert face_recognition format (top, right, bottom, left) to (x, y, w, h)
+                    x, y, w, h = left, top, right - left, bottom - top
+                    
+                    if w >= face_size and h >= face_size:
+                        # face_recognition doesn't provide confidence scores directly
+                        # We'll use a default high confidence for detected faces
+                        face_confidence = 0.9  # face_recognition is quite accurate
+                        
+                        if confidence is None or face_confidence >= confidence:
+                            faces.append((x, y, w, h))
+                
+                return faces
+                    
+            except Exception as e:
+                self.logger.error(f"GPU face detection failed: {e}")
+                return self._detect_faces_cpu(image, face_size)
+    
+    def _detect_faces_insightface(self, image, confidence: Optional[float], face_size: int):
+        """Detect faces using InsightFace."""
         try:
-            import face_recognition
+            import insightface
             import numpy as np
             
-            # Convert BGR to RGB for face_recognition
-            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            # Initialize InsightFace app if not already done
+            if not hasattr(self, 'insightface_app'):
+                self.insightface_app = insightface.app.FaceAnalysis()
+                self.insightface_app.prepare(ctx_id=0, det_size=(640, 640))
             
-            # Use face_recognition library for detection
-            # Try CNN model first (GPU-accelerated), fall back to HOG if needed
-            try:
-                face_locations = face_recognition.face_locations(
-                    image_rgb,
-                    model="cnn"  # CNN model uses GPU acceleration
-                )
-            except Exception:
-                # Fall back to HOG model if CNN fails
-                face_locations = face_recognition.face_locations(
-                    image_rgb,
-                    model="hog"
-                )
+            # Detect faces
+            faces = self.insightface_app.get(image)
             
-            faces = []
-            for (top, right, bottom, left) in face_locations:
-                # Convert face_recognition format (top, right, bottom, left) to (x, y, w, h)
-                x, y, w, h = left, top, right - left, bottom - top
-                
-                if w >= face_size and h >= face_size:
-                    # face_recognition doesn't provide confidence scores directly
-                    # We'll use a default high confidence for detected faces
-                    face_confidence = 0.9  # face_recognition is quite accurate
-                    
-                    if confidence is None or face_confidence >= confidence:
-                        faces.append((x, y, w, h))
-            
-            return faces
-                
-        except Exception as e:
-            self.logger.error(f"GPU face detection failed: {e}")
-            return self._detect_faces_cpu(image, face_size)
-    
-    def _detect_faces_cpu(self, image, face_size: int):
-        """Detect faces using CPU-based face_recognition library."""
-        try:
-            import face_recognition
-            
-            # Convert BGR to RGB for face_recognition
-            rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            
-            # Detect face locations
-            face_locations = face_recognition.face_locations(rgb_image, model="hog")
-            
-            # Convert to the format expected by the rest of the code
-            faces = []
-            for (top, right, bottom, left) in face_locations:
-                # Convert to (x, y, w, h) format
-                x, y, w, h = left, top, right - left, bottom - top
+            detected_faces = []
+            for face in faces:
+                # Extract bounding box
+                bbox = face.bbox.astype(int)
+                x, y, w, h = bbox[0], bbox[1], bbox[2] - bbox[0], bbox[3] - bbox[1]
                 
                 # Check minimum face size
                 if w >= face_size and h >= face_size:
-                    faces.append((x, y, w, h))
+                    # Check confidence threshold
+                    face_confidence = face.det_score
+                    if confidence is None or face_confidence >= confidence:
+                        detected_faces.append((x, y, w, h))
             
-            return faces
+            return detected_faces
+            
         except Exception as e:
-            self.logger.error(f"CPU face detection failed: {e}")
+            self.logger.error(f"InsightFace detection failed: {e}")
             return []
+    
+    def _detect_faces_cpu(self, image, face_size: int):
+        """Detect faces using CPU-based models (InsightFace or face_recognition)."""
+        if self.gpu_model == "insightface":
+            return self._detect_faces_insightface(image, None, face_size)
+        else:
+            try:
+                import face_recognition
+                
+                # Convert BGR to RGB for face_recognition
+                rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                
+                # Detect face locations
+                face_locations = face_recognition.face_locations(rgb_image, model="hog")
+                
+                # Convert to the format expected by the rest of the code
+                faces = []
+                for (top, right, bottom, left) in face_locations:
+                    # Convert to (x, y, w, h) format
+                    x, y, w, h = left, top, right - left, bottom - top
+                    
+                    # Check minimum face size
+                    if w >= face_size and h >= face_size:
+                        faces.append((x, y, w, h))
+                
+                return faces
+            except Exception as e:
+                self.logger.error(f"CPU face detection failed: {e}")
+                return []
     
     def tune_gpu_batch_size(self, 
                            test_image_paths: Optional[List[Path]] = None,

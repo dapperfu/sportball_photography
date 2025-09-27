@@ -76,7 +76,11 @@ class RustSidecarManager:
         
         # Try to find binary in parent directory
         parent_dir = Path(__file__).parent.parent.parent.parent.parent
-        rust_binary = parent_dir / "sportball-sidecar-rust" / "target" / "release" / "sportball-sidecar-rust"
+        rust_binary = parent_dir / "image-sidecar-rust" / "target" / "release" / "sportball-sidecar-rust"
+        
+        # Also try relative path from current working directory
+        if not rust_binary.exists():
+            rust_binary = Path("../image-sidecar-rust/target/release/sportball-sidecar-rust")
         if rust_binary.exists():
             self.config.rust_binary_path = rust_binary
             self.rust_available = True

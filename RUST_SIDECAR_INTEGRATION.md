@@ -11,7 +11,7 @@ The Rust sidecar tool has been fully implemented and integrated, providing 3-10x
 ## What Was Added
 
 ### 1. Rust Sidecar Tool
-- **Location**: `/tank/sportball/sportball-sidecar-rust/`
+- **Location**: `/tank/sportball/image-sidecar-rust/`
 - **Purpose**: High-performance JSON sidecar validation and management
 - **Performance**: 3-10x faster than Python implementations
 - **Features**: Parallel processing, zero-copy operations, async I/O
@@ -71,9 +71,9 @@ print(f"Performance info: {perf_info}")
 make build-rust-sidecar
 
 # Use the CLI directly
-../sportball-sidecar-rust/target/release/sportball-sidecar-rust validate --input /path/to/directory --workers 32
-../sportball-sidecar-rust/target/release/sportball-sidecar-rust stats --input /path/to/directory
-../sportball-sidecar-rust/target/release/sportball-sidecar-rust cleanup --input /path/to/directory --dry-run
+../image-sidecar-rust/target/release/sportball-sidecar-rust validate --input /path/to/directory --workers 32
+../image-sidecar-rust/target/release/sportball-sidecar-rust stats --input /path/to/directory
+../image-sidecar-rust/target/release/sportball-sidecar-rust cleanup --input /path/to/directory --dry-run
 ```
 
 ## Performance Benefits
@@ -176,7 +176,7 @@ manager = RustSidecarManager(config)
 ### Rust Binary Not Found
 1. **Build the tool**: `make build-rust-sidecar`
 2. **Check PATH**: `which sportball-sidecar-rust`
-3. **Verify binary**: `ls -la ../sportball-sidecar-rust/target/release/`
+3. **Verify binary**: `ls -la ../image-sidecar-rust/target/release/`
 4. **Set custom path**: Use `RustSidecarConfig.rust_binary_path`
 
 ### Performance Issues
