@@ -186,87 +186,40 @@ class SportballCore:
         if isinstance(image_paths, Path):
             image_paths = [image_paths]
         
-        self.logger.info(f"Detecting faces in {len(image_paths)} images using batch size {batch_size}")
-        
         # Use InsightFace detector (default and most reliable)
         face_detector = self.face_detector
         
-        # Process images in small batches to balance performance and data safety
-        results = {}
-        for i in range(0, len(image_paths), batch_size):
-            batch_paths = image_paths[i:i + batch_size]
-            self.logger.info(f"Processing batch {i//batch_size + 1}: {len(batch_paths)} images")
-            
-            try:
-                # Process small batch
-                batch_result = face_detector.detect_faces_batch(batch_paths, **kwargs)
-                results.update(batch_result)
-                
-                # Save JSON files immediately after each batch
-                if save_sidecar:
-                    for image_path in batch_paths:
-                        if str(image_path) in batch_result:
-                            # Load image dimensions for ratio calculation
-                            try:
-                                import cv2
-                                image = cv2.imread(str(image_path))
-                                if image is not None:
-                                    image_height, image_width = image.shape[:2]
-                                else:
-                                    image_width = image_height = None
-                            except Exception:
-                                image_width = image_height = None
-                            
-                            # Format the result for JSON serialization
-                            formatted_result = face_detector._format_result(
-                                batch_result[str(image_path)], 
-                                image_path,
-                                image_width,
-                                image_height
-                            )
-                            self.sidecar.save_data_merge(
-                                image_path, 
-                                "face_detection", 
-                                formatted_result,
-                                metadata={"kwargs": kwargs}
-                            )
-                            
-            except Exception as e:
-                self.logger.error(f"Failed to process batch starting at {i}: {e}")
-                # Fall back to individual processing for this batch
-                for image_path in batch_paths:
+        # Process all images at once - the detector handles batching internally
+        results = face_detector.detect_faces_batch(image_paths, **kwargs)
+        
+        # Save JSON files after processing
+        if save_sidecar:
+            for image_path in image_paths:
+                if str(image_path) in results:
+                    # Load image dimensions for ratio calculation
                     try:
-                        single_result = face_detector.detect_faces_batch([image_path], **kwargs)
-                        if str(image_path) in single_result:
-                            results[str(image_path)] = single_result[str(image_path)]
-                            
-                            # Save JSON immediately for individual processing
-                            if save_sidecar:
-                                try:
-                                    import cv2
-                                    image = cv2.imread(str(image_path))
-                                    if image is not None:
-                                        image_height, image_width = image.shape[:2]
-                                    else:
-                                        image_width = image_height = None
-                                except Exception:
-                                    image_width = image_height = None
-                                
-                                formatted_result = face_detector._format_result(
-                                    single_result[str(image_path)], 
-                                    image_path,
-                                    image_width,
-                                    image_height
-                                )
-                                self.sidecar.save_data_merge(
-                                    image_path, 
-                                    "face_detection", 
-                                    formatted_result,
-                                    metadata={"kwargs": kwargs}
-                                )
-                    except Exception as img_error:
-                        self.logger.error(f"Failed to process {image_path}: {img_error}")
-                        continue
+                        import cv2
+                        image = cv2.imread(str(image_path))
+                        if image is not None:
+                            image_height, image_width = image.shape[:2]
+                        else:
+                            image_width = image_height = None
+                    except Exception:
+                        image_width = image_height = None
+                    
+                    # Format the result for JSON serialization
+                    formatted_result = face_detector._format_result(
+                        results[str(image_path)], 
+                        image_path,
+                        image_width,
+                        image_height
+                    )
+                    self.sidecar.save_data_merge(
+                        image_path, 
+                        "face_detection", 
+                        formatted_result,
+                        metadata={"kwargs": kwargs}
+                    )
         
         return results
     
