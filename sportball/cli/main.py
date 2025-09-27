@@ -37,7 +37,7 @@ warnings.filterwarnings("ignore", message=".*pkg_resources.*", category=UserWarn
 @click.option('--quiet', '-q',
               is_flag=True,
               help='Suppress output except errors')
-@click.version_option(version='1.0.0')
+@click.version_option(version=__import__('sportball').__version__)
 @click.pass_context
 def cli(ctx: click.Context, 
         base_dir: Optional[Path], 
