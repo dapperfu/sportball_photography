@@ -1439,9 +1439,6 @@ class InsightFaceDetector:
                     error=None if success else f"Found {len(detected_faces)} faces, need at least {min_faces}"
                 )
                 
-                # Log progress every 10 images
-                if (i + 1) % 10 == 0:
-                    self.logger.info(f"Processed {i + 1}/{len(image_paths)} images")
                 
             except Exception as e:
                 self.logger.error(f"Error processing {img_path}: {e}")

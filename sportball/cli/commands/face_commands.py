@@ -175,7 +175,29 @@ def detect(ctx: click.Context,
     
     # Perform sequential detection with graceful shutdown handling
     try:
-        results_dict = core.detect_faces(files_to_process, **detection_kwargs)
+        # Use Rich progress bar for better user experience
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TextColumn("[progress.completed]{task.completed}/{task.total}"),
+            TimeElapsedColumn(),
+            console=console,
+            transient=False
+        ) as progress:
+            task = progress.add_task("Detecting faces", total=len(files_to_process))
+            
+            # Process images in chunks to update progress
+            chunk_size = max(1, len(files_to_process) // 100)  # Update progress ~100 times
+            results_dict = {}
+            
+            for i in range(0, len(files_to_process), chunk_size):
+                chunk = files_to_process[i:i + chunk_size]
+                chunk_results = core.detect_faces(chunk, **detection_kwargs)
+                results_dict.update(chunk_results)
+                progress.update(task, advance=len(chunk))
+                
     except KeyboardInterrupt:
         console.print("\n🛑 Face detection interrupted by user", style="yellow")
         return
