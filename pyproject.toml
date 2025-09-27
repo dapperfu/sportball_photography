@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61.0", "wheel", "versioneer>=0.29"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "sportball"
-version = "attr: sportball.__version__"
+version = "1.1.0"
 description = "Unified Sports Photo Analysis Package - AI-powered sports photo processing and organization"
 readme = "README.md"
 license = {text = "MIT"}

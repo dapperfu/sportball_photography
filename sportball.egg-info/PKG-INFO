@@ -1,7 +1,9 @@
 Metadata-Version: 2.4
 Name: sportball
-Version: 1.0.0
+Version: 1.1.0
 Summary: Unified Sports Photo Analysis Package - AI-powered sports photo processing and organization
+Home-page: https://github.com/sportball/sportball
+Author: Sportball Team
 Author-email: Sportball Team <team@sportball.ai>
 Maintainer-email: Sportball Team <team@sportball.ai>
 License: MIT
@@ -62,6 +64,9 @@ Requires-Dist: mypy>=1.5.0; extra == "dev"
 Requires-Dist: pre-commit>=3.0.0; extra == "dev"
 Provides-Extra: all
 Requires-Dist: sportball[cuda,dev]; extra == "all"
+Dynamic: author
+Dynamic: home-page
+Dynamic: requires-python
 
 # Sportball 🏈⚽📸
 
@@ -401,3 +406,4 @@ See [RUST_SIDECAR_INTEGRATION.md](RUST_SIDECAR_INTEGRATION.md) for details.
 ---
 
 **Sportball** - Making sports photo analysis simple, fast, and powerful! 🏈⚽📸
+# Version bump to 1.1.0
