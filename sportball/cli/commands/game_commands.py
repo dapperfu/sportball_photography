@@ -252,7 +252,7 @@ def create_organized_folders(games: List[Dict], output_dir: Path, copy_files: bo
         else:
             date_str = "UnknownDate"
         
-        game_folder_name = f"Game{game_id}_{date_str}_{start_time.replace(':', '')}"
+        game_folder_name = f"Game{game_id}_{date_str}_{start_time.replace(':', '')}-{end_time.replace(':', '')}"
         game_folder = output_dir / game_folder_name
         game_folder.mkdir(exist_ok=True)
         
