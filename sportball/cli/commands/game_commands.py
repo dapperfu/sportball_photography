@@ -239,7 +239,20 @@ def create_organized_folders(games: List[Dict], output_dir: Path, copy_files: bo
         start_time = game.get('start_time_formatted', '00:00:00')
         end_time = game.get('end_time_formatted', '00:00:00')
         
-        game_folder_name = f"Game_{game_id:02d}_{start_time.replace(':', '')}-{end_time.replace(':', '')}"
+        # Get date from start_time ISO string
+        start_time_iso = game.get('start_time', '')
+        if start_time_iso:
+            try:
+                from datetime import datetime
+                start_datetime = datetime.fromisoformat(start_time_iso.replace('Z', '+00:00'))
+                date_str = start_datetime.strftime('%d%b%Y')  # e.g., "24Sep2025"
+            except (ValueError, AttributeError):
+                # Fallback if parsing fails
+                date_str = "UnknownDate"
+        else:
+            date_str = "UnknownDate"
+        
+        game_folder_name = f"Game{game_id}_{date_str}_{start_time.replace(':', '')}"
         game_folder = output_dir / game_folder_name
         game_folder.mkdir(exist_ok=True)
         
@@ -271,7 +284,7 @@ def create_organized_folders(games: List[Dict], output_dir: Path, copy_files: bo
                         # Fallback to copying
                         shutil.copy2(photo_path, dest_path)
         
-        game_folders[f"Game_{game_id:02d}"] = game_folder
+        game_folders[f"Game{game_id}"] = game_folder
     
     console.print(f"✅ Created {len(game_folders)} organized game folders", style="green")
     return game_folders
