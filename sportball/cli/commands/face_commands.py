@@ -27,17 +27,17 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_compl
 
 def _get_console():
     """Lazy import of Console to avoid heavy imports at startup."""
-    # Lazy import: from rich.console import Console
+    from rich.console import Console
     return Console()
 
 def _get_progress():
     """Lazy import of Progress components to avoid heavy imports at startup."""
-    # Lazy import: from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
     return Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
 def _get_table():
     """Lazy import of Table to avoid heavy imports at startup."""
-    # Lazy import: from rich.table import Table
+    from rich.table import Table
     return Table
 
 console = None  # Will be initialized lazily

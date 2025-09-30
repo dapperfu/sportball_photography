@@ -117,7 +117,9 @@ def check_sidecar_file_parallel(image_file: Path, force: bool, operation_type: s
                 
                 # Check for object detection data (YOLOv8)
                 elif operation_type == "object_detection":
-                    if 'yolov8' in data:
+                    if ('yolov8' in data and 
+                        data["yolov8"].get("success", False) and
+                        "objects" in data["yolov8"]):
                         return (image_file, True)  # Should skip (already processed)
                 
                 # Check for other operation types

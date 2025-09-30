@@ -565,6 +565,9 @@ class Sidecar:
             # Check if this sidecar matches the requested operation
             if sidecar_info.operation.value == operation_type:
                 return data.get('data', data)
+            # Also check if the requested operation type exists as a key in the data
+            elif operation_type in data:
+                return data
         return None
     
     def save_data(self, image_path: Path, operation_type: str, data: Dict[str, Any], 

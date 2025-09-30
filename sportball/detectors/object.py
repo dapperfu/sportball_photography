@@ -664,13 +664,15 @@ class ObjectDetector:
         # Resolve symlink to get the original image path
         original_image_path = image_path.resolve() if image_path.is_symlink() else image_path
         
-        # Check if JSON sidecar already exists and contains YOLOv8 data
+        # Check if JSON sidecar already exists and contains successful YOLOv8 data
         json_path = original_image_path.parent / f"{original_image_path.stem}.json"
         if json_path.exists() and not force:
             try:
                 with open(json_path, 'r') as f:
                     json_data = json.load(f)
-                if 'yolov8' in json_data:
+                if ('yolov8' in json_data and 
+                    json_data['yolov8'].get('success', False) and
+                    'objects' in json_data['yolov8']):
                     logger.info(f"Skipping {image_path.name} - YOLOv8 data already exists (use --force to override)")
                     return DetectionResult(
                         image_path=str(image_path),

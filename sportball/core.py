@@ -384,6 +384,12 @@ class SportballCore:
                 sidecar_data = self.sidecar.load_data(image_path, "yolov8")
                 if sidecar_data and 'yolov8' in sidecar_data:
                     detection_data = sidecar_data['yolov8']
+                    # Check if detection was successful
+                    if not detection_data.get('success', False):
+                        # Detection failed, try to perform detection again
+                        detection_data = self.detect_objects(image_path, save_sidecar=True)
+                        if detection_data and str(image_path) in detection_data:
+                            detection_data = detection_data[str(image_path)]
                 else:
                     # Perform detection first
                     detection_data = self.detect_objects(image_path, save_sidecar=True)

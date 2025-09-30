@@ -100,10 +100,6 @@ def detect(ctx: click.Context,
     elif verbose >= 1:  # -v: info level
         _get_console().print("ℹ️  Info logging enabled", style="blue")
     
-    # Lazy import to avoid heavy dependencies at startup
-    from ..utils import get_core
-    core = get_core(ctx)
-    
     # Find image files (recursive by default)
     recursive = not no_recursive
     # Lazy import to avoid heavy dependencies at startup
@@ -141,18 +137,43 @@ def detect(ctx: click.Context,
         _get_console().print("✅ All images already processed (use --force to reprocess)", style="green")
         return
     
-    _get_console().print(f"🔍 Starting object detection...", style="blue")
+    # Show progress for initialization and processing
+    Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn = _get_progress()
     
-    # Prepare detection parameters
-    detection_kwargs = {
-        'confidence': confidence,
-        'classes': classes,
-        'save_sidecar': save_sidecar,
-        'force': force
-    }
-    
-    # Perform detection
-    results = core.detect_objects(files_to_process, **detection_kwargs)
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TimeElapsedColumn(),
+        console=_get_console(),
+        transient=False  # Keep progress visible after completion
+    ) as progress:
+        
+        # Initialize core with progress indicator
+        init_task = progress.add_task("🔧 Initializing object detection system...", total=None)
+        
+        # Lazy import to avoid heavy dependencies at startup
+        from ..utils import get_core
+        core = get_core(ctx)
+        
+        progress.update(init_task, description="✅ System initialized")
+        progress.remove_task(init_task)
+        
+        # Prepare detection parameters
+        detection_kwargs = {
+            'confidence': confidence,
+            'classes': classes,
+            'save_sidecar': save_sidecar,
+            'force': force
+        }
+        
+        # Perform detection with progress indicator
+        detect_task = progress.add_task(f"🔍 Detecting objects in {len(files_to_process)} images...", total=len(files_to_process))
+        
+        results = core.detect_objects(files_to_process, **detection_kwargs)
+        
+        progress.update(detect_task, description="✅ Detection complete")
+        progress.remove_task(detect_task)
     
     # Display results
     display_object_results(results, extract_objects, output, core, files_to_process)
@@ -257,16 +278,10 @@ def extract(ctx: click.Context,
     By default, directories are processed recursively. Use --no-recursive to disable.
     """
     
-    # Lazy import to avoid heavy dependencies at startup
-    from ..utils import get_core
-    core = get_core(ctx)
-    
     # Parse object types
     types = None
     if object_types:
         types = [name.strip() for name in object_types.split(',')]
-    
-    _get_console().print(f"✂️  Extracting objects from {input_path} to {output_dir}...", style="blue")
     
     # Find image files (recursive by default)
     recursive = not no_recursive
@@ -278,15 +293,42 @@ def extract(ctx: click.Context,
         _get_console().print("❌ No image files found", style="red")
         return
     
-    # Extract objects using core
-    extraction_results = core.extract_objects(
-        image_paths,
-        output_dir,
-        object_types=types,
-        min_size=min_size,
-        max_size=max_size,
-        padding=padding
-    )
+    # Show progress for initialization and processing
+    Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn = _get_progress()
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TimeElapsedColumn(),
+        console=_get_console(),
+        transient=False  # Keep progress visible after completion
+    ) as progress:
+        
+        # Initialize core with progress indicator
+        init_task = progress.add_task("🔧 Initializing object detection system...", total=None)
+        
+        # Lazy import to avoid heavy dependencies at startup
+        from ..utils import get_core
+        core = get_core(ctx)
+        
+        progress.update(init_task, description="✅ System initialized")
+        progress.remove_task(init_task)
+        
+        # Extract objects with progress indicator
+        extract_task = progress.add_task(f"✂️  Extracting objects from {len(image_paths)} images...", total=len(image_paths))
+        
+        extraction_results = core.extract_objects(
+            image_paths,
+            output_dir,
+            object_types=types,
+            min_size=min_size,
+            max_size=max_size,
+            padding=padding
+        )
+        
+        progress.update(extract_task, description="✅ Extraction complete")
+        progress.remove_task(extract_task)
     
     # Display extraction results
     display_extraction_results(extraction_results)
@@ -317,10 +359,6 @@ def analyze(ctx: click.Context,
     By default, directories are processed recursively. Use --no-recursive to disable.
     """
     
-    # Lazy import to avoid heavy dependencies at startup
-    from ..utils import get_core
-    core = get_core(ctx)
-    
     _get_console().print(f"📊 Analyzing objects in {input_path}...", style="blue")
     
     # Find image files (recursive by default)
@@ -333,13 +371,41 @@ def analyze(ctx: click.Context,
         _get_console().print("❌ No image files found", style="red")
         return
     
-    # Perform object detection for analysis
-    detection_kwargs = {
-        'confidence': confidence,
-        'save_sidecar': save_sidecar
-    }
+    # Show progress for initialization and processing
+    Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn = _get_progress()
     
-    results = core.detect_objects(image_paths, **detection_kwargs)
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TimeElapsedColumn(),
+        console=_get_console(),
+        transient=False  # Keep progress visible after completion
+    ) as progress:
+        
+        # Initialize core with progress indicator
+        init_task = progress.add_task("🔧 Initializing object detection system...", total=None)
+        
+        # Lazy import to avoid heavy dependencies at startup
+        from ..utils import get_core
+        core = get_core(ctx)
+        
+        progress.update(init_task, description="✅ System initialized")
+        progress.remove_task(init_task)
+        
+        # Perform object detection for analysis
+        detection_kwargs = {
+            'confidence': confidence,
+            'save_sidecar': save_sidecar
+        }
+        
+        # Perform detection with progress indicator
+        analyze_task = progress.add_task(f"🔍 Analyzing objects in {len(image_paths)} images...", total=len(image_paths))
+        
+        results = core.detect_objects(image_paths, **detection_kwargs)
+        
+        progress.update(analyze_task, description="✅ Analysis complete")
+        progress.remove_task(analyze_task)
     
     # Display analysis results
     display_object_analysis(results)
