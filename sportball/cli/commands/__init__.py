@@ -13,7 +13,8 @@ from . import (
     game_commands,
     quality_commands,
     utility_commands,
-    sidecar_commands
+    sidecar_commands,
+    annotate_commands
 )
 
 __all__ = [
@@ -22,5 +23,6 @@ __all__ = [
     "game_commands",
     "quality_commands",
     "utility_commands",
-    "sidecar_commands"
+    "sidecar_commands",
+    "annotate_commands"
 ]

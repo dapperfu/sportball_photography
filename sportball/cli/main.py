@@ -152,7 +152,8 @@ def _load_commands():
         game_commands,
         quality_commands,
         utility_commands,
-        sidecar_commands
+        sidecar_commands,
+        annotate_commands
     )
     
     cli.add_command(face_commands.face_group, name='face')
@@ -161,6 +162,7 @@ def _load_commands():
     cli.add_command(quality_commands.quality_group, name='quality')
     cli.add_command(utility_commands.utility_group, name='util')
     cli.add_command(sidecar_commands.sidecar_group, name='sidecar')
+    cli.add_command(annotate_commands.viz_group, name='viz')
 
 # Load commands immediately for now, but this can be moved to lazy loading later
 _load_commands()
