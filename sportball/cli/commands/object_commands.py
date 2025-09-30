@@ -22,17 +22,17 @@ from typing import Optional, List
 
 def _get_console():
     """Lazy import of Console to avoid heavy imports at startup."""
-    # Lazy import: from rich.console import Console
+    from rich.console import Console
     return Console()
 
 def _get_progress():
     """Lazy import of Progress components to avoid heavy imports at startup."""
-    # Lazy import: from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
     return Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
 def _get_table():
     """Lazy import of Table to avoid heavy imports at startup."""
-    # Lazy import: from rich.table import Table
+    from rich.table import Table
     return Table
 
 console = None  # Will be initialized lazily
@@ -155,14 +155,14 @@ def detect(ctx: click.Context,
     results = core.detect_objects(files_to_process, **detection_kwargs)
     
     # Display results
-    display_object_results(results, extract_objects, output)
+    display_object_results(results, extract_objects, output, core, files_to_process)
 
 
-def display_object_results(results: dict, extract_objects: bool, output_dir: Optional[Path]):
+def display_object_results(results: dict, extract_objects: bool, output_dir: Optional[Path], core, image_paths: List[Path]):
     """Display object detection results."""
     
     # Create results table
-    table = Table(title="Object Detection Results")
+    table = _get_table()(title="Object Detection Results")
     table.add_column("Image", style="cyan")
     table.add_column("Objects Found", style="green", justify="right")
     table.add_column("Classes", style="yellow")
@@ -349,7 +349,7 @@ def display_extraction_results(results: dict):
     """Display object extraction results."""
     
     # Create results table
-    table = Table(title="Object Extraction Results")
+    table = _get_table()(title="Object Extraction Results")
     table.add_column("Image", style="cyan")
     table.add_column("Objects Extracted", style="green", justify="right")
     table.add_column("Output Directory", style="yellow")
@@ -433,7 +433,7 @@ def display_object_analysis(results: dict):
     # Display class statistics
     if class_counts:
         _get_console().print(f"\n📈 Object Class Distribution:")
-        class_table = Table()
+        class_table = _get_table()()
         class_table.add_column("Class", style="cyan")
         class_table.add_column("Count", style="green", justify="right")
         class_table.add_column("Percentage", style="yellow", justify="right")
