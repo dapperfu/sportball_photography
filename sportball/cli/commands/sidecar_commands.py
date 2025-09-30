@@ -10,10 +10,10 @@ Generated via Cursor IDE (cursor.sh) with AI assistance
 import click
 from pathlib import Path
 from typing import Optional, Dict, List, Any
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+# Lazy import: from rich.console import Console
+# Lazy import: from rich.table import Table
+# Lazy import: from rich.panel import _get_panel()
+# Lazy import: from rich.progress import _get_progress()
 from collections import defaultdict, Counter
 import json
 
@@ -21,7 +21,27 @@ import json
 # from ..utils import get_core
 # from ...sidecar import Sidecar, OperationType
 
-console = Console()
+console = None  # Will be initialized lazily
+
+def _get_console():
+    """Lazy import of Console to avoid heavy imports at startup."""
+    from rich.console import Console
+    return Console()
+
+def _get_progress():
+    """Lazy import of Progress components to avoid heavy imports at startup."""
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+    return Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+
+def _get_table():
+    """Lazy import of Table to avoid heavy imports at startup."""
+    from rich.table import Table
+    return Table
+
+def _get_panel():
+    """Lazy import of Panel to avoid heavy imports at startup."""
+    from rich.panel import Panel
+    return Panel
 
 
 @click.group(context_settings={'help_option_names': ['-h', '--help']})
@@ -58,7 +78,7 @@ def stats(ctx: click.Context,
     from ..utils import get_core
     core = get_core(ctx)
     
-    console.print(f"📊 Analyzing sidecar files in {directory}...", style="blue")
+    _get_console().print(f"📊 Analyzing sidecar files in {directory}...", style="blue")
     
     # Collect comprehensive statistics
     with Progress(
@@ -90,7 +110,7 @@ def stats(ctx: click.Context,
 
 def collect_sidecar_statistics(directory: Path, 
                               operation_filter: Optional[str],
-                              progress: Progress,
+                              progress,
                               task_id: int) -> Dict[str, Any]:
     """Collect comprehensive sidecar statistics using the new Sidecar class."""
     
@@ -103,7 +123,7 @@ def collect_sidecar_statistics(directory: Path,
         try:
             operation_type_filter = OperationType(operation_filter)
         except ValueError:
-            console.print(f"⚠️  Invalid operation filter: {operation_filter}", style="yellow")
+            _get_console().print(f"⚠️  Invalid operation filter: {operation_filter}", style="yellow")
     
     # Use the new Sidecar class
     sidecar_manager = Sidecar()
@@ -132,7 +152,7 @@ def display_table_stats(stats_data: Dict[str, Any]):
     if stats_data['filter_applied']:
         main_table.add_row("Filter Applied", stats_data['filter_applied'])
     
-    console.print(main_table)
+    _get_console().print(main_table)
     
     # Operation breakdown table
     if stats_data['operation_counts']:
@@ -161,7 +181,7 @@ def display_table_stats(stats_data: Dict[str, Any]):
                 f"{avg_size:.0f} chars" if avg_size > 0 else "N/A"
             )
         
-        console.print(ops_table)
+        _get_console().print(ops_table)
     
     # Coverage analysis
     if stats_data.get('file_coverage'):
@@ -184,7 +204,7 @@ def display_table_stats(stats_data: Dict[str, Any]):
             f"{(uncovered_count / stats_data['total_images'] * 100):.1f}%" if stats_data['total_images'] > 0 else "0%"
         )
         
-        console.print(coverage_table)
+        _get_console().print(coverage_table)
     
     # Symlink analysis
     if stats_data.get('symlink_count', 0) > 0:
@@ -213,44 +233,44 @@ def display_table_stats(stats_data: Dict[str, Any]):
             f"{((stats_data['total_images'] - symlink_count) / stats_data['total_images'] * 100):.1f}%" if stats_data['total_images'] > 0 else "0%"
         )
         
-        console.print(symlink_table)
+        _get_console().print(symlink_table)
         
         # Show broken symlinks if any
         if broken_count > 0:
-            console.print(f"\n⚠️  Found {broken_count} broken symlinks:", style="yellow")
+            _get_console().print(f"\n⚠️  Found {broken_count} broken symlinks:", style="yellow")
             broken_symlinks = [info for info in stats_data.get('symlink_info', {}).values() 
                               if info.get('broken', False)]
             for symlink_info in broken_symlinks[:5]:  # Show first 5
-                console.print(f"  {symlink_info['symlink_path']} -> {symlink_info.get('target_path', 'MISSING')}")
+                _get_console().print(f"  {symlink_info['symlink_path']} -> {symlink_info.get('target_path', 'MISSING')}")
             if len(broken_symlinks) > 5:
-                console.print(f"  ... and {len(broken_symlinks) - 5} more")
+                _get_console().print(f"  ... and {len(broken_symlinks) - 5} more")
 
 
 def display_summary_stats(stats_data: Dict[str, Any]):
     """Display statistics in summary format."""
     
-    console.print(f"\n📊 Sidecar Statistics Summary for {stats_data['directory']}")
-    console.print(f"📁 Total Images: {stats_data['total_images']}")
+    _get_console().print(f"\n📊 Sidecar Statistics Summary for {stats_data['directory']}")
+    _get_console().print(f"📁 Total Images: {stats_data['total_images']}")
     
     symlink_count = stats_data.get('symlink_count', 0)
     broken_count = stats_data.get('broken_symlinks', 0)
     if symlink_count > 0:
-        console.print(f"🔗 Symlinks: {symlink_count} ({symlink_count - broken_count} working, {broken_count} broken)")
+        _get_console().print(f"🔗 Symlinks: {symlink_count} ({symlink_count - broken_count} working, {broken_count} broken)")
     
-    console.print(f"📄 Total Sidecar Files: {stats_data['total_sidecars']}")
-    console.print(f"📈 Coverage: {stats_data['coverage_percentage']:.1f}%")
+    _get_console().print(f"📄 Total Sidecar Files: {stats_data['total_sidecars']}")
+    _get_console().print(f"📈 Coverage: {stats_data['coverage_percentage']:.1f}%")
     
     if stats_data['operation_counts']:
-        console.print(f"\n🔍 Operation Breakdown:")
+        _get_console().print(f"\n🔍 Operation Breakdown:")
         for operation, count in stats_data['operation_counts'].items():
             percentage = (count / stats_data['total_sidecars'] * 100) if stats_data['total_sidecars'] > 0 else 0
-            console.print(f"  {operation.replace('_', ' ').title()}: {count} files ({percentage:.1f}%)")
+            _get_console().print(f"  {operation.replace('_', ' ').title()}: {count} files ({percentage:.1f}%)")
 
 
 def display_json_stats(stats_data: Dict[str, Any]):
     """Display statistics in JSON format."""
     import json
-    console.print(json.dumps(stats_data, indent=2))
+    _get_console().print(json.dumps(stats_data, indent=2))
 
 
 def save_statistics_report(stats_data: Dict[str, Any], output_path: Path):
@@ -270,9 +290,9 @@ def save_statistics_report(stats_data: Dict[str, Any], output_path: Path):
     try:
         with open(output_path, 'w') as f:
             json.dump(report, f, indent=2)
-        console.print(f"💾 Report saved to {output_path}", style="green")
+        _get_console().print(f"💾 Report saved to {output_path}", style="green")
     except Exception as e:
-        console.print(f"❌ Failed to save report: {e}", style="red")
+        _get_console().print(f"❌ Failed to save report: {e}", style="red")
 
 
 @sidecar_group.command()
@@ -303,24 +323,24 @@ def cleanup(ctx: click.Context,
     from ..utils import get_core
     core = get_core(ctx)
     
-    console.print(f"🧹 Cleaning up sidecar files in {directory}...", style="blue")
+    _get_console().print(f"🧹 Cleaning up sidecar files in {directory}...", style="blue")
     
     if dry_run:
-        console.print("🔍 Dry run mode - no files will be deleted", style="yellow")
+        _get_console().print("🔍 Dry run mode - no files will be deleted", style="yellow")
     
     # Find orphaned sidecar files
     orphaned_count = core.cleanup_orphaned_sidecars(directory)
     
     if orphaned_count > 0:
         if dry_run:
-            console.print(f"Would remove {orphaned_count} orphaned sidecar files", style="yellow")
+            _get_console().print(f"Would remove {orphaned_count} orphaned sidecar files", style="yellow")
         else:
-            console.print(f"✅ Removed {orphaned_count} orphaned sidecar files", style="green")
+            _get_console().print(f"✅ Removed {orphaned_count} orphaned sidecar files", style="green")
     else:
-        console.print("✅ No orphaned sidecar files found", style="green")
+        _get_console().print("✅ No orphaned sidecar files found", style="green")
     
     # TODO: Add stale file cleanup based on age
-    console.print("Stale file cleanup not yet implemented", style="yellow")
+    _get_console().print("Stale file cleanup not yet implemented", style="yellow")
 
 
 @sidecar_group.command()
@@ -342,7 +362,7 @@ def export(ctx: click.Context,
     DIRECTORY should contain images with sidecar files.
     """
     
-    console.print(f"📤 Exporting sidecar data from {directory}...", style="blue")
+    _get_console().print(f"📤 Exporting sidecar data from {directory}...", style="blue")
     
     # TODO: Implement sidecar data export
-    console.print("Sidecar data export not yet implemented", style="yellow")
+    _get_console().print("Sidecar data export not yet implemented", style="yellow")

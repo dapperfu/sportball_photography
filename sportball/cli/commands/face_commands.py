@@ -14,16 +14,33 @@ import sys
 from pathlib import Path
 from typing import Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
-from rich.console import Console
-from rich.table import Table
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+
+# Lazy imports to avoid heavy dependencies at startup
+# # Lazy import: from rich.console import Console
+# # Lazy import: from rich.table import Table
+# # Lazy import: from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
 # Lazy imports to avoid heavy dependencies at startup
 # from ..utils import get_core, find_image_files, check_sidecar_files
 # from ...sidecar import Sidecar, OperationType
 # from ...detectors.face_benchmark import FaceDetectionBenchmark
 
-console = Console()
+def _get_console():
+    """Lazy import of Console to avoid heavy imports at startup."""
+    # Lazy import: from rich.console import Console
+    return Console()
+
+def _get_progress():
+    """Lazy import of Progress components to avoid heavy imports at startup."""
+    # Lazy import: from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+    return Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+
+def _get_table():
+    """Lazy import of Table to avoid heavy imports at startup."""
+    # Lazy import: from rich.table import Table
+    return Table
+
+console = None  # Will be initialized lazily
 
 # Global flag for graceful shutdown
 shutdown_requested = False
@@ -32,7 +49,7 @@ def signal_handler(signum, frame):
     """Handle interrupt signals gracefully."""
     global shutdown_requested
     shutdown_requested = True
-    console.print("\n🛑 Shutdown requested. Finishing current operations...", style="yellow")
+    _get_console().print("\n🛑 Shutdown requested. Finishing current operations...", style="yellow")
     sys.exit(0)
 
 # Register signal handlers
@@ -94,9 +111,9 @@ def detect(ctx: click.Context,
     
     # Setup logging based on verbose level
     if verbose >= 2:  # -vv: debug level
-        console.print("🔍 Debug logging enabled", style="blue")
+        _get_console().print("🔍 Debug logging enabled", style="blue")
     elif verbose >= 1:  # -v: info level
-        console.print("ℹ️  Info logging enabled", style="blue")
+        _get_console().print("ℹ️  Info logging enabled", style="blue")
     
     # Lazy import to avoid heavy dependencies at startup
     from ..utils import get_core
@@ -120,27 +137,27 @@ def detect(ctx: click.Context,
             image_files = list(Path('.').glob(input_pattern))
     
     if not image_files:
-        console.print("❌ No images found", style="red")
+        _get_console().print("❌ No images found", style="red")
         return
     
     # Limit number of images if specified
     if max_images:
         image_files = image_files[:max_images]
     
-    console.print(f"📊 Found {len(image_files)} images to analyze", style="blue")
+    _get_console().print(f"📊 Found {len(image_files)} images to analyze", style="blue")
     
     # Auto-tune processing parameters if requested
     if auto_tune and gpu:
-        console.print("🔧 Auto-tuning processing parameters...", style="blue")
+        _get_console().print("🔧 Auto-tuning processing parameters...", style="blue")
         try:
             # For sequential processing, we don't need batch size tuning
             # This is kept for compatibility but doesn't affect performance
-            console.print("ℹ️  Sequential processing mode - batch size tuning not needed", style="blue")
+            _get_console().print("ℹ️  Sequential processing mode - batch size tuning not needed", style="blue")
         except Exception as e:
-            console.print(f"⚠️  Auto-tuning failed: {e}", style="yellow")
+            _get_console().print(f"⚠️  Auto-tuning failed: {e}", style="yellow")
     
     # Check for existing sidecar files
-    console.print("🔍 Checking for existing sidecar files...", style="blue")
+    _get_console().print("🔍 Checking for existing sidecar files...", style="blue")
     # Lazy import to avoid heavy dependencies at startup
     from ..utils import check_sidecar_files_parallel
     files_to_process, skipped_files = check_sidecar_files_parallel(
@@ -151,15 +168,15 @@ def detect(ctx: click.Context,
     
     # Show skipping message after image discovery but before processing
     if skipped_files:
-        console.print(f"⏭️  Skipping {len(skipped_files)} images - JSON sidecar already exists (use --force to override)", style="yellow")
+        _get_console().print(f"⏭️  Skipping {len(skipped_files)} images - JSON sidecar already exists (use --force to override)", style="yellow")
     
-    console.print(f"📊 Processing {len(files_to_process)} images ({len(skipped_files)} skipped)", style="blue")
+    _get_console().print(f"📊 Processing {len(files_to_process)} images ({len(skipped_files)} skipped)", style="blue")
     
     if not files_to_process:
-        console.print("✅ All images already processed (use --force to reprocess)", style="green")
+        _get_console().print("✅ All images already processed (use --force to reprocess)", style="green")
         return
     
-    console.print(f"🔍 Starting face detection...", style="blue")
+    _get_console().print(f"🔍 Starting face detection...", style="blue")
     
     # Use core's sequential processing for face detection
     # Lazy import to avoid heavy dependencies at startup
@@ -199,10 +216,10 @@ def detect(ctx: click.Context,
                 progress.update(task, advance=len(chunk))
                 
     except KeyboardInterrupt:
-        console.print("\n🛑 Face detection interrupted by user", style="yellow")
+        _get_console().print("\n🛑 Face detection interrupted by user", style="yellow")
         return
     except Exception as e:
-        console.print(f"❌ Face detection failed: {e}", style="red")
+        _get_console().print(f"❌ Face detection failed: {e}", style="red")
         return
     
     # Convert results to list format for compatibility
@@ -266,9 +283,9 @@ def extract(ctx: click.Context,
     
     # Setup logging based on verbose level
     if verbose >= 2:  # -vv: debug level
-        console.print("🔍 Debug logging enabled", style="blue")
+        _get_console().print("🔍 Debug logging enabled", style="blue")
     elif verbose >= 1:  # -v: info level
-        console.print("ℹ️  Info logging enabled", style="blue")
+        _get_console().print("ℹ️  Info logging enabled", style="blue")
     
     # Lazy import to avoid heavy dependencies at startup
     from ..utils import get_core
@@ -278,9 +295,9 @@ def extract(ctx: click.Context,
     if output is None:
         output = input_path / f"{input_path.name}_faces"
     
-    console.print(f"✂️  Extracting faces from {input_path}...", style="blue")
-    console.print(f"📁 Output directory: {output}", style="blue")
-    console.print(f"📏 Padding: {padding}px", style="blue")
+    _get_console().print(f"✂️  Extracting faces from {input_path}...", style="blue")
+    _get_console().print(f"📁 Output directory: {output}", style="blue")
+    _get_console().print(f"📏 Padding: {padding}px", style="blue")
     
     # Find image files (recursive by default)
     recursive = not no_recursive
@@ -289,10 +306,10 @@ def extract(ctx: click.Context,
     image_files = find_image_files(input_path, recursive=recursive)
     
     if not image_files:
-        console.print("❌ No image files found", style="red")
+        _get_console().print("❌ No image files found", style="red")
         return
     
-    console.print(f"📊 Found {len(image_files)} images to process", style="blue")
+    _get_console().print(f"📊 Found {len(image_files)} images to process", style="blue")
     
     # Extract faces using core
     extraction_results = core.extract_faces(
@@ -356,15 +373,15 @@ def benchmark(ctx: click.Context,
     
     # Setup logging based on verbose level
     if verbose >= 2:  # -vv: debug level
-        console.print("🔍 Debug logging enabled", style="blue")
+        _get_console().print("🔍 Debug logging enabled", style="blue")
     elif verbose >= 1:  # -v: info level
-        console.print("ℹ️  Info logging enabled", style="blue")
+        _get_console().print("ℹ️  Info logging enabled", style="blue")
     
     # Parse detector list
     detector_list = None
     if detectors:
         detector_list = [d.strip() for d in detectors.split(',')]
-        console.print(f"🎯 Testing detectors: {', '.join(detector_list)}", style="blue")
+        _get_console().print(f"🎯 Testing detectors: {', '.join(detector_list)}", style="blue")
     
     # Find image files
     input_path = Path(input_pattern)
@@ -384,14 +401,14 @@ def benchmark(ctx: click.Context,
             image_files = list(Path('.').glob(input_pattern))
     
     if not image_files:
-        console.print("❌ No images found", style="red")
+        _get_console().print("❌ No images found", style="red")
         return
     
     # Limit number of images if specified
     if max_images:
         image_files = image_files[:max_images]
     
-    console.print(f"📊 Found {len(image_files)} images for benchmarking", style="blue")
+    _get_console().print(f"📊 Found {len(image_files)} images for benchmarking", style="blue")
     
     # Initialize benchmark (lazy import)
     from ...detectors.face_benchmark import FaceDetectionBenchmark
@@ -401,7 +418,7 @@ def benchmark(ctx: click.Context,
         min_face_size=min_face_size
     )
     
-    console.print("🚀 Starting face detection benchmark...", style="blue")
+    _get_console().print("🚀 Starting face detection benchmark...", style="blue")
     
     # Run benchmark
     try:
@@ -415,7 +432,7 @@ def benchmark(ctx: click.Context,
         display_benchmark_results(summary)
         
     except Exception as e:
-        console.print(f"❌ Benchmark failed: {e}", style="red")
+        _get_console().print(f"❌ Benchmark failed: {e}", style="red")
         return
 
 
@@ -472,9 +489,9 @@ def cluster(ctx: click.Context,
     
     # Setup logging based on verbose level
     if verbose >= 2:  # -vv: debug level
-        console.print("🔍 Debug logging enabled", style="blue")
+        _get_console().print("🔍 Debug logging enabled", style="blue")
     elif verbose >= 1:  # -v: info level
-        console.print("ℹ️  Info logging enabled", style="blue")
+        _get_console().print("ℹ️  Info logging enabled", style="blue")
     
     # Lazy import to avoid heavy dependencies at startup
     from ..utils import get_core
@@ -484,20 +501,20 @@ def cluster(ctx: click.Context,
     if output is None:
         output = input_path / f"{input_path.name}_clusters"
     
-    console.print(f"🔗 Clustering faces in {input_path}...", style="blue")
+    _get_console().print(f"🔗 Clustering faces in {input_path}...", style="blue")
     # Validate parameters
     if not 0.0 <= similarity <= 1.0:
-        console.print(f"❌ Invalid similarity threshold: {similarity}. Must be between 0.0 and 1.0", style="red")
+        _get_console().print(f"❌ Invalid similarity threshold: {similarity}. Must be between 0.0 and 1.0", style="red")
         return
     
     if min_cluster_size < 1:
-        console.print(f"❌ Invalid min cluster size: {min_cluster_size}. Must be >= 1", style="red")
+        _get_console().print(f"❌ Invalid min cluster size: {min_cluster_size}. Must be >= 1", style="red")
         return
     
-    console.print(f"📁 Output directory: {output}", style="blue")
-    console.print(f"🎯 Similarity threshold: {similarity}", style="blue")
-    console.print(f"👥 Min cluster size: {min_cluster_size}", style="blue")
-    console.print(f"🧮 Algorithm: {algorithm}", style="blue")
+    _get_console().print(f"📁 Output directory: {output}", style="blue")
+    _get_console().print(f"🎯 Similarity threshold: {similarity}", style="blue")
+    _get_console().print(f"👥 Min cluster size: {min_cluster_size}", style="blue")
+    _get_console().print(f"🧮 Algorithm: {algorithm}", style="blue")
     
     # Check if input path contains sidecar files with face detection data
     # Handle both direct sidecar files and symlinked images
@@ -521,8 +538,8 @@ def cluster(ctx: click.Context,
                 continue
     
     if not sidecar_files:
-        console.print("❌ No sidecar files found", style="red")
-        console.print("💡 Run 'sportball face detect' first to detect faces", style="yellow")
+        _get_console().print("❌ No sidecar files found", style="red")
+        _get_console().print("💡 Run 'sportball face detect' first to detect faces", style="yellow")
         return
     
     # Check if any sidecar files contain face detection data
@@ -538,11 +555,11 @@ def cluster(ctx: click.Context,
             continue
     
     if not face_detection_files:
-        console.print("❌ No face detection data found in sidecar files", style="red")
-        console.print("💡 Run 'sportball face detect' first to detect faces", style="yellow")
+        _get_console().print("❌ No face detection data found in sidecar files", style="red")
+        _get_console().print("💡 Run 'sportball face detect' first to detect faces", style="yellow")
         return
     
-    console.print(f"📊 Found {len(face_detection_files)} sidecar files with face detection data", style="blue")
+    _get_console().print(f"📊 Found {len(face_detection_files)} sidecar files with face detection data", style="blue")
     
     # Load detection results from sidecar files
     detection_results = {}
@@ -556,13 +573,13 @@ def cluster(ctx: click.Context,
                     image_path = sidecar_file.stem
                     detection_results[image_path] = data['face_detection']
         except Exception as e:
-            console.print(f"⚠️  Failed to load sidecar file {sidecar_file}: {e}", style="yellow")
+            _get_console().print(f"⚠️  Failed to load sidecar file {sidecar_file}: {e}", style="yellow")
     
     if not detection_results:
-        console.print("❌ No valid face detection data found", style="red")
+        _get_console().print("❌ No valid face detection data found", style="red")
         return
     
-    console.print(f"📊 Loaded face detection data for {len(detection_results)} images", style="blue")
+    _get_console().print(f"📊 Loaded face detection data for {len(detection_results)} images", style="blue")
     
     # Perform clustering
     try:
@@ -576,14 +593,14 @@ def cluster(ctx: click.Context,
         )
         
         if not clustering_result.get('success', False):
-            console.print(f"❌ Clustering failed: {clustering_result.get('error', 'Unknown error')}", style="red")
+            _get_console().print(f"❌ Clustering failed: {clustering_result.get('error', 'Unknown error')}", style="red")
             return
         
         # Display clustering results
         display_clustering_results(clustering_result)
         
         # Export results
-        console.print(f"📤 Exporting results to {output}...", style="blue")
+        _get_console().print(f"📤 Exporting results to {output}...", style="blue")
         
         export_results = core.export_face_clusters(
             clustering_result,
@@ -593,36 +610,36 @@ def cluster(ctx: click.Context,
         )
         
         if export_results.get('success', False):
-            console.print("✅ Export completed successfully", style="green")
+            _get_console().print("✅ Export completed successfully", style="green")
             
             # Display export summary
             files_created = export_results.get('files_created', [])
             if files_created:
-                console.print(f"📄 Files created: {len(files_created)}", style="blue")
+                _get_console().print(f"📄 Files created: {len(files_created)}", style="blue")
                 for file_path in files_created:
-                    console.print(f"  • {file_path}", style="dim")
+                    _get_console().print(f"  • {file_path}", style="dim")
             
             # Display visualization results
             viz_results = export_results.get('visualization', {})
             if viz_results.get('success', False):
                 images_created = viz_results.get('images_created', [])
                 if images_created:
-                    console.print(f"🖼️  Visualization images: {len(images_created)}", style="blue")
+                    _get_console().print(f"🖼️  Visualization images: {len(images_created)}", style="blue")
                     for img_path in images_created:
-                        console.print(f"  • {img_path}", style="dim")
+                        _get_console().print(f"  • {img_path}", style="dim")
         else:
-            console.print(f"❌ Export failed: {export_results.get('error', 'Unknown error')}", style="red")
+            _get_console().print(f"❌ Export failed: {export_results.get('error', 'Unknown error')}", style="red")
         
     except Exception as e:
-        console.print(f"❌ Clustering failed: {e}", style="red")
+        _get_console().print(f"❌ Clustering failed: {e}", style="red")
         if verbose >= 1:
             import traceback
-            console.print(traceback.format_exc(), style="red")
+            _get_console().print(traceback.format_exc(), style="red")
 
 
 def display_clustering_results(clustering_result: dict):
     """Display face clustering results in a formatted table."""
-    from rich.table import Table
+    # Lazy import: from rich.table import Table
     from rich.panel import Panel
     
     # Create results table
@@ -637,7 +654,7 @@ def display_clustering_results(clustering_result: dict):
     table.add_row("Algorithm", clustering_result.get('algorithm_used', 'unknown'))
     table.add_row("Processing Time", f"{clustering_result.get('processing_time', 0.0):.2f}s")
     
-    console.print(table)
+    _get_console().print(table)
     
     # Display cluster details
     clusters = clustering_result.get('clusters', [])
@@ -663,19 +680,19 @@ def display_clustering_results(clustering_result: dict):
                 str(unique_images)
             )
         
-        console.print(cluster_table)
+        _get_console().print(cluster_table)
     
     # Display unclustered faces if any
     unclustered = clustering_result.get('unclustered_faces', [])
     if unclustered:
-        console.print(f"\n⚠️  {len(unclustered)} faces could not be clustered", style="yellow")
+        _get_console().print(f"\n⚠️  {len(unclustered)} faces could not be clustered", style="yellow")
         if len(unclustered) <= 10:  # Show details for small numbers
             for face_id in unclustered:
-                console.print(f"  • {face_id}", style="dim")
+                _get_console().print(f"  • {face_id}", style="dim")
         else:
-            console.print(f"  (showing first 10 of {len(unclustered)})", style="dim")
+            _get_console().print(f"  (showing first 10 of {len(unclustered)})", style="dim")
             for face_id in unclustered[:10]:
-                console.print(f"  • {face_id}", style="dim")
+                _get_console().print(f"  • {face_id}", style="dim")
 
 
 def display_face_results(results: dict, extract_faces: bool, output_dir: Optional[Path]):
@@ -712,41 +729,41 @@ def display_face_results(results: dict, extract_faces: bool, output_dir: Optiona
                 error_msg[:50] + "..." if len(error_msg) > 50 else error_msg
             )
     
-    console.print(table)
-    console.print(f"\n📊 Summary: {successful_images}/{len(results)} images processed, {total_faces} faces detected")
+    _get_console().print(table)
+    _get_console().print(f"\n📊 Summary: {successful_images}/{len(results)} images processed, {total_faces} faces detected")
     
     # Extract faces if requested
     if extract_faces and output_dir:
-        console.print(f"\n💾 Extracting faces to {output_dir}...", style="blue")
+        _get_console().print(f"\n💾 Extracting faces to {output_dir}...", style="blue")
         # TODO: Implement face extraction
-        console.print("Face extraction not yet implemented", style="yellow")
+        _get_console().print("Face extraction not yet implemented", style="yellow")
 
 
 def display_face_detection_results(results, total_images: int, total_faces_found: int, total_time: float, skipped_count: int = 0):
     """Display face detection results summary."""
     
-    console.print(f"\n✅ Face detection complete!", style="green")
-    console.print(f"📊 Processed {total_images} images")
-    console.print(f"👥 Found {total_faces_found} faces")
-    console.print(f"⏱️  Total detection time: {total_time:.2f}s")
+    _get_console().print(f"\n✅ Face detection complete!", style="green")
+    _get_console().print(f"📊 Processed {total_images} images")
+    _get_console().print(f"👥 Found {total_faces_found} faces")
+    _get_console().print(f"⏱️  Total detection time: {total_time:.2f}s")
     if total_images > 0:
-        console.print(f"📈 Average time per image: {total_time/total_images:.2f}s")
+        _get_console().print(f"📈 Average time per image: {total_time/total_images:.2f}s")
     
     # Show skipped count
     if skipped_count > 0:
-        console.print(f"⏭️  {skipped_count} images skipped (existing sidecar data)", style="blue")
+        _get_console().print(f"⏭️  {skipped_count} images skipped (existing sidecar data)", style="blue")
     
     # Show processing info
     if total_images > 1:
-        console.print(f"🔄 Used sequential processing for optimal performance", style="blue")
+        _get_console().print(f"🔄 Used sequential processing for optimal performance", style="blue")
 
 
 def display_benchmark_results(summary):
     """Display benchmark results summary."""
-    from rich.table import Table
+    # Lazy import: from rich.table import Table
     
-    console.print(f"\n🏆 Face Detection Benchmark Results", style="bold green")
-    console.print(f"📊 Tested {summary.total_images} images with {len(summary.detectors)} detectors")
+    _get_console().print(f"\n🏆 Face Detection Benchmark Results", style="bold green")
+    _get_console().print(f"📊 Tested {summary.total_images} images with {len(summary.detectors)} detectors")
     
     # Performance table
     perf_table = Table(title="Performance Statistics")
@@ -769,7 +786,7 @@ def display_benchmark_results(summary):
                 str(stats['total_faces'])
             )
     
-    console.print(perf_table)
+    _get_console().print(perf_table)
     
     # Accuracy table
     acc_table = Table(title="Accuracy Statistics")
@@ -790,33 +807,33 @@ def display_benchmark_results(summary):
                 f"{stats['avg_face_size']:.0f}"
             )
     
-    console.print(acc_table)
+    _get_console().print(acc_table)
 
 
 def display_detector_comparison(comparison):
     """Display detector comparison and recommendations."""
-    console.print(f"\n🎯 Detector Comparison", style="bold blue")
+    _get_console().print(f"\n🎯 Detector Comparison", style="bold blue")
     
     if comparison['fastest_detector']:
-        console.print(f"⚡ Fastest: {comparison['fastest_detector']}", style="green")
+        _get_console().print(f"⚡ Fastest: {comparison['fastest_detector']}", style="green")
     
     if comparison['most_accurate_detector']:
-        console.print(f"🎯 Most Accurate: {comparison['most_accurate_detector']}", style="green")
+        _get_console().print(f"🎯 Most Accurate: {comparison['most_accurate_detector']}", style="green")
     
     if comparison['most_reliable_detector']:
-        console.print(f"🛡️  Most Reliable: {comparison['most_reliable_detector']}", style="green")
+        _get_console().print(f"🛡️  Most Reliable: {comparison['most_reliable_detector']}", style="green")
     
     if comparison['recommendations']:
-        console.print(f"\n💡 Recommendations:", style="bold yellow")
+        _get_console().print(f"\n💡 Recommendations:", style="bold yellow")
         for rec in comparison['recommendations']:
-            console.print(f"  • {rec}", style="yellow")
+            _get_console().print(f"  • {rec}", style="yellow")
     
     # Overall scores
     if comparison['detailed_comparison']:
-        console.print(f"\n📊 Overall Scores:", style="bold blue")
+        _get_console().print(f"\n📊 Overall Scores:", style="bold blue")
         for detector_name, details in comparison['detailed_comparison'].items():
             score = details.get('overall_score', 0)
-            console.print(f"  {detector_name}: {score:.1f}/100", style="blue")
+            _get_console().print(f"  {detector_name}: {score:.1f}/100", style="blue")
 
 
 def display_face_extraction_results(extraction_results: dict, output_dir: Path):
@@ -835,24 +852,24 @@ def display_face_extraction_results(extraction_results: dict, output_dir: Path):
         else:
             failed_extractions += 1
     
-    console.print(f"\n✅ Face extraction complete!", style="green")
-    console.print(f"📊 Processed {total_images} images")
-    console.print(f"👥 Extracted {total_faces_extracted} faces")
-    console.print(f"📁 Saved to: {output_dir}", style="blue")
+    _get_console().print(f"\n✅ Face extraction complete!", style="green")
+    _get_console().print(f"📊 Processed {total_images} images")
+    _get_console().print(f"👥 Extracted {total_faces_extracted} faces")
+    _get_console().print(f"📁 Saved to: {output_dir}", style="blue")
     
     if successful_extractions > 0:
-        console.print(f"✅ {successful_extractions} images processed successfully", style="green")
+        _get_console().print(f"✅ {successful_extractions} images processed successfully", style="green")
     
     if failed_extractions > 0:
-        console.print(f"❌ {failed_extractions} images failed to process", style="red")
+        _get_console().print(f"❌ {failed_extractions} images failed to process", style="red")
         
         # Show details for failed extractions
-        console.print(f"\n⚠️  Failed extractions:", style="yellow")
+        _get_console().print(f"\n⚠️  Failed extractions:", style="yellow")
         for image_path, result in extraction_results.items():
             if not result.get('success', False):
                 error_msg = result.get('error', 'Unknown error')
-                console.print(f"  • {Path(image_path).name}: {error_msg}", style="red")
+                _get_console().print(f"  • {Path(image_path).name}: {error_msg}", style="red")
     
     if total_faces_extracted > 0:
         avg_faces = total_faces_extracted / successful_extractions if successful_extractions > 0 else 0
-        console.print(f"📈 Average faces per image: {avg_faces:.1f}", style="blue")
+        _get_console().print(f"📈 Average faces per image: {avg_faces:.1f}", style="blue")

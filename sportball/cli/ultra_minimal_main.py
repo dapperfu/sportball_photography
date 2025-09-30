@@ -14,8 +14,29 @@ from typing import Optional
 warnings.filterwarnings("ignore", message="pkg_resources is deprecated", category=UserWarning)
 warnings.filterwarnings("ignore", message=".*pkg_resources.*", category=UserWarning)
 
+class LazyCommandGroup(click.Group):
+    """Custom Click group that loads commands lazily."""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.commands_loaded = False
+    
+    def get_command(self, ctx, cmd_name):
+        """Load commands lazily when a command is requested."""
+        if not self.commands_loaded:
+            _load_commands()
+            self.commands_loaded = True
+        return super().get_command(ctx, cmd_name)
+    
+    def list_commands(self, ctx):
+        """Load commands lazily when listing commands."""
+        if not self.commands_loaded:
+            _load_commands()
+            self.commands_loaded = True
+        return super().list_commands(ctx)
+
 # Ultra-minimal CLI group with zero heavy imports
-@click.group(context_settings={'help_option_names': ['-h', '--help']})
+@click.group(cls=LazyCommandGroup, context_settings={'help_option_names': ['-h', '--help']})
 @click.option('--base-dir', '-d', 
               type=click.Path(path_type=Path),
               help='Base directory for operations')
@@ -118,22 +139,25 @@ def cli(ctx: click.Context,
     ctx.obj['verbose'] = verbose
     ctx.obj['quiet'] = quiet
 
-# Add command groups (import here to avoid circular imports)
-from .commands import (
-    face_commands,
-    object_commands,
-    game_commands,
-    quality_commands,
-    utility_commands,
-    sidecar_commands
-)
+# Lazy command loading to avoid heavy imports at startup
+def _load_commands():
+    """Load command groups lazily to avoid heavy imports at startup."""
+    from .commands import (
+        face_commands,
+        object_commands,
+        game_commands,
+        quality_commands,
+        utility_commands,
+        sidecar_commands
+    )
+    
+    cli.add_command(face_commands.face_group, name='face')
+    cli.add_command(object_commands.object_group, name='object')
+    cli.add_command(game_commands.game_group, name='games')
+    cli.add_command(quality_commands.quality_group, name='quality')
+    cli.add_command(utility_commands.utility_group, name='util')
+    cli.add_command(sidecar_commands.sidecar_group, name='sidecar')
 
-cli.add_command(face_commands.face_group, name='face')
-cli.add_command(object_commands.object_group, name='object')
-cli.add_command(game_commands.game_group, name='games')
-cli.add_command(quality_commands.quality_group, name='quality')
-cli.add_command(utility_commands.utility_group, name='util')
-cli.add_command(sidecar_commands.sidecar_group, name='sidecar')
 
 
 @cli.command()

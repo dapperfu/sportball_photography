@@ -10,13 +10,28 @@ Generated via Cursor IDE (cursor.sh) with AI assistance
 import click
 from pathlib import Path
 from typing import Optional
-from rich.console import Console
-from rich.table import Table
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+# Lazy import: from rich.console import Console
+# Lazy import: from rich.table import Table
+# Lazy import: from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
 from ..utils import get_core, find_image_files
 
-console = Console()
+console = None  # Will be initialized lazily
+
+def _get_console():
+    """Lazy import of Console to avoid heavy imports at startup."""
+    from rich.console import Console
+    return Console()
+
+def _get_progress():
+    """Lazy import of Progress components to avoid heavy imports at startup."""
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+    return Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+
+def _get_table():
+    """Lazy import of Table to avoid heavy imports at startup."""
+    from rich.table import Table
+    return Table
 
 
 @click.group(context_settings={'help_option_names': ['-h', '--help']})
@@ -70,10 +85,10 @@ def assess(ctx: click.Context,
     image_paths = find_image_files(input_path, recursive=recursive)
     
     if not image_paths:
-        console.print("❌ No image files found", style="red")
+        _get_console().print("❌ No image files found", style="red")
         return
     
-    console.print(f"📸 Assessing quality of {len(image_paths)} images...", style="blue")
+    _get_console().print(f"📸 Assessing quality of {len(image_paths)} images...", style="blue")
     
     # Perform quality assessment
     with Progress(
@@ -162,26 +177,26 @@ def display_quality_results(results: dict, filter_low_quality: bool, output_dir:
                 error_msg[:30] + "..." if len(error_msg) > 30 else error_msg
             )
     
-    console.print(table)
+    _get_console().print(table)
     
     if successful_images > 0:
         avg_score = total_score / successful_images
-        console.print(f"\n📊 Summary: {successful_images}/{len(results)} images processed")
-        console.print(f"Average quality score: {avg_score:.2f}")
+        _get_console().print(f"\n📊 Summary: {successful_images}/{len(results)} images processed")
+        _get_console().print(f"Average quality score: {avg_score:.2f}")
         
         # Display grade distribution
-        console.print("\n📈 Grade Distribution:")
+        _get_console().print("\n📈 Grade Distribution:")
         for grade, count in sorted(grade_counts.items()):
             if count > 0:
-                console.print(f"  Grade {grade}: {count} images")
+                _get_console().print(f"  Grade {grade}: {count} images")
         
         # Filter low quality if requested
         if filter_low_quality and low_quality_images:
-            console.print(f"\n🔍 Found {len(low_quality_images)} low-quality images:")
+            _get_console().print(f"\n🔍 Found {len(low_quality_images)} low-quality images:")
             for img_path in low_quality_images[:10]:  # Show first 10
-                console.print(f"  {Path(img_path).name}")
+                _get_console().print(f"  {Path(img_path).name}")
             if len(low_quality_images) > 10:
-                console.print(f"  ... and {len(low_quality_images) - 10} more")
+                _get_console().print(f"  ... and {len(low_quality_images) - 10} more")
 
 
 @quality_group.command()
@@ -213,11 +228,11 @@ def filter(ctx: click.Context,
     
     core = get_core(ctx)
     
-    console.print(f"🔍 Filtering images by quality score >= {min_score}...", style="blue")
-    console.print(f"Output: {output_dir}")
+    _get_console().print(f"🔍 Filtering images by quality score >= {min_score}...", style="blue")
+    _get_console().print(f"Output: {output_dir}")
     
     # TODO: Implement quality filtering
-    console.print("Quality filtering not yet implemented", style="yellow")
+    _get_console().print("Quality filtering not yet implemented", style="yellow")
 
 
 @quality_group.command()
@@ -242,7 +257,7 @@ def report(ctx: click.Context,
     
     core = get_core(ctx)
     
-    console.print(f"📊 Generating quality report for {input_path}...", style="blue")
+    _get_console().print(f"📊 Generating quality report for {input_path}...", style="blue")
     
     # TODO: Implement quality reporting
-    console.print("Quality reporting not yet implemented", style="yellow")
+    _get_console().print("Quality reporting not yet implemented", style="yellow")

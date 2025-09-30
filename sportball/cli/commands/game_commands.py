@@ -11,13 +11,28 @@ import click
 import shutil
 from pathlib import Path
 from typing import Optional, List, Dict
-from rich.console import Console
-from rich.table import Table
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+# Lazy import: from rich.console import Console
+# Lazy import: from rich.table import Table
+# Lazy import: from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
 from ..utils import get_core
 
-console = Console()
+console = None  # Will be initialized lazily
+
+def _get_console():
+    """Lazy import of Console to avoid heavy imports at startup."""
+    from rich.console import Console
+    return Console()
+
+def _get_progress():
+    """Lazy import of Progress components to avoid heavy imports at startup."""
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+    return Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+
+def _get_table():
+    """Lazy import of Table to avoid heavy imports at startup."""
+    from rich.table import Table
+    return Table
 
 
 @click.group(context_settings={'help_option_names': ['-h', '--help']})
@@ -99,24 +114,24 @@ def split(ctx: click.Context,
     core = get_core(ctx)
     
     if analyze_only:
-        console.print(f"📊 Analyzing games in {input_path}...", style="blue")
+        _get_console().print(f"📊 Analyzing games in {input_path}...", style="blue")
     else:
-        console.print(f"✂️  Splitting photos in {input_path} into games...", style="blue")
-        console.print(f"Output: {output_dir}")
+        _get_console().print(f"✂️  Splitting photos in {input_path} into games...", style="blue")
+        _get_console().print(f"Output: {output_dir}")
     
-    console.print(f"Pattern: {pattern}")
+    _get_console().print(f"Pattern: {pattern}")
     
     # Load manual splits if provided
     manual_splits = []
     if split_file and split_file.exists():
-        console.print(f"📄 Loading manual splits from {split_file}...", style="blue")
+        _get_console().print(f"📄 Loading manual splits from {split_file}...", style="blue")
         manual_splits = core.game_detector.load_split_file(split_file)
         if manual_splits:
-            console.print(f"✅ Loaded {len(manual_splits)} manual splits", style="green")
+            _get_console().print(f"✅ Loaded {len(manual_splits)} manual splits", style="green")
         else:
-            console.print("⚠️  No valid splits found in file", style="yellow")
+            _get_console().print("⚠️  No valid splits found in file", style="yellow")
     elif split_file:
-        console.print(f"⚠️  Split file not found: {split_file}", style="yellow")
+        _get_console().print(f"⚠️  Split file not found: {split_file}", style="yellow")
     
     # Perform game detection
     with Progress(
@@ -143,14 +158,14 @@ def split(ctx: click.Context,
     
     # Apply manual splits if provided
     if manual_splits and results.get('success', False):
-        console.print(f"🔧 Applying {len(manual_splits)} manual splits...", style="blue")
+        _get_console().print(f"🔧 Applying {len(manual_splits)} manual splits...", style="blue")
         # Get the games from the detector
         games = core.game_detector.games
         if games:
             final_games = core.game_detector.apply_manual_splits(manual_splits)
             # Update results with final games
             results['games'] = core.game_detector._format_games_for_output(final_games)
-            console.print(f"✅ Applied manual splits. Final games: {len(final_games)}", style="green")
+            _get_console().print(f"✅ Applied manual splits. Final games: {len(final_games)}", style="green")
     
     # Display results
     display_game_results(results, output_dir, copy, analyze_only)
@@ -160,12 +175,12 @@ def display_game_results(results: dict, output_dir: Path, copy_files: bool, anal
     """Display game detection results."""
     
     if not results.get('success', False):
-        console.print(f"❌ Game detection failed: {results.get('error', 'Unknown error')}", style="red")
+        _get_console().print(f"❌ Game detection failed: {results.get('error', 'Unknown error')}", style="red")
         return
     
     games = results.get('games', [])
     if not games:
-        console.print("❌ No games detected", style="red")
+        _get_console().print("❌ No games detected", style="red")
         return
     
     # Create results table
@@ -200,15 +215,15 @@ def display_game_results(results: dict, output_dir: Path, copy_files: bool, anal
             f"{gap_after:.1f} min" if gap_after else "N/A"
         )
     
-    console.print(table)
-    console.print(f"\n📊 Summary: {len(games)} games detected, {total_photos} photos, {total_duration:.1f} minutes total")
+    _get_console().print(table)
+    _get_console().print(f"\n📊 Summary: {len(games)} games detected, {total_photos} photos, {total_duration:.1f} minutes total")
     
     # Create organized folders (unless analyze-only mode)
     if not analyze_only:
-        console.print(f"\n📁 Creating organized folders in {output_dir}...", style="blue")
+        _get_console().print(f"\n📁 Creating organized folders in {output_dir}...", style="blue")
         create_organized_folders(games, output_dir, copy_files)
     else:
-        console.print(f"\n📊 Analysis complete - no folders created (use without --analyze-only to create folders)", style="blue")
+        _get_console().print(f"\n📊 Analysis complete - no folders created (use without --analyze-only to create folders)", style="blue")
 
 
 def create_organized_folders(games: List[Dict], output_dir: Path, copy_files: bool = False) -> Dict[str, Path]:
@@ -224,10 +239,10 @@ def create_organized_folders(games: List[Dict], output_dir: Path, copy_files: bo
         Dictionary mapping game IDs to folder paths
     """
     if not games:
-        console.print("❌ No games to organize", style="red")
+        _get_console().print("❌ No games to organize", style="red")
         return {}
     
-    console.print(f"📁 Creating organized folders for {len(games)} games...", style="blue")
+    _get_console().print(f"📁 Creating organized folders for {len(games)} games...", style="blue")
     
     # Create output directory
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -257,7 +272,7 @@ def create_organized_folders(games: List[Dict], output_dir: Path, copy_files: bo
         game_folder.mkdir(exist_ok=True)
         
         photo_count = game.get('photo_count', 0)
-        console.print(f"📂 Creating {game_folder_name} with {photo_count} photos", style="green")
+        _get_console().print(f"📂 Creating {game_folder_name} with {photo_count} photos", style="green")
         
         # Copy or symlink photos
         photo_files = game.get('photo_files', [])
@@ -280,11 +295,11 @@ def create_organized_folders(games: List[Dict], output_dir: Path, copy_files: bo
                         absolute_photo_path = photo_path.resolve()
                         dest_path.symlink_to(absolute_photo_path)
                     except Exception as e:
-                        console.print(f"⚠️  Warning: Could not create symlink {dest_path}: {e}", style="yellow")
+                        _get_console().print(f"⚠️  Warning: Could not create symlink {dest_path}: {e}", style="yellow")
                         # Fallback to copying
                         shutil.copy2(photo_path, dest_path)
         
         game_folders[f"Game{game_id}"] = game_folder
     
-    console.print(f"✅ Created {len(game_folders)} organized game folders", style="green")
+    _get_console().print(f"✅ Created {len(game_folders)} organized game folders", style="green")
     return game_folders

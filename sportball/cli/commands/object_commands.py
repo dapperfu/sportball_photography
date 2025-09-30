@@ -10,15 +10,32 @@ Generated via Cursor IDE (cursor.sh) with AI assistance
 import click
 from pathlib import Path
 from typing import Optional, List
-from rich.console import Console
-from rich.table import Table
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+
+# Lazy imports to avoid heavy dependencies at startup
+# # Lazy import: from rich.console import Console
+# # Lazy import: from rich.table import Table
+# # Lazy import: from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
 # Lazy imports to avoid heavy dependencies at startup
 # from ..utils import get_core, find_image_files, check_sidecar_files
 # from ...sidecar import Sidecar, OperationType
 
-console = Console()
+def _get_console():
+    """Lazy import of Console to avoid heavy imports at startup."""
+    # Lazy import: from rich.console import Console
+    return Console()
+
+def _get_progress():
+    """Lazy import of Progress components to avoid heavy imports at startup."""
+    # Lazy import: from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+    return Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+
+def _get_table():
+    """Lazy import of Table to avoid heavy imports at startup."""
+    # Lazy import: from rich.table import Table
+    return Table
+
+console = None  # Will be initialized lazily
 
 
 @click.group(context_settings={'help_option_names': ['-h', '--help']})
@@ -79,9 +96,9 @@ def detect(ctx: click.Context,
     
     # Setup logging based on verbose level
     if verbose >= 2:  # -vv: debug level
-        console.print("🔍 Debug logging enabled", style="blue")
+        _get_console().print("🔍 Debug logging enabled", style="blue")
     elif verbose >= 1:  # -v: info level
-        console.print("ℹ️  Info logging enabled", style="blue")
+        _get_console().print("ℹ️  Info logging enabled", style="blue")
     
     # Lazy import to avoid heavy dependencies at startup
     from ..utils import get_core
@@ -94,7 +111,7 @@ def detect(ctx: click.Context,
     image_paths = find_image_files(input_path, recursive=recursive)
     
     if not image_paths:
-        console.print("❌ No image files found", style="red")
+        _get_console().print("❌ No image files found", style="red")
         return
     
     # Parse class names
@@ -102,10 +119,10 @@ def detect(ctx: click.Context,
     if class_names:
         classes = [name.strip() for name in class_names.split(',')]
     
-    console.print(f"📊 Found {len(image_paths)} images to analyze", style="blue")
+    _get_console().print(f"📊 Found {len(image_paths)} images to analyze", style="blue")
     
     # Check for existing sidecar files
-    console.print("🔍 Checking for existing sidecar files...", style="blue")
+    _get_console().print("🔍 Checking for existing sidecar files...", style="blue")
     # Lazy import to avoid heavy dependencies at startup
     from ..utils import check_sidecar_files_parallel
     files_to_process, skipped_files = check_sidecar_files_parallel(
@@ -116,15 +133,15 @@ def detect(ctx: click.Context,
     
     # Show skipping message after image discovery but before processing
     if skipped_files:
-        console.print(f"⏭️  Skipping {len(skipped_files)} images - JSON sidecar already exists (use --force to override)", style="yellow")
+        _get_console().print(f"⏭️  Skipping {len(skipped_files)} images - JSON sidecar already exists (use --force to override)", style="yellow")
     
-    console.print(f"📊 Processing {len(files_to_process)} images ({len(skipped_files)} skipped)", style="blue")
+    _get_console().print(f"📊 Processing {len(files_to_process)} images ({len(skipped_files)} skipped)", style="blue")
     
     if not files_to_process:
-        console.print("✅ All images already processed (use --force to reprocess)", style="green")
+        _get_console().print("✅ All images already processed (use --force to reprocess)", style="green")
         return
     
-    console.print(f"🔍 Starting object detection...", style="blue")
+    _get_console().print(f"🔍 Starting object detection...", style="blue")
     
     # Prepare detection parameters
     detection_kwargs = {
@@ -187,18 +204,18 @@ def display_object_results(results: dict, extract_objects: bool, output_dir: Opt
                 error_msg[:50] + "..." if len(error_msg) > 50 else error_msg
             )
     
-    console.print(table)
-    console.print(f"\n📊 Summary: {successful_images}/{len(results)} images processed, {total_objects} objects detected")
+    _get_console().print(table)
+    _get_console().print(f"\n📊 Summary: {successful_images}/{len(results)} images processed, {total_objects} objects detected")
     
     # Display class statistics
     if class_counts:
-        console.print("\n📈 Object Class Statistics:")
+        _get_console().print("\n📈 Object Class Statistics:")
         for class_name, count in sorted(class_counts.items(), key=lambda x: x[1], reverse=True):
-            console.print(f"  {class_name}: {count}")
+            _get_console().print(f"  {class_name}: {count}")
     
     # Extract objects if requested
     if extract_objects and output_dir:
-        console.print(f"\n💾 Extracting objects to {output_dir}...", style="blue")
+        _get_console().print(f"\n💾 Extracting objects to {output_dir}...", style="blue")
         extraction_results = core.extract_objects(image_paths, output_dir)
         display_extraction_results(extraction_results)
 
@@ -249,7 +266,7 @@ def extract(ctx: click.Context,
     if object_types:
         types = [name.strip() for name in object_types.split(',')]
     
-    console.print(f"✂️  Extracting objects from {input_path} to {output_dir}...", style="blue")
+    _get_console().print(f"✂️  Extracting objects from {input_path} to {output_dir}...", style="blue")
     
     # Find image files (recursive by default)
     recursive = not no_recursive
@@ -258,7 +275,7 @@ def extract(ctx: click.Context,
     image_paths = find_image_files(input_path, recursive=recursive)
     
     if not image_paths:
-        console.print("❌ No image files found", style="red")
+        _get_console().print("❌ No image files found", style="red")
         return
     
     # Extract objects using core
@@ -304,7 +321,7 @@ def analyze(ctx: click.Context,
     from ..utils import get_core
     core = get_core(ctx)
     
-    console.print(f"📊 Analyzing objects in {input_path}...", style="blue")
+    _get_console().print(f"📊 Analyzing objects in {input_path}...", style="blue")
     
     # Find image files (recursive by default)
     recursive = not no_recursive
@@ -313,7 +330,7 @@ def analyze(ctx: click.Context,
     image_paths = find_image_files(input_path, recursive=recursive)
     
     if not image_paths:
-        console.print("❌ No image files found", style="red")
+        _get_console().print("❌ No image files found", style="red")
         return
     
     # Perform object detection for analysis
@@ -365,8 +382,8 @@ def display_extraction_results(results: dict):
                 error_msg[:50] + "..." if len(error_msg) > 50 else error_msg
             )
     
-    console.print(table)
-    console.print(f"\n📊 Summary: {successful_extractions}/{len(results)} extractions successful, {total_objects} objects extracted")
+    _get_console().print(table)
+    _get_console().print(f"\n📊 Summary: {successful_extractions}/{len(results)} extractions successful, {total_objects} objects extracted")
 
 
 def display_object_analysis(results: dict):
@@ -407,15 +424,15 @@ def display_object_analysis(results: dict):
                 size_stats[class_name].append(area)
     
     # Display summary
-    console.print(f"\n📊 Object Analysis Summary")
-    console.print(f"Total images processed: {total_images}")
-    console.print(f"Successful detections: {successful_detections}")
-    console.print(f"Total objects detected: {total_objects}")
-    console.print(f"Average objects per image: {total_objects/total_images:.2f}" if total_images > 0 else "N/A")
+    _get_console().print(f"\n📊 Object Analysis Summary")
+    _get_console().print(f"Total images processed: {total_images}")
+    _get_console().print(f"Successful detections: {successful_detections}")
+    _get_console().print(f"Total objects detected: {total_objects}")
+    _get_console().print(f"Average objects per image: {total_objects/total_images:.2f}" if total_images > 0 else "N/A")
     
     # Display class statistics
     if class_counts:
-        console.print(f"\n📈 Object Class Distribution:")
+        _get_console().print(f"\n📈 Object Class Distribution:")
         class_table = Table()
         class_table.add_column("Class", style="cyan")
         class_table.add_column("Count", style="green", justify="right")
@@ -436,13 +453,13 @@ def display_object_analysis(results: dict):
                 f"{avg_size:.0f} px²"
             )
         
-        console.print(class_table)
+        _get_console().print(class_table)
     
     # Display confidence distribution
     if confidence_stats:
-        console.print(f"\n📊 Confidence Distribution:")
+        _get_console().print(f"\n📊 Confidence Distribution:")
         for class_name, confidences in confidence_stats.items():
             avg_conf = sum(confidences) / len(confidences)
             min_conf = min(confidences)
             max_conf = max(confidences)
-            console.print(f"  {class_name}: avg={avg_conf:.3f}, min={min_conf:.3f}, max={max_conf:.3f}")
+            _get_console().print(f"  {class_name}: avg={avg_conf:.3f}, min={min_conf:.3f}, max={max_conf:.3f}")

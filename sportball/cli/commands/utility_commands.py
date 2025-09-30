@@ -10,14 +10,29 @@ Generated via Cursor IDE (cursor.sh) with AI assistance
 import click
 from pathlib import Path
 from typing import Optional
-from rich.console import Console
-from rich.table import Table
+# Lazy import: from rich.console import Console
+# Lazy import: from rich.table import Table
 from rich.panel import Panel
 import numpy as np
 
 from ..utils import get_core
 
-console = Console()
+console = None  # Will be initialized lazily
+
+def _get_console():
+    """Lazy import of Console to avoid heavy imports at startup."""
+    from rich.console import Console
+    return Console()
+
+def _get_progress():
+    """Lazy import of Progress components to avoid heavy imports at startup."""
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+    return Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+
+def _get_table():
+    """Lazy import of Table to avoid heavy imports at startup."""
+    from rich.table import Table
+    return Table
 
 
 @click.group(context_settings={'help_option_names': ['-h', '--help']})
@@ -41,12 +56,12 @@ def sidecar_summary(ctx: click.Context, directory: Path, operation: Optional[str
     
     core = get_core(ctx)
     
-    console.print(f"📋 Analyzing sidecar files in {directory}...", style="blue")
+    _get_console().print(f"📋 Analyzing sidecar files in {directory}...", style="blue")
     
     summary = core.get_sidecar_summary(directory)
     
     if not summary:
-        console.print("❌ No sidecar files found", style="red")
+        _get_console().print("❌ No sidecar files found", style="red")
         return
     
     # Create summary table
@@ -68,8 +83,8 @@ def sidecar_summary(ctx: click.Context, directory: Path, operation: Optional[str
             f"{percentage:.1f}%"
         )
     
-    console.print(table)
-    console.print(f"\n📊 Total sidecar files: {total_files}")
+    _get_console().print(table)
+    _get_console().print(f"\n📊 Total sidecar files: {total_files}")
 
 
 @utility_group.command()
@@ -88,18 +103,18 @@ def cleanup_sidecars(ctx: click.Context, directory: Path, dry_run: bool):
     core = get_core(ctx)
     
     if dry_run:
-        console.print(f"🔍 Scanning for orphaned sidecar files in {directory}...", style="blue")
+        _get_console().print(f"🔍 Scanning for orphaned sidecar files in {directory}...", style="blue")
         # TODO: Implement dry run mode
-        console.print("Dry run mode not yet implemented", style="yellow")
+        _get_console().print("Dry run mode not yet implemented", style="yellow")
     else:
-        console.print(f"🧹 Cleaning up orphaned sidecar files in {directory}...", style="blue")
+        _get_console().print(f"🧹 Cleaning up orphaned sidecar files in {directory}...", style="blue")
         
         removed_count = core.cleanup_orphaned_sidecars(directory)
         
         if removed_count > 0:
-            console.print(f"✅ Removed {removed_count} orphaned sidecar files", style="green")
+            _get_console().print(f"✅ Removed {removed_count} orphaned sidecar files", style="green")
         else:
-            console.print("✅ No orphaned sidecar files found", style="green")
+            _get_console().print("✅ No orphaned sidecar files found", style="green")
 
 
 @utility_group.command()
@@ -111,11 +126,11 @@ def clear_cache(ctx: click.Context):
     
     core = get_core(ctx)
     
-    console.print("🗑️  Clearing cache...", style="blue")
+    _get_console().print("🗑️  Clearing cache...", style="blue")
     
     core.cleanup_cache()
     
-    console.print("✅ Cache cleared successfully", style="green")
+    _get_console().print("✅ Cache cleared successfully", style="green")
 
 
 @utility_group.command()
@@ -137,14 +152,14 @@ def delete_sidecars(ctx: click.Context, directory: Path, operation: Optional[str
     core = get_core(ctx)
     
     if dry_run:
-        console.print(f"🔍 Scanning for sidecar files to delete in {directory}...", style="blue")
+        _get_console().print(f"🔍 Scanning for sidecar files to delete in {directory}...", style="blue")
         # TODO: Implement dry run mode
-        console.print("Dry run mode not yet implemented", style="yellow")
+        _get_console().print("Dry run mode not yet implemented", style="yellow")
     else:
-        console.print(f"🗑️  Deleting sidecar files in {directory}...", style="blue")
+        _get_console().print(f"🗑️  Deleting sidecar files in {directory}...", style="blue")
         
         # TODO: Implement sidecar deletion
-        console.print("Sidecar deletion not yet implemented", style="yellow")
+        _get_console().print("Sidecar deletion not yet implemented", style="yellow")
 
 
 @utility_group.command()
@@ -157,7 +172,7 @@ def gpu_check(ctx: click.Context):
     CUDA support, and acceleration capabilities for sportball operations.
     """
     
-    console.print("🔍 Checking GPU acceleration status...", style="blue")
+    _get_console().print("🔍 Checking GPU acceleration status...", style="blue")
     
     # Create GPU status table
     gpu_table = Table(title="GPU Acceleration Status")
@@ -278,18 +293,18 @@ def gpu_check(ctx: click.Context):
     except ImportError:
         gpu_table.add_row("Face Recognition", "❌ Not Installed", "Face recognition not available")
     
-    console.print(gpu_table)
+    _get_console().print(gpu_table)
     
     # Additional recommendations
-    console.print("\n📋 Recommendations:", style="blue")
+    _get_console().print("\n📋 Recommendations:", style="blue")
     
     # Check if GPU is enabled in sportball config
     core = get_core(ctx)
     if core.enable_gpu:
-        console.print("✅ GPU acceleration is enabled in sportball configuration", style="green")
+        _get_console().print("✅ GPU acceleration is enabled in sportball configuration", style="green")
     else:
-        console.print("⚠️  GPU acceleration is disabled in sportball configuration", style="yellow")
-        console.print("   Use --gpu flag to enable GPU acceleration", style="yellow")
+        _get_console().print("⚠️  GPU acceleration is disabled in sportball configuration", style="yellow")
+        _get_console().print("   Use --gpu flag to enable GPU acceleration", style="yellow")
     
     # Check for common issues
     try:
@@ -299,18 +314,18 @@ def gpu_check(ctx: click.Context):
             for i in range(torch.cuda.device_count()):
                 props = torch.cuda.get_device_properties(i)
                 if props.total_memory < 2 * 1024**3:  # Less than 2GB
-                    console.print(f"⚠️  GPU {i} has limited memory ({props.total_memory / (1024**3):.1f} GB)", style="yellow")
-                    console.print("   Consider reducing batch sizes for large operations", style="yellow")
+                    _get_console().print(f"⚠️  GPU {i} has limited memory ({props.total_memory / (1024**3):.1f} GB)", style="yellow")
+                    _get_console().print("   Consider reducing batch sizes for large operations", style="yellow")
     except ImportError:
         pass
     
     # Performance tips
-    console.print("\n💡 Performance Tips:", style="blue")
-    console.print("• Use --gpu flag to enable GPU acceleration", style="white")
-    console.print("• Install CUDA-enabled PyTorch: pip install torch[cuda]", style="white")
-    console.print("• OpenCV GPU support requires building from source with CUDA", style="white")
-    console.print("• For full GPU acceleration, build OpenCV with CUDA support", style="white")
-    console.print("• Monitor GPU memory usage during large operations", style="white")
+    _get_console().print("\n💡 Performance Tips:", style="blue")
+    _get_console().print("• Use --gpu flag to enable GPU acceleration", style="white")
+    _get_console().print("• Install CUDA-enabled PyTorch: pip install torch[cuda]", style="white")
+    _get_console().print("• OpenCV GPU support requires building from source with CUDA", style="white")
+    _get_console().print("• For full GPU acceleration, build OpenCV with CUDA support", style="white")
+    _get_console().print("• Monitor GPU memory usage during large operations", style="white")
 
 
 @utility_group.command()
@@ -370,7 +385,7 @@ def system_info(ctx: click.Context):
         except ImportError:
             info_table.add_row(name, "❌")
     
-    console.print(info_table)
+    _get_console().print(info_table)
 
 
 @utility_group.command()
@@ -406,14 +421,14 @@ def gpu_tune(ctx: click.Context,
     for your GPU hardware, maximizing performance without running out of memory.
     """
     
-    console.print("🔧 Starting GPU batch size tuning...", style="blue")
+    _get_console().print("🔧 Starting GPU batch size tuning...", style="blue")
     
     # Parse image size
     try:
         width, height = map(int, image_size.split('x'))
         parsed_image_size = (width, height)
     except ValueError:
-        console.print(f"❌ Invalid image size format: {image_size}. Use WIDTHxHEIGHT (e.g., 1920x1080)", style="red")
+        _get_console().print(f"❌ Invalid image size format: {image_size}. Use WIDTHxHEIGHT (e.g., 1920x1080)", style="red")
         return
     
     # Get core and face detector
@@ -424,15 +439,15 @@ def gpu_tune(ctx: click.Context,
     try:
         import torch
         if not torch.cuda.is_available():
-            console.print("❌ CUDA not available. GPU tuning requires CUDA-enabled PyTorch.", style="red")
+            _get_console().print("❌ CUDA not available. GPU tuning requires CUDA-enabled PyTorch.", style="red")
             return
         
         gpu_name = torch.cuda.get_device_name(0)
         gpu_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-        console.print(f"🎮 GPU: {gpu_name} ({gpu_memory:.1f} GB)", style="green")
+        _get_console().print(f"🎮 GPU: {gpu_name} ({gpu_memory:.1f} GB)", style="green")
         
     except ImportError:
-        console.print("❌ PyTorch not available. GPU tuning requires PyTorch.", style="red")
+        _get_console().print("❌ PyTorch not available. GPU tuning requires PyTorch.", style="red")
         return
     
     # Prepare test images
@@ -441,14 +456,14 @@ def gpu_tune(ctx: click.Context,
         if test_images_path.is_dir():
             from ..utils import find_image_files
             test_image_paths = find_image_files(test_images_path, recursive=False)
-            console.print(f"📁 Using {len(test_image_paths)} images from {test_images_path}", style="blue")
+            _get_console().print(f"📁 Using {len(test_image_paths)} images from {test_images_path}", style="blue")
         else:
             test_image_paths = [test_images_path]
-            console.print(f"📁 Using single test image: {test_images_path}", style="blue")
+            _get_console().print(f"📁 Using single test image: {test_images_path}", style="blue")
     
     # Run GPU tuning
-    console.print(f"🧪 Testing batch sizes from {start_batch_size} to {max_batch_size}", style="blue")
-    console.print(f"🖼️  Image size: {parsed_image_size[0]}x{parsed_image_size[1]}", style="blue")
+    _get_console().print(f"🧪 Testing batch sizes from {start_batch_size} to {max_batch_size}", style="blue")
+    _get_console().print(f"🖼️  Image size: {parsed_image_size[0]}x{parsed_image_size[1]}", style="blue")
     
     try:
         optimal_batch_size = face_detector.tune_gpu_batch_size(
@@ -459,16 +474,16 @@ def gpu_tune(ctx: click.Context,
             image_size=parsed_image_size
         )
         
-        console.print(f"🎯 Optimal GPU batch size: {optimal_batch_size}", style="green")
-        console.print(f"💡 You can use this batch size with: --batch-size {optimal_batch_size}", style="blue")
+        _get_console().print(f"🎯 Optimal GPU batch size: {optimal_batch_size}", style="green")
+        _get_console().print(f"💡 You can use this batch size with: --batch-size {optimal_batch_size}", style="blue")
         
         # Show performance improvement estimate
         if optimal_batch_size > 1:
             improvement = (optimal_batch_size - 1) * 100
-            console.print(f"📈 Estimated performance improvement: ~{improvement}%", style="green")
+            _get_console().print(f"📈 Estimated performance improvement: ~{improvement}%", style="green")
         
     except Exception as e:
-        console.print(f"❌ GPU tuning failed: {e}", style="red")
+        _get_console().print(f"❌ GPU tuning failed: {e}", style="red")
         return
 
 
@@ -501,10 +516,10 @@ def convert_images(ctx: click.Context,
     INPUT_PATH can be a single image file or a directory containing images.
     """
     
-    console.print(f"🔄 Converting images in {input_path}...", style="blue")
+    _get_console().print(f"🔄 Converting images in {input_path}...", style="blue")
     
     # TODO: Implement image conversion
-    console.print("Image conversion not yet implemented", style="yellow")
+    _get_console().print("Image conversion not yet implemented", style="yellow")
 
 
 @utility_group.command()
@@ -532,7 +547,7 @@ def organize(ctx: click.Context,
     OUTPUT_DIR is where organized images will be saved.
     """
     
-    console.print(f"📁 Organizing images by {organize_by} in {input_path}...", style="blue")
+    _get_console().print(f"📁 Organizing images by {organize_by} in {input_path}...", style="blue")
     
     # TODO: Implement image organization
-    console.print("Image organization not yet implemented", style="yellow")
+    _get_console().print("Image organization not yet implemented", style="yellow")
