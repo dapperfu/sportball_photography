@@ -8,8 +8,7 @@ Generated via Cursor IDE (cursor.sh) with AI assistance
 """
 
 import click
-import cv2
-import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
 
@@ -21,8 +20,8 @@ def _get_console():
 
 def _get_progress():
     """Lazy import of Progress components to avoid heavy imports at startup."""
-    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
-    return Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn, MofNCompleteColumn
+    return Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn, MofNCompleteColumn
 
 def _get_table():
     """Lazy import of Table to avoid heavy imports at startup."""
@@ -125,13 +124,16 @@ def annotate(ctx: click.Context,
     _get_console().print(f"🎨 Object color: {object_color} (RGB: {object_color_rgb})", style="blue")
     
     # Show progress for initialization and processing
-    Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn = _get_progress()
+    Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn, MofNCompleteColumn = _get_progress()
     
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
+        MofNCompleteColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
         TimeElapsedColumn(),
+        TimeRemainingColumn(),
         console=_get_console(),
         transient=False  # Keep progress visible after completion
     ) as progress:
@@ -149,6 +151,8 @@ def annotate(ctx: click.Context,
         annotate_task = progress.add_task(f"🎨 Annotating {len(image_paths)} images...", total=len(image_paths))
         
         results = {}
+        errors = []
+        
         for i, image_path in enumerate(image_paths):
             try:
                 result = _annotate_single_image(
@@ -169,12 +173,20 @@ def annotate(ctx: click.Context,
                 progress.update(annotate_task, advance=1)
                 
             except Exception as e:
-                _get_console().print(f"❌ Error annotating {image_path.name}: {e}", style="red")
+                errors.append(f"❌ {image_path.name}: {e}")
                 results[str(image_path)] = {"success": False, "error": str(e)}
                 progress.update(annotate_task, advance=1)
         
         progress.update(annotate_task, description="✅ Annotation complete")
         progress.remove_task(annotate_task)
+    
+    # Display errors if any
+    if errors:
+        _get_console().print(f"\n⚠️  Errors encountered ({len(errors)} images):", style="yellow")
+        for error in errors[:10]:  # Show first 10 errors
+            _get_console().print(f"  {error}", style="red")
+        if len(errors) > 10:
+            _get_console().print(f"  ... and {len(errors) - 10} more errors", style="red")
     
     # Display results
     display_annotation_results(results, not show_empty_results)
@@ -225,11 +237,15 @@ def _annotate_single_image(image_path: Path,
     
     # If we reach here, we have at least one type of annotation to process
     # Load the original image only if we're going to process it
-    image = cv2.imread(str(image_path))
-    if image is None:
-        return {"success": False, "error": "Could not load image"}
+    try:
+        image = Image.open(image_path)
+        # Convert to RGB if necessary (handles RGBA, P, etc.)
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+    except Exception as e:
+        return {"success": False, "error": f"Could not load image: {e}"}
     
-    original_height, original_width = image.shape[:2]
+    original_width, original_height = image.size
     
     # Calculate resize dimensions while maintaining aspect ratio
     if original_width > original_height:
@@ -240,7 +256,7 @@ def _annotate_single_image(image_path: Path,
         new_width = int((size * original_width) / original_height)
     
     # Resize image
-    resized_image = cv2.resize(image, (new_width, new_height))
+    resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
     annotated_image = resized_image.copy()
     
     # Calculate scale factors for coordinate conversion
@@ -312,7 +328,13 @@ def _annotate_single_image(image_path: Path,
         output_file.parent.mkdir(parents=True, exist_ok=True)
     
     # Save annotated image
-    success = cv2.imwrite(str(output_file), annotated_image)
+    try:
+        annotated_image.save(str(output_file), 'JPEG', quality=95)
+        success = True
+        error_msg = None
+    except Exception as e:
+        success = False
+        error_msg = f"Failed to save annotated image: {e}"
     
     if success:
         return {
@@ -323,36 +345,43 @@ def _annotate_single_image(image_path: Path,
             "output_size": (new_width, new_height)
         }
     else:
-        return {"success": False, "error": "Failed to save annotated image"}
+        return {"success": False, "error": error_msg}
 
 
-def _draw_annotation(image: np.ndarray, x: int, y: int, width: int, height: int, 
+def _draw_annotation(image: Image.Image, x: int, y: int, width: int, height: int, 
                     label: str, color: Tuple[int, int, int],
-                    font_scale: float, thickness: int) -> np.ndarray:
-    """Draw annotation on image."""
+                    font_scale: float, thickness: int) -> Image.Image:
+    """Draw annotation on image using PIL."""
     annotated_image = image.copy()
+    draw = ImageDraw.Draw(annotated_image)
+    
+    # Calculate font size based on font_scale
+    try:
+        # Try to load a default font
+        font_size = max(12, int(12 * font_scale))
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
+    except (OSError, IOError):
+        # Fallback to default font
+        font = ImageFont.load_default()
     
     # Draw rectangle
-    cv2.rectangle(annotated_image, (x, y), (x + width, y + height), color, thickness)
+    draw.rectangle([x, y, x + width, y + height], outline=color, width=thickness)
     
-    # Draw label background
-    (text_width, text_height), baseline = cv2.getTextSize(
-        label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness
-    )
+    # Get text size
+    bbox = draw.textbbox((0, 0), label, font=font)
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
     
     # Position label above the bounding box
     label_x = x
-    label_y = y - 10 if y - 10 > text_height else y + height + text_height + 10
+    label_y = y - text_height - 5 if y - text_height - 5 > 0 else y + height + 5
     
     # Draw label background rectangle
-    cv2.rectangle(annotated_image, 
-                 (label_x, label_y - text_height - baseline),
-                 (label_x + text_width, label_y + baseline),
-                 color, -1)
+    draw.rectangle([label_x, label_y, label_x + text_width + 4, label_y + text_height + 4], 
+                   fill=color)
     
     # Draw label text
-    cv2.putText(annotated_image, label, (label_x, label_y - baseline),
-               cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), thickness)
+    draw.text((label_x + 2, label_y + 2), label, fill=(255, 255, 255), font=font)
     
     return annotated_image
 
