@@ -13,42 +13,8 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-# Lazy imports to avoid heavy dependencies at startup
-# # Lazy import: from rich.console import Console
-# # Lazy import: from rich.table import Table
-# # Lazy import: from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
-
-# Lazy imports to avoid heavy dependencies at startup
-# from ..utils import get_core, find_image_files, check_sidecar_files
-# from ...sidecar import Sidecar, OperationType
-# from ...detectors.face_benchmark import FaceDetectionBenchmark
-
-
-def _get_console():
-    """Lazy import of Console to avoid heavy imports at startup."""
-    from rich.console import Console
-
-    return Console()
-
-
-def _get_progress():
-    """Lazy import of Progress components to avoid heavy imports at startup."""
-    from rich.progress import (
-        Progress,
-        SpinnerColumn,
-        TextColumn,
-        BarColumn,
-        TimeElapsedColumn,
-    )
-
-    return Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
-
-
-def _get_table():
-    """Lazy import of Table to avoid heavy imports at startup."""
-    from rich.table import Table
-
-    return Table
+# Import shared utilities to avoid duplication
+from ..shared_utils import get_console, get_progress_components, get_table, setup_verbose_logging, check_and_display_sidecar_status, display_processing_start
 
 
 console = None  # Will be initialized lazily
@@ -154,10 +120,7 @@ def detect(
     """
 
     # Setup logging based on verbose level
-    if verbose >= 2:  # -vv: debug level
-        _get_console().print("🔍 Debug logging enabled", style="blue")
-    elif verbose >= 1:  # -v: info level
-        _get_console().print("ℹ️  Info logging enabled", style="blue")
+    setup_verbose_logging(verbose)
 
     # Lazy import to avoid heavy dependencies at startup
     from ..utils import get_core
@@ -206,7 +169,7 @@ def detect(
             _get_console().print(f"⚠️  Auto-tuning failed: {e}", style="yellow")
 
     # Check for existing sidecar files
-    _get_console().print("🔍 Checking for existing sidecar files...", style="blue")
+    get_console().print("🔍 Checking for existing sidecar files...", style="blue")
     # Lazy import to avoid heavy dependencies at startup
     from ..utils import check_sidecar_files_parallel
 
@@ -214,22 +177,10 @@ def detect(
         image_files, force, operation_type="face_detection"
     )
 
-    # Show skipping message after image discovery but before processing
-    if skipped_files:
-        _get_console().print(
-            f"⏭️  Skipping {len(skipped_files)} images - JSON sidecar already exists (use --force to override)",
-            style="yellow",
-        )
-
-    _get_console().print(
-        f"📊 Processing {len(files_to_process)} images ({len(skipped_files)} skipped)",
-        style="blue",
-    )
-
+    # Display sidecar status
+    check_and_display_sidecar_status(files_to_process, skipped_files, force, "face_detection")
+    
     if not files_to_process:
-        _get_console().print(
-            "✅ All images already processed (use --force to reprocess)", style="green"
-        )
         return
 
     # Use core's sequential processing for face detection
