@@ -433,20 +433,130 @@ class ObjectDetector:
         save_sidecar: bool = True,
         progress_callback: Optional[callable] = None,
     ) -> List[DetectionResult]:
-        """Detect objects in multiple images using sequential processing with progress bar."""
-        logger.info(f"Processing {len(image_paths)} images sequentially")
+        """Detect objects in multiple images using parallel processing."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        
+        # Determine number of workers
+        if max_workers is None or max_workers <= 1:
+            # Sequential processing
+            logger.info(f"Processing {len(image_paths)} images sequentially")
+            return self._detect_multiple_images_sequential(image_paths, force, save_sidecar, progress_callback)
+        
+        # Parallel processing
+        logger.info(f"Processing {len(image_paths)} images with {max_workers} parallel workers")
+        
+        def process_single_image(image_path: Path) -> DetectionResult:
+            """Process a single image and return result."""
+            try:
+                result = self.detect_objects_in_image(image_path, force)
+                
+                # Save sidecar if requested
+                if save_sidecar:
+                    self._save_sidecar(result)
+                
+                return result
+            except Exception as e:
+                logger.error(f"Error processing {image_path}: {e}")
+                return DetectionResult(
+                    image_path=str(image_path),
+                    image_width=0,
+                    image_height=0,
+                    objects_found=0,
+                    detection_time=0.0,
+                    detected_objects=[],
+                    error=str(e),
+                )
+        
+        results = []
+        
+        # Use tqdm for progress tracking if no callback provided
+        if progress_callback is None:
+            try:
+                progress_bar = tqdm(
+                    total=len(image_paths),
+                    desc="Detecting objects",
+                    unit="images",
+                    bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}",
+                )
+            except ImportError:
+                progress_bar = None
+        else:
+            progress_bar = None
+        
+        # Process images in parallel
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_path = {
+                executor.submit(process_single_image, image_path): image_path 
+                for image_path in image_paths
+            }
+            
+            # Collect results as they complete
+            for future in as_completed(future_to_path):
+                image_path = future_to_path[future]
+                try:
+                    result = future.result()
+                    results.append(result)
+                    
+                    # Update progress
+                    if progress_callback:
+                        progress_callback(len(results), len(image_paths), str(image_path))
+                    elif progress_bar:
+                        progress_bar.set_postfix(file=image_path.name)
+                        progress_bar.update(1)
+                        
+                except Exception as e:
+                    logger.error(f"Unexpected error processing {image_path}: {e}")
+                    error_result = DetectionResult(
+                        image_path=str(image_path),
+                        image_width=0,
+                        image_height=0,
+                        objects_found=0,
+                        detection_time=0.0,
+                        detected_objects=[],
+                        error=str(e),
+                    )
+                    results.append(error_result)
+                    
+                    # Update progress even on error
+                    if progress_callback:
+                        progress_callback(len(results), len(image_paths), str(image_path))
+                    elif progress_bar:
+                        progress_bar.set_postfix(file=image_path.name)
+                        progress_bar.update(1)
+        
+        # Close progress bar
+        if progress_bar:
+            progress_bar.close()
+        
+        # Sort results to match input order
+        path_to_result = {result.image_path: result for result in results}
+        ordered_results = [path_to_result[str(path)] for path in image_paths]
+        
+        return ordered_results
 
+    def _detect_multiple_images_sequential(
+        self,
+        image_paths: List[Path],
+        force: bool,
+        save_sidecar: bool = True,
+        progress_callback: Optional[callable] = None,
+    ) -> List[DetectionResult]:
+        """Detect objects in multiple images using sequential processing."""
         results = []
 
-        # Use tqdm for progress tracking
-        try:
-            progress_bar = tqdm(
-                total=len(image_paths),
-                desc="Detecting objects",
-                unit="images",
-                bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}",
-            )
-        except ImportError:
+        # Use tqdm for progress tracking if no callback provided
+        if progress_callback is None:
+            try:
+                progress_bar = tqdm(
+                    total=len(image_paths),
+                    desc="Detecting objects",
+                    unit="images",
+                    bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}",
+                )
+            except ImportError:
+                progress_bar = None
+        else:
             progress_bar = None
 
         for i, image_path in enumerate(image_paths):
@@ -458,8 +568,10 @@ class ObjectDetector:
                 if save_sidecar:
                     self._save_sidecar(result)
 
-                # Update progress bar with current image name
-                if progress_bar:
+                # Update progress
+                if progress_callback:
+                    progress_callback(i + 1, len(image_paths), str(image_path))
+                elif progress_bar:
                     progress_bar.set_postfix(file=image_path.name)
                     progress_bar.update(1)
 
@@ -475,8 +587,11 @@ class ObjectDetector:
                     error=str(e),
                 )
                 results.append(error_result)
-                # Update progress bar even on error
-                if progress_bar:
+                
+                # Update progress even on error
+                if progress_callback:
+                    progress_callback(i + 1, len(image_paths), str(image_path))
+                elif progress_bar:
                     progress_bar.set_postfix(file=image_path.name)
                     progress_bar.update(1)
 

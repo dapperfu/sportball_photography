@@ -104,6 +104,9 @@ def object_group():
     "--force", "-f", is_flag=True, help="Force detection even if JSON sidecar exists"
 )
 @click.option(
+    "--workers", "-w", type=int, help="Number of parallel workers (default: auto)"
+)
+@click.option(
     "--verbose",
     "-v",
     count=True,
@@ -127,6 +130,7 @@ def detect(
     no_recursive: bool,
     batch_size: int,
     force: bool,
+    workers: Optional[int],
     verbose: int,
     show_empty_results: bool,
 ):
@@ -203,7 +207,11 @@ def detect(
     }
 
     # Perform detection - let tqdm handle progress display
-    results = core.detect_objects(files_to_process, **detection_kwargs)
+    if workers and workers > 1:
+        _get_console().print(f"🔄 Processing images with {workers} parallel workers...", style="blue")
+        results = core.detect_objects(files_to_process, max_workers=workers, **detection_kwargs)
+    else:
+        results = core.detect_objects(files_to_process, **detection_kwargs)
 
     # Display results
     display_object_results(
@@ -328,6 +336,9 @@ def display_object_results(
     is_flag=True,
     help="Disable recursive directory processing",
 )
+@click.option(
+    "--workers", "-w", type=int, help="Number of parallel workers (default: auto)"
+)
 @click.pass_context
 def extract(
     ctx: click.Context,
@@ -338,6 +349,7 @@ def extract(
     max_size: Optional[int],
     padding: int,
     no_recursive: bool,
+    workers: Optional[int],
 ):
     """
     Extract detected objects from images.
@@ -401,6 +413,9 @@ def extract(
     is_flag=True,
     help="Disable recursive directory processing",
 )
+@click.option(
+    "--workers", "-w", type=int, help="Number of parallel workers (default: auto)"
+)
 @click.pass_context
 def analyze(
     ctx: click.Context,
@@ -408,6 +423,7 @@ def analyze(
     confidence: float,
     save_sidecar: bool,
     no_recursive: bool,
+    workers: Optional[int],
 ):
     """
     Analyze objects in images and generate statistics.
@@ -437,7 +453,11 @@ def analyze(
 
     # Perform object detection for analysis - let tqdm handle progress display
     detection_kwargs = {"confidence": confidence, "save_sidecar": save_sidecar}
-    results = core.detect_objects(image_paths, **detection_kwargs)
+    if workers and workers > 1:
+        _get_console().print(f"🔄 Analyzing objects with {workers} parallel workers...", style="blue")
+        results = core.detect_objects(image_paths, max_workers=workers, **detection_kwargs)
+    else:
+        results = core.detect_objects(image_paths, **detection_kwargs)
 
     # Display analysis results
     display_object_analysis(results)

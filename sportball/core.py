@@ -278,6 +278,7 @@ class SportballCore:
         save_sidecar: bool = True,
         gpu_batch_size: int = 8,
         force: bool = False,
+        max_workers: Optional[int] = None,
         progress_callback: Optional[callable] = None,
         **kwargs,
     ) -> Dict[str, Any]:
@@ -289,6 +290,7 @@ class SportballCore:
             save_sidecar: Whether to save results to sidecar files
             gpu_batch_size: GPU batch size for processing multiple images
             force: Whether to force detection even if sidecar exists
+            max_workers: Maximum number of parallel workers (None for auto)
             progress_callback: Optional callback function for progress updates
             **kwargs: Additional arguments for object detection
 
@@ -305,7 +307,7 @@ class SportballCore:
 
         # Perform batch detection
         results = object_detector.detect_objects(
-            image_paths, save_sidecar=save_sidecar, force=force, progress_callback=progress_callback, **kwargs
+            image_paths, save_sidecar=save_sidecar, force=force, max_workers=max_workers, progress_callback=progress_callback, **kwargs
         )
 
         return results
