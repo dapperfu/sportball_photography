@@ -264,13 +264,15 @@ def _annotate_single_image(image_path: Path,
                     annotations_added += 1
     
     # Determine output path
-    if output_path.is_dir():
+    if output_path.is_dir() or (not output_path.exists() and not output_path.suffix):
+        # If it's a directory or a path without extension (treat as directory)
+        output_path.mkdir(parents=True, exist_ok=True)
         output_file = output_path / f"{image_path.stem}_annotated.jpg"
     else:
+        # Treat as a single file path
         output_file = output_path
-    
-    # Ensure output directory exists
-    output_file.parent.mkdir(parents=True, exist_ok=True)
+        # Ensure output directory exists
+        output_file.parent.mkdir(parents=True, exist_ok=True)
     
     # Save annotated image
     success = cv2.imwrite(str(output_file), annotated_image)
