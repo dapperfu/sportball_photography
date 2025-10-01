@@ -80,20 +80,16 @@ def stats(ctx: click.Context,
     
     _get_console().print(f"📊 Analyzing sidecar files in {directory}...", style="blue")
     
-    # Collect comprehensive statistics
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TimeElapsedColumn(),
-        console=console
-    ) as progress:
-        
-        task = progress.add_task("Scanning directory...", total=None)
-        
-        stats_data = collect_sidecar_statistics(directory, operation, progress, task)
-        
-        progress.update(task, completed=True, description="Analysis complete")
+    # Use tqdm for directory scanning progress
+    from tqdm import tqdm
+    
+    # First count files to scan
+    from ..utils import find_image_files
+    image_files = find_image_files(directory, recursive=True)
+    total_files = len(image_files)
+    
+    with tqdm(total=total_files, desc="Scanning directory", unit="files") as pbar:
+        stats_data = collect_sidecar_statistics(directory, operation, pbar)
     
     # Display results based on format
     if output_format == 'json':
@@ -110,12 +106,12 @@ def stats(ctx: click.Context,
 
 def collect_sidecar_statistics(directory: Path, 
                               operation_filter: Optional[str],
-                              progress,
-                              task_id: int) -> Dict[str, Any]:
-    """Collect comprehensive sidecar statistics using the new Sidecar class."""
+                              pbar) -> Dict[str, Any]:
+    """Collect comprehensive sidecar statistics with progress tracking."""
     
     # Lazy import to avoid heavy dependencies at startup
     from ...sidecar import Sidecar, OperationType
+    from ..utils import find_image_files
     
     # Convert operation filter to OperationType enum
     operation_type_filter = None
@@ -125,17 +121,125 @@ def collect_sidecar_statistics(directory: Path,
         except ValueError:
             _get_console().print(f"⚠️  Invalid operation filter: {operation_filter}", style="yellow")
     
-    # Use the new Sidecar class
-    sidecar_manager = Sidecar()
-    stats_data = sidecar_manager.get_statistics(directory, operation_type_filter)
+    # Find all image files
+    image_files = find_image_files(directory, recursive=True)
     
-    progress.update(task_id, description=f"Found {stats_data['total_images']} images ({stats_data['symlink_count']} symlinks), {stats_data['total_sidecars']} sidecar files")
+    # Initialize statistics
+    stats_data = {
+        'directory': str(directory),
+        'total_images': len(image_files),
+        'symlink_count': 0,
+        'broken_symlinks': 0,
+        'total_sidecars': 0,
+        'coverage_percentage': 0.0,
+        'operation_counts': {},
+        'processing_times': {},
+        'success_rates': {},
+        'data_sizes': {},
+        'filter_applied': operation_filter,
+        'broken_symlink_details': []
+    }
+    
+    # Process each image file with progress tracking
+    sidecar_manager = Sidecar()
+    sidecar_files = []
+    
+    for image_file in image_files:
+        # Check if it's a symlink
+        if image_file.is_symlink():
+            stats_data['symlink_count'] += 1
+            try:
+                if not image_file.resolve().exists():
+                    stats_data['broken_symlinks'] += 1
+                    stats_data['broken_symlink_details'].append({
+                        'symlink_path': str(image_file),
+                        'target_path': str(image_file.resolve()) if image_file.resolve() else 'MISSING'
+                    })
+            except Exception:
+                stats_data['broken_symlinks'] += 1
+                stats_data['broken_symlink_details'].append({
+                    'symlink_path': str(image_file),
+                    'target_path': 'MISSING'
+                })
+        
+        # Look for sidecar files
+        sidecar_path = image_file.with_suffix('.json')
+        if sidecar_path.exists():
+            stats_data['total_sidecars'] += 1
+            sidecar_files.append(sidecar_path)
+        
+        # Update progress
+        pbar.update(1)
+    
+    # Calculate coverage percentage
+    if stats_data['total_images'] > 0:
+        stats_data['coverage_percentage'] = (stats_data['total_sidecars'] / stats_data['total_images']) * 100
+    
+    # Analyze sidecar files for operation statistics
+    if sidecar_files:
+        for sidecar_file in sidecar_files:
+            try:
+                import json
+                with open(sidecar_file, 'r') as f:
+                    data = json.load(f)
+                
+                # Extract operation type and statistics
+                for operation_key, operation_data in data.items():
+                    if isinstance(operation_data, dict) and 'success' in operation_data:
+                        operation_name = operation_key.replace('_', ' ').title()
+                        
+                        # Apply filter if specified
+                        if operation_type_filter and operation_key != operation_type_filter.value:
+                            continue
+                        
+                        # Count operations
+                        if operation_name not in stats_data['operation_counts']:
+                            stats_data['operation_counts'][operation_name] = 0
+                        stats_data['operation_counts'][operation_name] += 1
+                        
+                        # Track processing times
+                        if 'processing_time' in operation_data:
+                            if operation_name not in stats_data['processing_times']:
+                                stats_data['processing_times'][operation_name] = []
+                            stats_data['processing_times'][operation_name].append(operation_data['processing_time'])
+                        
+                        # Track success rates
+                        if operation_name not in stats_data['success_rates']:
+                            stats_data['success_rates'][operation_name] = {'success': 0, 'total': 0}
+                        stats_data['success_rates'][operation_name]['total'] += 1
+                        if operation_data.get('success', False):
+                            stats_data['success_rates'][operation_name]['success'] += 1
+                        
+                        # Track data sizes
+                        data_size = len(json.dumps(operation_data))
+                        if operation_name not in stats_data['data_sizes']:
+                            stats_data['data_sizes'][operation_name] = []
+                        stats_data['data_sizes'][operation_name].append(data_size)
+                        
+            except Exception as e:
+                # Skip corrupted sidecar files
+                continue
+    
+    # Calculate averages
+    for operation_name in stats_data['processing_times']:
+        times = stats_data['processing_times'][operation_name]
+        stats_data['processing_times'][operation_name] = sum(times) / len(times) if times else 0
+    
+    for operation_name in stats_data['data_sizes']:
+        sizes = stats_data['data_sizes'][operation_name]
+        stats_data['data_sizes'][operation_name] = sum(sizes) / len(sizes) if sizes else 0
+    
+    # Update progress bar description with results
+    pbar.set_description(f"Found {stats_data['total_images']} images ({stats_data['symlink_count']} symlinks), {stats_data['total_sidecars']} sidecar files")
     
     return stats_data
 
 
 def display_table_stats(stats_data: Dict[str, Any]):
     """Display statistics in table format."""
+    
+    # Import Table component
+    Table = _get_table()
     
     # Main statistics table
     main_table = Table(title="Sidecar Statistics Overview")
