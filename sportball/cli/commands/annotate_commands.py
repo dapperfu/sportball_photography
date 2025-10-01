@@ -189,7 +189,36 @@ def _annotate_single_image(image_path: Path,
                           show_confidence: bool) -> Dict[str, Any]:
     """Annotate a single image with detection results."""
     
-    # Load the original image
+    annotations_added = 0
+    
+    # Check for sidecar files and available data first
+    face_data = None
+    object_data = None
+    has_faces = False
+    has_objects = False
+    
+    # Load face data if faces are enabled
+    if not no_faces:
+        face_data = core.sidecar.load_data(image_path, "face_detection")
+        if face_data and face_data.get('success', False):
+            faces = face_data.get('faces', [])
+            has_faces = len(faces) > 0
+    
+    # Load object data if objects are enabled
+    if not no_objects:
+        object_data = core.sidecar.load_data(image_path, "yolov8")
+        if object_data and 'yolov8' in object_data and object_data['yolov8'].get('success', False):
+            objects = object_data['yolov8'].get('objects', [])
+            has_objects = len(objects) > 0
+    
+    # Skip image if no annotations are available for the enabled detection types
+    if no_faces and not has_objects:
+        return {"success": False, "error": "No objects found (skipped)"}
+    if no_objects and not has_faces:
+        return {"success": False, "error": "No faces found (skipped)"}
+    
+    # If we reach here, we have at least one type of annotation to process
+    # Load the original image only if we're going to process it
     image = cv2.imread(str(image_path))
     if image is None:
         return {"success": False, "error": "Could not load image"}
@@ -212,80 +241,50 @@ def _annotate_single_image(image_path: Path,
     scale_x = new_width / original_width
     scale_y = new_height / original_height
     
-    annotations_added = 0
-    
-    # Check if we should skip this image based on available data
-    has_faces = False
-    has_objects = False
-    
-    # Check for faces
-    if not no_faces:
-        face_data = core.sidecar.load_data(image_path, "face_detection")
-        if face_data and 'data' in face_data and face_data['data'].get('success', False):
-            faces = face_data['data'].get('faces', [])
-            has_faces = len(faces) > 0
-    
-    # Check for objects
-    if not no_objects:
-        object_data = core.sidecar.load_data(image_path, "yolov8")
-        if object_data and 'yolov8' in object_data and object_data['yolov8'].get('success', False):
-            objects = object_data['yolov8'].get('objects', [])
-            has_objects = len(objects) > 0
-    
-    # Skip image if no annotations are available for the enabled detection types
-    if no_faces and not has_objects:
-        return {"success": False, "error": "No objects found (skipped)"}
-    if no_objects and not has_faces:
-        return {"success": False, "error": "No faces found (skipped)"}
-    
     # Load and annotate faces
-    if not no_faces and has_faces:
-        face_data = core.sidecar.load_data(image_path, "face_detection")
-        if face_data and 'data' in face_data and face_data['data'].get('success', False):
-            faces = face_data['data'].get('faces', [])
-            for i, face in enumerate(faces):
-                bbox = face.get('bbox', {})
-                if bbox:
-                    x = int(bbox.get('x', 0) * scale_x)
-                    y = int(bbox.get('y', 0) * scale_y)
-                    width = int(bbox.get('width', 0) * scale_x)
-                    height = int(bbox.get('height', 0) * scale_y)
-                    
-                    confidence = face.get('confidence', 0.0)
-                    label = f"Face {i+1}"
-                    if show_confidence:
-                        label += f" ({confidence:.2f})"
-                    
-                    annotated_image = _draw_annotation(
-                        annotated_image, x, y, width, height, label, face_color,
-                        font_scale, thickness
-                    )
-                    annotations_added += 1
+    if not no_faces and has_faces and face_data:
+        faces = face_data.get('faces', [])
+        for i, face in enumerate(faces):
+            bbox = face.get('bbox', {})
+            if bbox:
+                x = int(bbox.get('x', 0) * scale_x)
+                y = int(bbox.get('y', 0) * scale_y)
+                width = int(bbox.get('width', 0) * scale_x)
+                height = int(bbox.get('height', 0) * scale_y)
+                
+                confidence = face.get('confidence', 0.0)
+                label = f"Face {i+1}"
+                if show_confidence:
+                    label += f" ({confidence:.2f})"
+                
+                annotated_image = _draw_annotation(
+                    annotated_image, x, y, width, height, label, face_color,
+                    font_scale, thickness
+                )
+                annotations_added += 1
     
     # Load and annotate objects
-    if not no_objects and has_objects:
-        object_data = core.sidecar.load_data(image_path, "yolov8")
-        if object_data and 'yolov8' in object_data and object_data['yolov8'].get('success', False):
-            objects = object_data['yolov8'].get('objects', [])
-            for i, obj in enumerate(objects):
-                coords = obj.get('coordinates_pixels', {})
-                if coords:
-                    x = int(coords.get('x', 0) * scale_x)
-                    y = int(coords.get('y', 0) * scale_y)
-                    width = int(coords.get('width', 0) * scale_x)
-                    height = int(coords.get('height', 0) * scale_y)
-                    
-                    class_name = obj.get('class_name', 'object')
-                    confidence = obj.get('confidence', 0.0)
-                    label = f"{class_name.title()} {i+1}"
-                    if show_confidence:
-                        label += f" ({confidence:.2f})"
-                    
-                    annotated_image = _draw_annotation(
-                        annotated_image, x, y, width, height, label, object_color,
-                        font_scale, thickness
-                    )
-                    annotations_added += 1
+    if not no_objects and has_objects and object_data:
+        objects = object_data['yolov8'].get('objects', [])
+        for i, obj in enumerate(objects):
+            coords = obj.get('coordinates_pixels', {})
+            if coords:
+                x = int(coords.get('x', 0) * scale_x)
+                y = int(coords.get('y', 0) * scale_y)
+                width = int(coords.get('width', 0) * scale_x)
+                height = int(coords.get('height', 0) * scale_y)
+                
+                class_name = obj.get('class_name', 'object')
+                confidence = obj.get('confidence', 0.0)
+                label = f"{class_name.title()} {i+1}"
+                if show_confidence:
+                    label += f" ({confidence:.2f})"
+                
+                annotated_image = _draw_annotation(
+                    annotated_image, x, y, width, height, label, object_color,
+                    font_scale, thickness
+                )
+                annotations_added += 1
     
     # Determine output path
     if output_path.is_dir() or (not output_path.exists() and not output_path.suffix):
