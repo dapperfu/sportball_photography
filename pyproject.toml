@@ -42,8 +42,8 @@ dependencies = [
     "Pillow>=10.0.0",
     "numpy>=1.24.0",
     
-    # EXIF handling - fast-exif-rs-py installed manually due to repository structure issue
-    # "fast-exif-rs-py @ git+https://github.com/dapperfu/fast-exif-rs-py.git#egg=fast-exif-rs-py",
+    # EXIF handling
+    "fast-exif-rs-py @ git+https://github.com/dapperfu/fast-exif-rs-py.git#egg=fast-exif-rs-py",
     
     # Machine Learning
     "torch>=2.0.0",
