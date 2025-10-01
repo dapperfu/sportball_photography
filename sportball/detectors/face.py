@@ -7,11 +7,11 @@ Author: Claude Sonnet 4 (claude-3-5-sonnet-20241022)
 Generated via Cursor IDE (cursor.sh) with AI assistance
 """
 
-import cv2
 import numpy as np
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict
+from PIL import Image, ImageDraw
 from loguru import logger
 
 try:
@@ -245,8 +245,8 @@ class FaceDetector:
                 import face_recognition
                 import numpy as np
                 
-                # Convert BGR to RGB for face_recognition
-                image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                # Image is already in RGB format from PIL
+                image_rgb = image
                 
                 # Use face_recognition library for detection
                 # Try CNN model first (GPU-accelerated), fall back to HOG if needed
@@ -322,8 +322,8 @@ class FaceDetector:
             try:
                 import face_recognition
                 
-                # Convert BGR to RGB for face_recognition
-                rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                # Image is already in RGB format from PIL
+                rgb_image = image
                 
                 # Detect face locations
                 face_locations = face_recognition.face_locations(rgb_image, model="hog")
@@ -419,7 +419,6 @@ class FaceDetector:
     
     def _create_test_images(self, count: int, image_size: tuple) -> List[Path]:
         """Create synthetic test images for batch size tuning."""
-        import cv2
         import numpy as np
         import tempfile
         from pathlib import Path
@@ -430,7 +429,11 @@ class FaceDetector:
         try:
             for i in range(count):
                 # Create a synthetic image with some faces (rectangles)
-                image = np.random.randint(0, 255, (image_size[1], image_size[0], 3), dtype=np.uint8)
+                image_array = np.random.randint(0, 255, (image_size[1], image_size[0], 3), dtype=np.uint8)
+                
+                # Convert to PIL Image for drawing
+                pil_image = Image.fromarray(image_array)
+                draw = ImageDraw.Draw(pil_image)
                 
                 # Add some rectangular "faces" for detection
                 for _ in range(np.random.randint(1, 4)):
@@ -438,11 +441,11 @@ class FaceDetector:
                     y = np.random.randint(0, image_size[1] - 100)
                     w = np.random.randint(50, 150)
                     h = np.random.randint(50, 150)
-                    cv2.rectangle(image, (x, y), (x + w, y + h), (255, 255, 255), -1)
+                    draw.rectangle([x, y, x + w, y + h], fill=(255, 255, 255))
                 
                 # Save test image
                 test_path = temp_dir / f"test_image_{i:03d}.jpg"
-                cv2.imwrite(str(test_path), image)
+                pil_image.save(str(test_path), 'JPEG')
                 test_images.append(test_path)
                 
         except Exception as e:
@@ -536,14 +539,18 @@ class FaceDetector:
         
         try:
             # Load image
-            image = cv2.imread(str(image_path))
-            if image is None:
+            try:
+                pil_image = Image.open(image_path)
+                if pil_image.mode != 'RGB':
+                    pil_image = pil_image.convert('RGB')
+                image = np.array(pil_image)
+            except Exception as e:
                 return FaceDetectionResult(
                     faces=[],
                     face_count=0,
                     success=False,
                     processing_time=0,
-                    error="Failed to load image"
+                    error=f"Failed to load image: {e}"
                 )
             
             original_height, original_width = image.shape[:2]
@@ -562,7 +569,9 @@ class FaceDetector:
                 # Only resize if image is larger than 1080p
                 new_width = int(original_width * scale_factor)
                 new_height = int(original_height * scale_factor)
-                image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+                # Resize using PIL
+                resized_pil = pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                image = np.array(resized_pil)
                 self.logger.debug(f"Resized image from {original_width}x{original_height} to {new_width}x{new_height}")
             else:
                 scale_factor = 1.0  # No scaling needed
@@ -720,14 +729,18 @@ class FaceDetector:
         
         for image_path in image_paths:
             try:
-                image = cv2.imread(str(image_path))
-                if image is None:
+                try:
+                    pil_image = Image.open(image_path)
+                    if pil_image.mode != 'RGB':
+                        pil_image = pil_image.convert('RGB')
+                    image = np.array(pil_image)
+                except Exception as e:
                     results[str(image_path)] = FaceDetectionResult(
                         faces=[],
                         face_count=0,
                         success=False,
                         processing_time=0.0,
-                        error="Failed to load image"
+                        error=f"Failed to load image: {e}"
                     )
                     continue
                 
@@ -773,11 +786,8 @@ class FaceDetector:
             # Monitor GPU memory usage
             self._log_gpu_memory("Before GPU batch processing")
             
-            # Convert all images to RGB for face_recognition
-            batch_images_rgb = []
-            for image in batch_images:
-                image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                batch_images_rgb.append(image_rgb)
+            # Images are already in RGB format from PIL
+            batch_images_rgb = batch_images
             
             # Use sequential processing for GPU acceleration
             # Sequential is often faster for GPU operations due to internal parallelization
@@ -945,8 +955,8 @@ class FaceDetector:
         
         for i, (image, metadata) in enumerate(zip(batch_images, batch_metadata)):
             try:
-                # Convert BGR to RGB for face_recognition
-                rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                # Image is already in RGB format from PIL
+                rgb_image = image
                 
                 # Use CNN model for GPU acceleration if available
                 try:
@@ -1034,8 +1044,8 @@ class FaceDetector:
             x, y, w, h = bbox
             face_image = image[y:y+h, x:x+w]
             
-            # Convert BGR to RGB
-            face_rgb = cv2.cvtColor(face_image, cv2.COLOR_BGR2RGB)
+            # Image is already in RGB format from PIL
+            face_rgb = face_image
             
             # Get face encodings
             encodings = face_recognition.face_encodings(face_rgb)
@@ -1075,11 +1085,15 @@ class FaceDetector:
                 }
             
             # Load image
-            image = cv2.imread(str(image_path))
-            if image is None:
+            try:
+                pil_image = Image.open(image_path)
+                if pil_image.mode != 'RGB':
+                    pil_image = pil_image.convert('RGB')
+                image = np.array(pil_image)
+            except Exception as e:
                 return {
                     "success": False,
-                    "error": "Failed to load image",
+                    "error": f"Failed to load image: {e}",
                     "faces_extracted": 0
                 }
             
@@ -1104,7 +1118,9 @@ class FaceDetector:
                 face_filename = f"{image_path.stem}_face_{i:02d}.jpg"
                 face_path = output_dir / face_filename
                 
-                cv2.imwrite(str(face_path), face_image)
+                # Save face image using PIL
+                pil_face_image = Image.fromarray(face_image)
+                pil_face_image.save(str(face_path), 'JPEG', quality=95)
                 
                 extracted_faces.append({
                     "face_id": face.face_id,
@@ -1143,16 +1159,10 @@ class FaceDetector:
         # Load image dimensions if not provided
         if image_width is None or image_height is None:
             try:
-                import cv2
-                image = cv2.imread(str(image_path))
-                if image is not None:
-                    image_height, image_width = image.shape[:2]
-                else:
-                    # Fallback to default dimensions if image can't be loaded
-                    image_width = 1920
-                    image_height = 1080
+                pil_image = Image.open(image_path)
+                image_height, image_width = pil_image.size[1], pil_image.size[0]  # PIL size is (width, height)
             except Exception:
-                # Fallback to default dimensions
+                # Fallback to default dimensions if image can't be loaded
                 image_width = 1920
                 image_height = 1080
         if not result.success:
@@ -1400,14 +1410,18 @@ class InsightFaceDetector:
                 )
             
             # Load image
-            image = cv2.imread(str(image_path))
-            if image is None:
+            try:
+                pil_image = Image.open(image_path)
+                if pil_image.mode != 'RGB':
+                    pil_image = pil_image.convert('RGB')
+                image = np.array(pil_image)
+            except Exception as e:
                 return FaceDetectionResult(
                     faces=[],
                     face_count=0,
                     success=False,
                     processing_time=0,
-                    error="Failed to load image"
+                    error=f"Failed to load image: {e}"
                 )
             
             original_height, original_width = image.shape[:2]
@@ -1426,7 +1440,9 @@ class InsightFaceDetector:
                 # Only resize if image is larger than 1080p
                 new_width = int(original_width * scale_factor)
                 new_height = int(original_height * scale_factor)
-                image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+                # Resize using PIL
+                resized_pil = pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                image = np.array(resized_pil)
                 self.logger.debug(f"Resized image from {original_width}x{original_height} to {new_width}x{new_height}")
             else:
                 scale_factor = 1.0  # No scaling needed
@@ -1557,11 +1573,15 @@ class InsightFaceDetector:
                     break
                 
                 # Load image
-                image = cv2.imread(str(img_path))
-                if image is None:
+                try:
+                    pil_image = Image.open(img_path)
+                    if pil_image.mode != 'RGB':
+                        pil_image = pil_image.convert('RGB')
+                    image = np.array(pil_image)
+                except Exception as e:
                     results[str(img_path)] = FaceDetectionResult(
                         faces=[], face_count=0, success=False, processing_time=0.0,
-                        error="Failed to load image"
+                        error=f"Failed to load image: {e}"
                     )
                     continue
                 
@@ -1678,14 +1698,20 @@ class InsightFaceDetector:
             
             for image_path in image_paths:
                 try:
-                    image = cv2.imread(str(image_path))
-                    if image is not None:
-                        batch_images.append(image)
-                        batch_metadata.append({
-                            'path': image_path,
-                            'height': image.shape[0],
-                            'width': image.shape[1]
-                        })
+                    try:
+                        pil_image = Image.open(image_path)
+                        if pil_image.mode != 'RGB':
+                            pil_image = pil_image.convert('RGB')
+                        image = np.array(pil_image)
+                    except Exception as e:
+                        continue
+                    
+                    batch_images.append(image)
+                    batch_metadata.append({
+                        'path': image_path,
+                        'height': image.shape[0],
+                        'width': image.shape[1]
+                    })
                     else:
                         results[str(image_path)] = FaceDetectionResult(
                             faces=[], face_count=0, success=False, processing_time=0.0,
@@ -1832,11 +1858,15 @@ class InsightFaceDetector:
                 }
             
             # Load image
-            image = cv2.imread(str(image_path))
-            if image is None:
+            try:
+                pil_image = Image.open(image_path)
+                if pil_image.mode != 'RGB':
+                    pil_image = pil_image.convert('RGB')
+                image = np.array(pil_image)
+            except Exception as e:
                 return {
                     "success": False,
-                    "error": "Failed to load image",
+                    "error": f"Failed to load image: {e}",
                     "faces_extracted": 0
                 }
             
@@ -1861,7 +1891,9 @@ class InsightFaceDetector:
                 face_filename = f"{image_path.stem}_insightface_face_{i:02d}.jpg"
                 face_path = output_dir / face_filename
                 
-                cv2.imwrite(str(face_path), face_image)
+                # Save face image using PIL
+                pil_face_image = Image.fromarray(face_image)
+                pil_face_image.save(str(face_path), 'JPEG', quality=95)
                 
                 extracted_faces.append({
                     "face_id": face.face_id,
@@ -1901,15 +1933,10 @@ class InsightFaceDetector:
         # Load image dimensions if not provided
         if image_width is None or image_height is None:
             try:
-                image = cv2.imread(str(image_path))
-                if image is not None:
-                    image_height, image_width = image.shape[:2]
-                else:
-                    # Fallback to default dimensions if image can't be loaded
-                    image_width = 1920
-                    image_height = 1080
+                pil_image = Image.open(image_path)
+                image_height, image_width = pil_image.size[1], pil_image.size[0]  # PIL size is (width, height)
             except Exception:
-                # Fallback to default dimensions
+                # Fallback to default dimensions if image can't be loaded
                 image_width = 1920
                 image_height = 1080
         
