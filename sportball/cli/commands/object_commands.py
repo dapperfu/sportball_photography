@@ -189,47 +189,21 @@ def detect(
         return
 
     # Show progress for initialization and processing
-    Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn = _get_progress()
+    # Lazy import to avoid heavy dependencies at startup
+    from ..utils import get_core
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TimeElapsedColumn(),
-        console=_get_console(),
-        transient=False,  # Keep progress visible after completion
-    ) as progress:
-        # Initialize core with progress indicator
-        init_task = progress.add_task(
-            "🔧 Initializing object detection system...", total=None
-        )
+    core = get_core(ctx)
 
-        # Lazy import to avoid heavy dependencies at startup
-        from ..utils import get_core
+    # Prepare detection parameters
+    detection_kwargs = {
+        "confidence": confidence,
+        "classes": classes,
+        "save_sidecar": save_sidecar,
+        "force": force,
+    }
 
-        core = get_core(ctx)
-
-        progress.update(init_task, description="✅ System initialized")
-        progress.remove_task(init_task)
-
-        # Prepare detection parameters
-        detection_kwargs = {
-            "confidence": confidence,
-            "classes": classes,
-            "save_sidecar": save_sidecar,
-            "force": force,
-        }
-
-        # Perform detection with progress indicator
-        detect_task = progress.add_task(
-            f"🔍 Detecting objects in {len(files_to_process)} images...",
-            total=len(files_to_process),
-        )
-
-        results = core.detect_objects(files_to_process, **detection_kwargs)
-
-        progress.update(detect_task, description="✅ Detection complete")
-        progress.remove_task(detect_task)
+    # Perform detection - let tqdm handle progress display
+    results = core.detect_objects(files_to_process, **detection_kwargs)
 
     # Display results
     display_object_results(
@@ -390,46 +364,20 @@ def extract(
         return
 
     # Show progress for initialization and processing
-    Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn = _get_progress()
+    # Lazy import to avoid heavy dependencies at startup
+    from ..utils import get_core
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TimeElapsedColumn(),
-        console=_get_console(),
-        transient=False,  # Keep progress visible after completion
-    ) as progress:
-        # Initialize core with progress indicator
-        init_task = progress.add_task(
-            "🔧 Initializing object detection system...", total=None
-        )
+    core = get_core(ctx)
 
-        # Lazy import to avoid heavy dependencies at startup
-        from ..utils import get_core
-
-        core = get_core(ctx)
-
-        progress.update(init_task, description="✅ System initialized")
-        progress.remove_task(init_task)
-
-        # Extract objects with progress indicator
-        extract_task = progress.add_task(
-            f"✂️  Extracting objects from {len(image_paths)} images...",
-            total=len(image_paths),
-        )
-
-        extraction_results = core.extract_objects(
-            image_paths,
-            output_dir,
-            object_types=types,
-            min_size=min_size,
-            max_size=max_size,
-            padding=padding,
-        )
-
-        progress.update(extract_task, description="✅ Extraction complete")
-        progress.remove_task(extract_task)
+    # Extract objects - let tqdm handle progress display
+    extraction_results = core.extract_objects(
+        image_paths,
+        output_dir,
+        object_types=types,
+        min_size=min_size,
+        max_size=max_size,
+        padding=padding,
+    )
 
     # Display extraction results
     display_extraction_results(extraction_results)
@@ -482,42 +430,14 @@ def analyze(
         return
 
     # Show progress for initialization and processing
-    Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn = _get_progress()
+    # Lazy import to avoid heavy dependencies at startup
+    from ..utils import get_core
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TimeElapsedColumn(),
-        console=_get_console(),
-        transient=False,  # Keep progress visible after completion
-    ) as progress:
-        # Initialize core with progress indicator
-        init_task = progress.add_task(
-            "🔧 Initializing object detection system...", total=None
-        )
+    core = get_core(ctx)
 
-        # Lazy import to avoid heavy dependencies at startup
-        from ..utils import get_core
-
-        core = get_core(ctx)
-
-        progress.update(init_task, description="✅ System initialized")
-        progress.remove_task(init_task)
-
-        # Perform object detection for analysis
-        detection_kwargs = {"confidence": confidence, "save_sidecar": save_sidecar}
-
-        # Perform detection with progress indicator
-        analyze_task = progress.add_task(
-            f"🔍 Analyzing objects in {len(image_paths)} images...",
-            total=len(image_paths),
-        )
-
-        results = core.detect_objects(image_paths, **detection_kwargs)
-
-        progress.update(analyze_task, description="✅ Analysis complete")
-        progress.remove_task(analyze_task)
+    # Perform object detection for analysis - let tqdm handle progress display
+    detection_kwargs = {"confidence": confidence, "save_sidecar": save_sidecar}
+    results = core.detect_objects(image_paths, **detection_kwargs)
 
     # Display analysis results
     display_object_analysis(results)

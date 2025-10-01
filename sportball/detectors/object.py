@@ -286,6 +286,7 @@ class ObjectDetector:
         save_sidecar: bool = True,
         force: bool = False,
         max_workers: Optional[int] = None,
+        progress_callback: Optional[callable] = None,
         **kwargs,
     ) -> Dict[str, Any]:
         """
@@ -296,6 +297,7 @@ class ObjectDetector:
             save_sidecar: Whether to save results to sidecar files
             force: Whether to force detection even if sidecar exists
             max_workers: Maximum number of parallel workers
+            progress_callback: Optional callback function for progress updates
             **kwargs: Additional arguments (confidence, classes, etc.)
 
         Returns:
@@ -328,7 +330,7 @@ class ObjectDetector:
         else:
             # Multiple images processing
             results = self._detect_multiple_images(
-                image_paths, force, max_workers, save_sidecar
+                image_paths, force, max_workers, save_sidecar, progress_callback
             )
             return {
                 str(path): self._format_result(result)
@@ -353,6 +355,7 @@ class ObjectDetector:
         force: bool,
         max_workers: Optional[int],
         save_sidecar: bool = True,
+        progress_callback: Optional[callable] = None,
     ) -> List[DetectionResult]:
         """Detect objects in multiple images with optimized processing."""
         if self.enable_gpu and self.device == "cuda":
@@ -363,7 +366,7 @@ class ObjectDetector:
         else:
             # Use CPU parallel processing
             return self._detect_multiple_images_cpu_parallel(
-                image_paths, force, max_workers, save_sidecar
+                image_paths, force, max_workers, save_sidecar, progress_callback
             )
 
     def _detect_multiple_images_gpu_batch(
@@ -428,6 +431,7 @@ class ObjectDetector:
         force: bool,
         max_workers: Optional[int],
         save_sidecar: bool = True,
+        progress_callback: Optional[callable] = None,
     ) -> List[DetectionResult]:
         """Detect objects in multiple images using sequential processing with progress bar."""
         logger.info(f"Processing {len(image_paths)} images sequentially")
