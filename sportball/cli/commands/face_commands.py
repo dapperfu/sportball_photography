@@ -193,6 +193,8 @@ def detect(ctx: click.Context,
     # Perform sequential detection with graceful shutdown handling
     try:
         # Use Rich progress bar for better user experience
+        Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn = _get_progress()
+        
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
