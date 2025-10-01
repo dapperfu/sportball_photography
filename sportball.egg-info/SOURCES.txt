@@ -15,11 +15,13 @@ versioneer.py
 ./sportball/cli/ultra_minimal_main.py
 ./sportball/cli/utils.py
 ./sportball/cli/commands/__init__.py
+./sportball/cli/commands/annotate_commands.py
 ./sportball/cli/commands/face_commands.py
 ./sportball/cli/commands/game_commands.py
 ./sportball/cli/commands/object_commands.py
 ./sportball/cli/commands/quality_commands.py
 ./sportball/cli/commands/sidecar_commands.py
+./sportball/cli/commands/unified_commands.py
 ./sportball/cli/commands/utility_commands.py
 ./sportball/detectors/__init__.py
 ./sportball/detectors/face.py
@@ -47,11 +49,13 @@ sportball/cli/minimal_main.py
 sportball/cli/ultra_minimal_main.py
 sportball/cli/utils.py
 sportball/cli/commands/__init__.py
+sportball/cli/commands/annotate_commands.py
 sportball/cli/commands/face_commands.py
 sportball/cli/commands/game_commands.py
 sportball/cli/commands/object_commands.py
 sportball/cli/commands/quality_commands.py
 sportball/cli/commands/sidecar_commands.py
+sportball/cli/commands/unified_commands.py
 sportball/cli/commands/utility_commands.py
 sportball/detectors/__init__.py
 sportball/detectors/face.py

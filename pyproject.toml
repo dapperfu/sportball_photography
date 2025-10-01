@@ -43,7 +43,7 @@ dependencies = [
     "numpy>=1.24.0",
     
     # EXIF handling
-    "fast-exif-rs-py @ git+https://github.com/dapperfu/fast-exif-rs-py.git",
+    "piexif>=1.1.3",
     
     # Machine Learning
     "torch>=2.0.0",

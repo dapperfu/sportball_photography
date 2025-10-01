@@ -1111,11 +1111,11 @@ class ObjectDetector:
             },
         }
 
-    def _copy_exif_data_with_fast_exif_rs(
+    def _copy_exif_data_with_piexif(
         self, original_image_path: Path, output_image_path: Path
     ) -> bool:
         """
-        Copy EXIF data from original image to output image using fast-exif-rs.
+        Copy EXIF data from original image to output image using piexif.
 
         Args:
             original_image_path: Path to the original image with EXIF data
@@ -1125,19 +1125,20 @@ class ObjectDetector:
             True if EXIF copying was successful, False otherwise
         """
         try:
-            import fast_exif_rs_py
+            import piexif
+            from PIL import Image
 
-            # Create a temporary file for the EXIF-copied image
-            temp_path = output_image_path.with_suffix(".tmp" + output_image_path.suffix)
+            # Load the original image and extract EXIF data
+            with Image.open(original_image_path) as original_img:
+                exif_dict = piexif.load(original_img.info.get("exif", b""))
 
-            # Use fast-exif-rs to copy all EXIF data
-            copier = fast_exif_rs_py.PyFastExifCopier()
-            copier.copy_all_exif(
-                str(original_image_path), str(output_image_path), str(temp_path)
-            )
-
-            # Replace the original output image with the EXIF-copied version
-            temp_path.replace(output_image_path)
+            # Load the output image and insert EXIF data
+            with Image.open(output_image_path) as output_img:
+                # Convert EXIF data back to bytes
+                exif_bytes = piexif.dump(exif_dict)
+                
+                # Save the image with EXIF data
+                output_img.save(output_image_path, exif=exif_bytes)
 
             return True
 
@@ -1276,7 +1277,7 @@ class ObjectDetector:
                     pil_object_image.save(str(object_path), "JPEG", quality=95)
 
                     # Copy EXIF data from original image to extracted object
-                    self._copy_exif_data_with_fast_exif_rs(image_path, object_path)
+                    self._copy_exif_data_with_piexif(image_path, object_path)
 
                     individual_objects.append(
                         {
@@ -1327,7 +1328,7 @@ class ObjectDetector:
             pil_annotated_image.save(str(annotated_image_path), "JPEG", quality=95)
 
             # Copy EXIF data from original image to annotated image
-            self._copy_exif_data_with_fast_exif_rs(image_path, annotated_image_path)
+            self._copy_exif_data_with_piexif(image_path, annotated_image_path)
 
         return {
             "success": True,

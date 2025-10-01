@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: sportball
-Version: 1.1.0
+Version: 1.2.0
 Summary: Unified Sports Photo Analysis Package - AI-powered sports photo processing and organization
 Home-page: https://github.com/sportball/sportball
 Author: Sportball Team
@@ -11,7 +11,7 @@ Project-URL: Homepage, https://github.com/sportball/sportball
 Project-URL: Repository, https://github.com/sportball/sportball.git
 Project-URL: Issues, https://github.com/sportball/sportball/issues
 Project-URL: Documentation, https://sportball.readthedocs.io
-Keywords: computer-vision,ai,photo-sorting,sports,opencv,face-recognition,image-processing,machine-learning,yolo,object-detection,game-analysis
+Keywords: computer-vision,ai,photo-sorting,sports,face-recognition,image-processing,machine-learning,yolo,object-detection,game-analysis
 Classifier: Development Status :: 5 - Production/Stable
 Classifier: Intended Audience :: End Users/Desktop
 Classifier: Intended Audience :: Developers
@@ -30,9 +30,9 @@ Classifier: Topic :: Software Development :: Libraries :: Python Modules
 Classifier: Topic :: Software Development :: Libraries :: Application Frameworks
 Requires-Python: >=3.8
 Description-Content-Type: text/markdown
-Requires-Dist: opencv-contrib-python>=4.8.0
 Requires-Dist: Pillow>=10.0.0
 Requires-Dist: numpy>=1.24.0
+Requires-Dist: piexif>=1.1.3
 Requires-Dist: torch>=2.0.0
 Requires-Dist: torchvision>=0.15.0
 Requires-Dist: scikit-learn>=1.3.0
