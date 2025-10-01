@@ -74,6 +74,9 @@ def viz_group():
 @click.option('--verbose', '-v', 
               count=True, 
               help='Enable verbose logging (-v for info, -vv for debug)')
+@click.option('--show-empty-results', 'show_empty_results',
+              is_flag=True,
+              help='Show output even when no annotations are added (default: suppress empty results)')
 @click.pass_context
 def annotate(ctx: click.Context, 
              input_path: Path, 
@@ -87,7 +90,8 @@ def annotate(ctx: click.Context,
              thickness: int,
              show_confidence: bool,
              no_recursive: bool,
-             verbose: int):
+             verbose: int,
+             show_empty_results: bool):
     """
     Annotate images with face and object detection results.
     
@@ -173,7 +177,7 @@ def annotate(ctx: click.Context,
         progress.remove_task(annotate_task)
     
     # Display results
-    display_annotation_results(results)
+    display_annotation_results(results, not show_empty_results)
 
 
 def _annotate_single_image(image_path: Path, 
@@ -371,8 +375,28 @@ def _parse_color(color_name: str) -> Tuple[int, int, int]:
     return color_map.get(color_name.lower(), (255, 255, 255))  # Default to white
 
 
-def display_annotation_results(results: Dict[str, Dict[str, Any]]):
-    """Display annotation results."""
+def display_annotation_results(results: Dict[str, Dict[str, Any]], suppress_empty: bool = True):
+    """
+    Display annotation results.
+    
+    Args:
+        results: Dictionary of annotation results
+        suppress_empty: If True, suppress output when no annotations are added (default: True)
+    """
+    
+    # Count total annotations first
+    total_annotations = 0
+    successful_images = 0
+    
+    for image_path, result in results.items():
+        if result.get('success', False):
+            successful_images += 1
+            annotations = result.get('annotations_added', 0)
+            total_annotations += annotations
+    
+    # If suppress mode is enabled and no annotations were added, suppress output
+    if suppress_empty and total_annotations == 0:
+        return
     
     # Create results table
     table = _get_table()(title="Annotation Results")
@@ -382,14 +406,9 @@ def display_annotation_results(results: Dict[str, Dict[str, Any]]):
     table.add_column("Success", style="green")
     table.add_column("Error", style="red")
     
-    total_annotations = 0
-    successful_images = 0
-    
     for image_path, result in results.items():
         if result.get('success', False):
             annotations = result.get('annotations_added', 0)
-            total_annotations += annotations
-            successful_images += 1
             
             output_size = result.get('output_size', (0, 0))
             size_str = f"{output_size[0]}x{output_size[1]}"

@@ -75,6 +75,9 @@ def object_group():
 @click.option('--verbose', '-v', 
               count=True, 
               help='Enable verbose logging (-v for info, -vv for debug)')
+@click.option('--show-empty-results', 'show_empty_results',
+              is_flag=True,
+              help='Show output even when no objects are detected (default: suppress empty results)')
 @click.pass_context
 def detect(ctx: click.Context, 
            input_path: Path, 
@@ -86,7 +89,8 @@ def detect(ctx: click.Context,
            no_recursive: bool,
            batch_size: int,
            force: bool,
-           verbose: int):
+           verbose: int,
+           show_empty_results: bool):
     """
     Detect objects in images using YOLOv8.
     
@@ -176,11 +180,35 @@ def detect(ctx: click.Context,
         progress.remove_task(detect_task)
     
     # Display results
-    display_object_results(results, extract_objects, output, core, files_to_process)
+    display_object_results(results, extract_objects, output, core, files_to_process, not show_empty_results)
 
 
-def display_object_results(results: dict, extract_objects: bool, output_dir: Optional[Path], core, image_paths: List[Path]):
-    """Display object detection results."""
+def display_object_results(results: dict, extract_objects: bool, output_dir: Optional[Path], core, image_paths: List[Path], suppress_empty: bool = True):
+    """
+    Display object detection results.
+    
+    Args:
+        results: Dictionary of detection results
+        extract_objects: Whether to extract objects
+        output_dir: Output directory for extraction
+        core: Core instance
+        image_paths: List of image paths processed
+        suppress_empty: If True, suppress output when no objects are found (default: True)
+    """
+    
+    # Count total objects found first
+    total_objects = 0
+    successful_images = 0
+    
+    for image_path, result in results.items():
+        if result.get('success', False):
+            successful_images += 1
+            objects = result.get('objects', [])
+            total_objects += len(objects)
+    
+    # If suppress mode is enabled and no objects were found, suppress output
+    if suppress_empty and total_objects == 0:
+        return
     
     # Create results table
     table = _get_table()(title="Object Detection Results")
@@ -190,16 +218,12 @@ def display_object_results(results: dict, extract_objects: bool, output_dir: Opt
     table.add_column("Success", style="green")
     table.add_column("Error", style="red")
     
-    total_objects = 0
-    successful_images = 0
     class_counts = {}
     
     for image_path, result in results.items():
         if result.get('success', False):
             objects = result.get('objects', [])
             object_count = len(objects)
-            total_objects += object_count
-            successful_images += 1
             
             # Count classes
             classes_found = set()

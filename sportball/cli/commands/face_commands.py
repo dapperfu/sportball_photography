@@ -94,6 +94,9 @@ def face_group():
 @click.option('--auto-tune', 'auto_tune',
               is_flag=True,
               help='Automatically tune processing parameters for optimal performance')
+@click.option('--show-empty-results', 'show_empty_results',
+              is_flag=True,
+              help='Show output even when no faces are detected (default: suppress empty results)')
 @click.pass_context
 def detect(ctx: click.Context, 
            input_pattern: str,
@@ -105,7 +108,8 @@ def detect(ctx: click.Context,
            verbose: int,
            workers: Optional[int],
            batch_size: int,
-           auto_tune: bool):
+           auto_tune: bool,
+           show_empty_results: bool):
     """
     Detect faces in images and save comprehensive data to JSON sidecar files.
     
@@ -302,7 +306,7 @@ def detect(ctx: click.Context,
             progress.update(task, advance=1)
     
     # Display final results
-    display_face_detection_results(results, len(files_to_process), total_faces_found, total_time, len(skipped_files))
+    display_face_detection_results(results, len(files_to_process), total_faces_found, total_time, len(skipped_files), not show_empty_results)
 
 
 @face_group.command()
@@ -323,6 +327,9 @@ def detect(ctx: click.Context,
 @click.option('--verbose', '-v',
               count=True,
               help='Enable verbose logging (-v for info, -vv for debug)')
+@click.option('--show-empty-results', 'show_empty_results',
+              is_flag=True,
+              help='Show output even when no faces are extracted (default: suppress empty results)')
 @click.pass_context
 def extract(ctx: click.Context, 
            input_path: Path, 
@@ -330,7 +337,8 @@ def extract(ctx: click.Context,
            padding: int,
            workers: Optional[int],
            no_recursive: bool,
-           verbose: int):
+           verbose: int,
+           show_empty_results: bool):
     """
     Extract detected faces to separate images at their natural detected size.
     
@@ -376,7 +384,7 @@ def extract(ctx: click.Context,
     )
     
     # Display extraction results
-    display_face_extraction_results(extraction_results, output)
+    display_face_extraction_results(extraction_results, output, not show_empty_results)
 
 
 @face_group.command()
@@ -817,8 +825,22 @@ def display_face_results(results: dict, extract_faces: bool, output_dir: Optiona
         _get_console().print("Face extraction not yet implemented", style="yellow")
 
 
-def display_face_detection_results(results, total_images: int, total_faces_found: int, total_time: float, skipped_count: int = 0):
-    """Display face detection results summary."""
+def display_face_detection_results(results, total_images: int, total_faces_found: int, total_time: float, skipped_count: int = 0, suppress_empty: bool = True):
+    """
+    Display face detection results summary.
+    
+    Args:
+        results: List of detection results
+        total_images: Total number of images processed
+        total_faces_found: Total number of faces found
+        total_time: Total processing time
+        skipped_count: Number of images skipped
+        suppress_empty: If True, suppress output when no faces are found (default: True)
+    """
+    
+    # If suppress mode is enabled and no faces were found, suppress output
+    if suppress_empty and total_faces_found == 0:
+        return
     
     _get_console().print(f"\n✅ Face detection complete!", style="green")
     _get_console().print(f"📊 Processed {total_images} images")
@@ -914,8 +936,15 @@ def display_detector_comparison(comparison):
             _get_console().print(f"  {detector_name}: {score:.1f}/100", style="blue")
 
 
-def display_face_extraction_results(extraction_results: dict, output_dir: Path):
-    """Display face extraction results summary."""
+def display_face_extraction_results(extraction_results: dict, output_dir: Path, suppress_empty: bool = True):
+    """
+    Display face extraction results summary.
+    
+    Args:
+        extraction_results: Dictionary of extraction results
+        output_dir: Output directory for extracted faces
+        suppress_empty: If True, suppress output when no faces are extracted (default: True)
+    """
     
     total_images = len(extraction_results)
     total_faces_extracted = 0
@@ -929,6 +958,10 @@ def display_face_extraction_results(extraction_results: dict, output_dir: Path):
             total_faces_extracted += result.get('faces_extracted', 0)
         else:
             failed_extractions += 1
+    
+    # If suppress mode is enabled and no faces were extracted, suppress output
+    if suppress_empty and total_faces_extracted == 0:
+        return
     
     _get_console().print(f"\n✅ Face extraction complete!", style="green")
     _get_console().print(f"📊 Processed {total_images} images")

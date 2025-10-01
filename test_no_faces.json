@@ -1,0 +1,31 @@
+{
+  "face_detection": {
+    "success": true,
+    "faces": [],
+    "metadata": {
+      "image_path": "test_no_faces.jpg",
+      "image_width": 200,
+      "image_height": 200,
+      "faces_found": 0,
+      "processing_time": 0.2820017337799072,
+      "extraction_timestamp": "2025-10-01T12:40:21.689250",
+      "detector": "insightface",
+      "model_name": "buffalo_l",
+      "face_size_threshold": 64,
+      "confidence_threshold": 0.5
+    }
+  },
+  "sidecar_info": {
+    "operation_type": "face_detection",
+    "created_at": "2025-10-01T12:40:11.886386",
+    "last_updated": "2025-10-01T12:40:21.689399",
+    "last_operation": "face_detection",
+    "image_path": "test_no_faces.jpg",
+    "symlink_path": "test_no_faces.jpg",
+    "symlink_info": {
+      "symlink_path": "test_no_faces.jpg",
+      "target_path": "test_no_faces.jpg",
+      "is_symlink": false
+    }
+  }
+}
