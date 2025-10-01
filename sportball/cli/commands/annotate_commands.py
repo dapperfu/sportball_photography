@@ -30,13 +30,7 @@ def _get_table():
     return Table
 
 
-@click.group(context_settings={'help_option_names': ['-h', '--help']})
-def viz_group():
-    """Visualization and annotation commands."""
-    pass
-
-
-@viz_group.command()
+@click.command(context_settings={'help_option_names': ['-h', '--help']})
 @click.argument('input_path', type=click.Path(exists=True, path_type=Path))
 @click.argument('output_path', type=click.Path(path_type=Path))
 @click.option('--size', '-s',

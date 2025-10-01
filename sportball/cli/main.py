@@ -162,7 +162,7 @@ def _load_commands():
     cli.add_command(quality_commands.quality_group, name='quality')
     cli.add_command(utility_commands.utility_group, name='util')
     cli.add_command(sidecar_commands.sidecar_group, name='sidecar')
-    cli.add_command(annotate_commands.viz_group, name='viz')
+    cli.add_command(annotate_commands.annotate, name='annotate')
 
 # Load commands immediately for now, but this can be moved to lazy loading later
 _load_commands()
@@ -196,7 +196,7 @@ _{script_name}_completion() {{
     
     # Main commands
     if [[ $COMP_CWORD -eq 1 ]]; then
-        opts="face games object quality sidecar util completion --help --version --base-dir --gpu --no-gpu --workers --cache --no-cache --verbose --quiet"
+        opts="face games object quality sidecar util annotate completion --help --version --base-dir --gpu --no-gpu --workers --cache --no-cache --verbose --quiet"
         COMPREPLY=( $(compgen -W "${{opts}}" -- "${{cur}}") )
         return 0
     fi
@@ -289,6 +289,7 @@ _{script_name}() {{
                 'quality:Photo quality assessment commands'
                 'sidecar:Sidecar file management and statistics commands'
                 'util:Utility commands for cache management and system operations'
+                'annotate:Annotate images with detection results'
                 'completion:Generate shell completion script'
             )
             _describe 'command' commands
