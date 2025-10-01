@@ -214,8 +214,32 @@ def _annotate_single_image(image_path: Path,
     
     annotations_added = 0
     
-    # Load and annotate faces
+    # Check if we should skip this image based on available data
+    has_faces = False
+    has_objects = False
+    
+    # Check for faces
     if not no_faces:
+        face_data = core.sidecar.load_data(image_path, "face_detection")
+        if face_data and 'data' in face_data and face_data['data'].get('success', False):
+            faces = face_data['data'].get('faces', [])
+            has_faces = len(faces) > 0
+    
+    # Check for objects
+    if not no_objects:
+        object_data = core.sidecar.load_data(image_path, "yolov8")
+        if object_data and 'yolov8' in object_data and object_data['yolov8'].get('success', False):
+            objects = object_data['yolov8'].get('objects', [])
+            has_objects = len(objects) > 0
+    
+    # Skip image if no annotations are available for the enabled detection types
+    if no_faces and not has_objects:
+        return {"success": False, "error": "No objects found (skipped)"}
+    if no_objects and not has_faces:
+        return {"success": False, "error": "No faces found (skipped)"}
+    
+    # Load and annotate faces
+    if not no_faces and has_faces:
         face_data = core.sidecar.load_data(image_path, "face_detection")
         if face_data and 'data' in face_data and face_data['data'].get('success', False):
             faces = face_data['data'].get('faces', [])
@@ -239,7 +263,7 @@ def _annotate_single_image(image_path: Path,
                     annotations_added += 1
     
     # Load and annotate objects
-    if not no_objects:
+    if not no_objects and has_objects:
         object_data = core.sidecar.load_data(image_path, "yolov8")
         if object_data and 'yolov8' in object_data and object_data['yolov8'].get('success', False):
             objects = object_data['yolov8'].get('objects', [])
