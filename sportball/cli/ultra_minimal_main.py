@@ -11,23 +11,26 @@ from pathlib import Path
 from typing import Optional
 
 # Suppress annoying deprecation warnings
-warnings.filterwarnings("ignore", message="pkg_resources is deprecated", category=UserWarning)
+warnings.filterwarnings(
+    "ignore", message="pkg_resources is deprecated", category=UserWarning
+)
 warnings.filterwarnings("ignore", message=".*pkg_resources.*", category=UserWarning)
+
 
 class LazyCommandGroup(click.Group):
     """Custom Click group that loads commands lazily."""
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.commands_loaded = False
-    
+
     def get_command(self, ctx, cmd_name):
         """Load commands lazily when a command is requested."""
         if not self.commands_loaded:
             _load_commands()
             self.commands_loaded = True
         return super().get_command(ctx, cmd_name)
-    
+
     def list_commands(self, ctx):
         """Load commands lazily when listing commands."""
         if not self.commands_loaded:
@@ -35,41 +38,39 @@ class LazyCommandGroup(click.Group):
             self.commands_loaded = True
         return super().list_commands(ctx)
 
+
 # Ultra-minimal CLI group with zero heavy imports
-@click.group(cls=LazyCommandGroup, context_settings={'help_option_names': ['-h', '--help']})
-@click.option('--base-dir', '-d', 
-              type=click.Path(path_type=Path),
-              help='Base directory for operations')
-@click.option('--gpu/--no-gpu', 
-              default=True,
-              help='Enable/disable GPU acceleration')
-@click.option('--workers', '-w',
-              type=int,
-              help='Number of parallel workers')
-@click.option('--cache/--no-cache',
-              default=True,
-              help='Enable/disable result caching')
-@click.option('--verbose', '-v',
-              is_flag=True,
-              help='Enable verbose logging')
-@click.option('--quiet', '-q',
-              is_flag=True,
-              help='Suppress output except errors')
-@click.version_option(version=__import__('sportball').__version__)
+@click.group(
+    cls=LazyCommandGroup, context_settings={"help_option_names": ["-h", "--help"]}
+)
+@click.option(
+    "--base-dir",
+    "-d",
+    type=click.Path(path_type=Path),
+    help="Base directory for operations",
+)
+@click.option("--gpu/--no-gpu", default=True, help="Enable/disable GPU acceleration")
+@click.option("--workers", "-w", type=int, help="Number of parallel workers")
+@click.option("--cache/--no-cache", default=True, help="Enable/disable result caching")
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
+@click.option("--quiet", "-q", is_flag=True, help="Suppress output except errors")
+@click.version_option(version=__import__("sportball").__version__)
 @click.pass_context
-def cli(ctx: click.Context, 
-        base_dir: Optional[Path], 
-        gpu: bool, 
-        workers: Optional[int], 
-        cache: bool,
-        verbose: bool, 
-        quiet: bool):
+def cli(
+    ctx: click.Context,
+    base_dir: Optional[Path],
+    gpu: bool,
+    workers: Optional[int],
+    cache: bool,
+    verbose: bool,
+    quiet: bool,
+):
     """
     Sportball - Unified Sports Photo Analysis Package
-    
+
     A comprehensive tool for analyzing and organizing sports photographs
     using computer vision, machine learning, and AI techniques.
-    
+
     Features:
     - Face detection and recognition
     - Object detection and extraction (including balls)
@@ -77,48 +78,48 @@ def cli(ctx: click.Context,
     - Photo quality assessment
     - Sidecar file management and statistics
     - Parallel processing with GPU support
-    
+
     Examples:
-    
+
     \b
     # Detect faces in images
     sportball face detect /path/to/images
-    
+
     \b
     # Extract objects from images
     sportball object extract /path/to/images --output /path/to/output
-    
+
     \b
     # Split photos into games
     sportball games split /path/to/photos --output /path/to/games
-    
+
     \b
     # Detect balls specifically
     sportball object detect /path/to/images --classes "sports ball"
-    
+
     \b
     # Assess photo quality
     sportball quality assess /path/to/images
-    
+
     # Analyze sidecar files
     sportball sidecar stats /path/to/images
-    
+
     Bash Completion:
     To enable bash completion, add this to your ~/.bashrc or ~/.bash_profile:
-    
+
         # For virtual environment (recommended):
         eval "$(python -m sportball.cli.main completion --bash)"
-        
+
         # Or if sportball is in your PATH:
         eval "$(sportball completion --bash)"
-    
+
     Then restart your shell or run: source ~/.bashrc
     """
-    
+
     # Configure logging only when needed (lazy import)
     if verbose or quiet:
         from loguru import logger
-        
+
         if verbose:
             logger.add("sportball.log", level="DEBUG", rotation="10 MB")
             logger.info("Verbose logging enabled")
@@ -129,15 +130,16 @@ def cli(ctx: click.Context,
             # Default: INFO level, suppress DEBUG messages
             logger.remove()
             logger.add(lambda msg: None, level="INFO")
-    
+
     # Store configuration in context
     ctx.ensure_object(dict)
-    ctx.obj['base_dir'] = base_dir
-    ctx.obj['gpu'] = gpu
-    ctx.obj['workers'] = workers
-    ctx.obj['cache'] = cache
-    ctx.obj['verbose'] = verbose
-    ctx.obj['quiet'] = quiet
+    ctx.obj["base_dir"] = base_dir
+    ctx.obj["gpu"] = gpu
+    ctx.obj["workers"] = workers
+    ctx.obj["cache"] = cache
+    ctx.obj["verbose"] = verbose
+    ctx.obj["quiet"] = quiet
+
 
 # Lazy command loading to avoid heavy imports at startup
 def _load_commands():
@@ -149,37 +151,44 @@ def _load_commands():
         quality_commands,
         utility_commands,
         sidecar_commands,
-        annotate_commands
+        annotate_commands,
     )
-    
-    cli.add_command(face_commands.face_group, name='face')
-    cli.add_command(object_commands.object_group, name='object')
-    cli.add_command(game_commands.game_group, name='games')
-    cli.add_command(quality_commands.quality_group, name='quality')
-    cli.add_command(utility_commands.utility_group, name='util')
-    cli.add_command(sidecar_commands.sidecar_group, name='sidecar')
-    cli.add_command(annotate_commands.annotate, name='annotate')
 
+    cli.add_command(face_commands.face_group, name="face")
+    cli.add_command(object_commands.object_group, name="object")
+    cli.add_command(game_commands.game_group, name="games")
+    cli.add_command(quality_commands.quality_group, name="quality")
+    cli.add_command(utility_commands.utility_group, name="util")
+    cli.add_command(sidecar_commands.sidecar_group, name="sidecar")
+    cli.add_command(annotate_commands.annotate, name="annotate")
 
 
 @cli.command()
-@click.option('--bash', 'shell', flag_value='bash', default=True, help='Generate bash completion script')
-@click.option('--zsh', 'shell', flag_value='zsh', help='Generate zsh completion script')
+@click.option(
+    "--bash",
+    "shell",
+    flag_value="bash",
+    default=True,
+    help="Generate bash completion script",
+)
+@click.option("--zsh", "shell", flag_value="zsh", help="Generate zsh completion script")
 def completion(shell: str):
     """Generate shell completion script."""
     import sys
     import os
-    
+
     # Get the current script name (sportball or python -m sportball.cli.main)
     script_name = os.path.basename(sys.argv[0])
-    if script_name in ['python', 'python3'] or (len(sys.argv) > 1 and 'sportball.cli.main' in sys.argv[1]):
+    if script_name in ["python", "python3"] or (
+        len(sys.argv) > 1 and "sportball.cli.main" in sys.argv[1]
+    ):
         # Running as python -m sportball.cli.main
-        script_name = 'sportball'
-    elif script_name == 'main.py':
+        script_name = "sportball"
+    elif script_name == "main.py":
         # Running as python -m sportball.cli.main
-        script_name = 'sportball'
-    
-    if shell == 'bash':
+        script_name = "sportball"
+
+    if shell == "bash":
         # Generate bash completion script
         completion_script = f"""# Bash completion for {script_name}
 _{script_name}_completion() {{
@@ -250,7 +259,7 @@ _{script_name}_completion() {{
 complete -F _{script_name}_completion {script_name}
 """
         print(completion_script)
-    elif shell == 'zsh':
+    elif shell == "zsh":
         # Generate zsh completion script
         completion_script = f"""# Zsh completion for {script_name}
 #compdef {script_name}
@@ -319,9 +328,11 @@ _{script_name} "$@"
 """
         print(completion_script)
 
+
 def main():
     """Main entry point for the CLI."""
     cli()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

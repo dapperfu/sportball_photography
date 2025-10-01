@@ -13,11 +13,11 @@ from .parallel_validator import ParallelJSONValidator
 from .rust_sidecar import RustSidecarManager, RustSidecarConfig
 
 __all__ = [
-    'DetectionTool',
-    'DetectionResult', 
-    'DetectionConfig',
-    'DetectionRegistry',
-    'ParallelJSONValidator',
-    'RustSidecarManager',
-    'RustSidecarConfig'
+    "DetectionTool",
+    "DetectionResult",
+    "DetectionConfig",
+    "DetectionRegistry",
+    "ParallelJSONValidator",
+    "RustSidecarManager",
+    "RustSidecarConfig",
 ]

@@ -32,8 +32,8 @@ except ImportError:
 
 __all__ = [
     "FaceDetector",
-    "ObjectDetector", 
+    "ObjectDetector",
     "GameDetector",
     "BallDetector",
-    "QualityAssessor"
+    "QualityAssessor",
 ]

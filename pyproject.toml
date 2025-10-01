@@ -15,7 +15,7 @@ maintainers = [
     {name = "Sportball Team", email = "team@sportball.ai"}
 ]
 keywords = [
-    "computer-vision", "ai", "photo-sorting", "sports", "opencv", "face-recognition", 
+    "computer-vision", "ai", "photo-sorting", "sports", "face-recognition", 
     "image-processing", "machine-learning", "yolo", "object-detection", "game-analysis"
 ]
 classifiers = [
@@ -39,7 +39,6 @@ classifiers = [
 requires-python = ">=3.8"
 dependencies = [
     # Core image processing
-    "opencv-contrib-python>=4.8.0",
     "Pillow>=10.0.0",
     "numpy>=1.24.0",
     
@@ -163,7 +162,6 @@ show_error_codes = true
 
 [[tool.mypy.overrides]]
 module = [
-    "cv2.*",
     "face_recognition.*",
     "dlib.*",
     "torch.*",

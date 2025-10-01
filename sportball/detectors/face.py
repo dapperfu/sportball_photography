@@ -16,12 +16,14 @@ from loguru import logger
 
 try:
     import face_recognition
+
     FACE_RECOGNITION_AVAILABLE = True
 except ImportError:
     FACE_RECOGNITION_AVAILABLE = False
 
 try:
     import insightface
+
     INSIGHTFACE_AVAILABLE = True
 except ImportError:
     INSIGHTFACE_AVAILABLE = False
@@ -33,71 +35,78 @@ from ..decorators import gpu_accelerated, cached_result
 @dataclass
 class DetectedFace:
     """Information about a detected face."""
+
     face_id: int
     bbox: tuple  # (x, y, width, height)
     confidence: float
     landmarks: Optional[List[tuple]] = None
     encoding: Optional[List[float]] = None
-    
+
     def as_dict(self) -> Dict[str, Any]:
         """Convert to JSON-serializable dictionary."""
         result = asdict(self)
-        
+
         # Convert tuples to lists for JSON serialization
-        if 'bbox' in result:
-            result['bbox'] = list(result['bbox'])
-        
-        if 'landmarks' in result and result['landmarks'] is not None:
-            result['landmarks'] = [list(landmark) if isinstance(landmark, tuple) else landmark for landmark in result['landmarks']]
-        
-        if 'encoding' in result and result['encoding'] is not None:
+        if "bbox" in result:
+            result["bbox"] = list(result["bbox"])
+
+        if "landmarks" in result and result["landmarks"] is not None:
+            result["landmarks"] = [
+                list(landmark) if isinstance(landmark, tuple) else landmark
+                for landmark in result["landmarks"]
+            ]
+
+        if "encoding" in result and result["encoding"] is not None:
             # Convert numpy array to list for JSON serialization
-            if hasattr(result['encoding'], 'tolist'):
-                result['encoding'] = result['encoding'].tolist()
+            if hasattr(result["encoding"], "tolist"):
+                result["encoding"] = result["encoding"].tolist()
             else:
-                result['encoding'] = list(result['encoding'])
-        
+                result["encoding"] = list(result["encoding"])
+
         return result
 
 
 @dataclass
 class FaceDetectionResult:
     """Result of face detection operation."""
+
     faces: List[DetectedFace]
     face_count: int
     success: bool
     processing_time: float
     error: Optional[str] = None
-    
+
     def as_dict(self) -> Dict[str, Any]:
         """Convert to JSON-serializable dictionary."""
         result = asdict(self)
-        
+
         # Ensure faces are properly serialized
-        if 'faces' in result:
-            result['faces'] = [face.as_dict() for face in self.faces]
-        
+        if "faces" in result:
+            result["faces"] = [face.as_dict() for face in self.faces]
+
         return result
 
 
 class FaceDetector:
     """
     Face detection and recognition using InsightFace and face_recognition libraries.
-    
+
     This detector provides a flexible interface that automatically chooses the best
     available backend between InsightFace (preferred) and face_recognition.
     No OpenCV fallbacks are used to ensure modern, high-quality detection.
     """
-    
-    def __init__(self, 
-                 enable_gpu: bool = True,
-                 cache_enabled: bool = True,
-                 confidence_threshold: float = 0.5,
-                 min_face_size: int = 64,
-                 batch_size: int = 8):
+
+    def __init__(
+        self,
+        enable_gpu: bool = True,
+        cache_enabled: bool = True,
+        confidence_threshold: float = 0.5,
+        min_face_size: int = 64,
+        batch_size: int = 8,
+    ):
         """
         Initialize face detector.
-        
+
         Args:
             enable_gpu: Whether to enable GPU acceleration
             cache_enabled: Whether to enable result caching
@@ -110,19 +119,20 @@ class FaceDetector:
         self.confidence_threshold = confidence_threshold
         self.min_face_size = min_face_size
         self.batch_size = batch_size
-        
+
         # Initialize logger first
         self.logger = logger.bind(component="face_detector")
-        
+
         # Initialize face detection models
         self.device = "cpu"
         self.gpu_model = None
         self.gpu_available = False
-        
+
         # Try to initialize GPU-based face detection first
         if self.enable_gpu:
             try:
                 import torch
+
                 if torch.cuda.is_available():
                     self.device = "cuda"
                     self.gpu_available = True
@@ -136,14 +146,14 @@ class FaceDetector:
                 self._initialize_cpu_models()
         else:
             self._initialize_cpu_models()
-        
+
         # Initialize face recognition if available
         self.face_recognition_available = FACE_RECOGNITION_AVAILABLE
-    
+
     def get_model_info(self) -> Dict[str, Any]:
         """
         Get information about the loaded model and GPU status.
-        
+
         Returns:
             Dictionary containing model and GPU information
         """
@@ -152,13 +162,14 @@ class FaceDetector:
             "device": self.device,
             "gpu_enabled": self.enable_gpu,
             "gpu_available": self.gpu_available,
-            "face_recognition_available": self.face_recognition_available
+            "face_recognition_available": self.face_recognition_available,
         }
-        
+
         # Test actual GPU availability if enabled
         if self.enable_gpu:
             try:
                 import torch
+
                 if torch.cuda.is_available():
                     # Test actual GPU memory allocation
                     try:
@@ -180,61 +191,70 @@ class FaceDetector:
         else:
             info["gpu_test_passed"] = False
             info["gpu_test_error"] = "GPU disabled by user"
-        
+
         return info
-    
+
     def _initialize_gpu_models(self):
         """Initialize GPU-based face detection models."""
         try:
             import insightface
+
             self.gpu_model = "insightface"
             self.logger.debug("InsightFace model loaded with CUDA support")
-            
+
             # Also initialize CPU models as fallback
             self._initialize_cpu_models()
             return
         except ImportError:
             pass
-        
+
         if FACE_RECOGNITION_AVAILABLE:
             # Use face_recognition library with CUDA-enabled dlib
             self.gpu_model = "face_recognition"
             self.logger.debug("face_recognition model loaded with CUDA support")
-            
+
             # Also initialize CPU models as fallback
             self._initialize_cpu_models()
             return
-        
+
         # If neither available, fall back to CPU
-        self.logger.warning("Neither InsightFace nor face_recognition available, falling back to CPU")
+        self.logger.warning(
+            "Neither InsightFace nor face_recognition available, falling back to CPU"
+        )
         self.device = "cpu"
         self._initialize_cpu_models()
-    
+
     def _initialize_cpu_models(self):
         """Initialize CPU-based face detection models using InsightFace."""
         self.device = "cpu"
         try:
             import insightface
+
             self.gpu_model = "insightface"
-            
+
             # Check if CUDA is available for InsightFace
             try:
                 import onnxruntime as ort
-                if 'CUDAExecutionProvider' in ort.get_available_providers():
-                    self.device = "cuda"  # InsightFace will use CUDA even if PyTorch doesn't
+
+                if "CUDAExecutionProvider" in ort.get_available_providers():
+                    self.device = (
+                        "cuda"  # InsightFace will use CUDA even if PyTorch doesn't
+                    )
                     self.logger.debug("InsightFace model loaded with CUDA support")
                 else:
                     self.logger.debug("InsightFace model loaded for CPU processing")
             except ImportError:
                 self.logger.debug("InsightFace model loaded for CPU processing")
-                
+
         except ImportError:
             if FACE_RECOGNITION_AVAILABLE:
                 self.gpu_model = "face_recognition"
                 self.logger.debug("face_recognition model loaded for CPU processing")
             else:
-                raise ImportError("Neither InsightFace nor face_recognition library is available. Please install one of them.")
-    
+                raise ImportError(
+                    "Neither InsightFace nor face_recognition library is available. Please install one of them."
+                )
+
     def _detect_faces_gpu(self, image, confidence: Optional[float], face_size: int):
         """Detect faces using GPU-based models (InsightFace or face_recognition)."""
         if self.gpu_model == "insightface":
@@ -243,77 +263,76 @@ class FaceDetector:
             # Fall back to face_recognition
             try:
                 import face_recognition
-                import numpy as np
-                
+
                 # Image is already in RGB format from PIL
                 image_rgb = image
-                
+
                 # Use face_recognition library for detection
                 # Try CNN model first (GPU-accelerated), fall back to HOG if needed
                 try:
                     face_locations = face_recognition.face_locations(
                         image_rgb,
-                        model="cnn"  # CNN model uses GPU acceleration
+                        model="cnn",  # CNN model uses GPU acceleration
                     )
                 except Exception:
                     # Fall back to HOG model if CNN fails
                     face_locations = face_recognition.face_locations(
-                        image_rgb,
-                        model="hog"
+                        image_rgb, model="hog"
                     )
-                
+
                 faces = []
-                for (top, right, bottom, left) in face_locations:
+                for top, right, bottom, left in face_locations:
                     # Convert face_recognition format (top, right, bottom, left) to (x, y, w, h)
                     x, y, w, h = left, top, right - left, bottom - top
-                    
+
                     if w >= face_size and h >= face_size:
                         # face_recognition doesn't provide confidence scores directly
                         # We'll use a default high confidence for detected faces
                         face_confidence = 0.9  # face_recognition is quite accurate
-                        
+
                         if confidence is None or face_confidence >= confidence:
                             faces.append((x, y, w, h))
-                
+
                 return faces
-                    
+
             except Exception as e:
                 self.logger.error(f"GPU face detection failed: {e}")
                 return self._detect_faces_cpu(image, face_size)
-    
-    def _detect_faces_insightface(self, image, confidence: Optional[float], face_size: int):
+
+    def _detect_faces_insightface(
+        self, image, confidence: Optional[float], face_size: int
+    ):
         """Detect faces using InsightFace."""
         try:
             import insightface
-            import numpy as np
-            
+
             # Initialize InsightFace app if not already done
-            if not hasattr(self, 'insightface_app'):
+            if not hasattr(self, "insightface_app"):
                 self.insightface_app = insightface.app.FaceAnalysis()
                 self.insightface_app.prepare(ctx_id=0, det_size=(640, 640))
-            
+
             # Detect faces
             faces = self.insightface_app.get(image)
-            
+
             detected_faces = []
             for face in faces:
                 # Extract bounding box
                 bbox = face.bbox.astype(int)
                 x, y, w, h = bbox[0], bbox[1], bbox[2] - bbox[0], bbox[3] - bbox[1]
-                
+
                 # Check minimum face size
                 if w >= face_size and h >= face_size:
                     # Check confidence threshold
                     face_confidence = face.det_score
                     if confidence is None or face_confidence >= confidence:
                         detected_faces.append((x, y, w, h))
-            
+
             return detected_faces
-            
+
         except Exception as e:
             self.logger.error(f"InsightFace detection failed: {e}")
             return []
-    
+
     def _detect_faces_cpu(self, image, face_size: int):
         """Detect faces using CPU-based models (InsightFace or face_recognition)."""
         if self.gpu_model == "insightface":
@@ -321,80 +340,80 @@ class FaceDetector:
         else:
             try:
                 import face_recognition
-                
+
                 # Image is already in RGB format from PIL
                 rgb_image = image
-                
+
                 # Detect face locations
                 face_locations = face_recognition.face_locations(rgb_image, model="hog")
-                
+
                 # Convert to the format expected by the rest of the code
                 faces = []
-                for (top, right, bottom, left) in face_locations:
+                for top, right, bottom, left in face_locations:
                     # Convert to (x, y, w, h) format
                     x, y, w, h = left, top, right - left, bottom - top
-                    
+
                     # Check minimum face size
                     if w >= face_size and h >= face_size:
                         faces.append((x, y, w, h))
-                
+
                 return faces
             except Exception as e:
                 self.logger.error(f"CPU face detection failed: {e}")
                 return []
-    
-    def tune_gpu_batch_size(self, 
-                           test_image_paths: Optional[List[Path]] = None,
-                           max_test_images: int = 50,
-                           start_batch_size: int = 1,
-                           max_batch_size: int = 64,
-                           image_size: tuple = (1920, 1080)) -> int:
+
+    def tune_gpu_batch_size(
+        self,
+        test_image_paths: Optional[List[Path]] = None,
+        max_test_images: int = 50,
+        start_batch_size: int = 1,
+        max_batch_size: int = 64,
+        image_size: tuple = (1920, 1080),
+    ) -> int:
         """
         Automatically tune GPU batch size by testing until memory limit is reached.
-        
+
         Args:
             test_image_paths: List of test image paths (if None, creates synthetic images)
             max_test_images: Maximum number of test images to use
             start_batch_size: Starting batch size for testing
             max_batch_size: Maximum batch size to test
             image_size: Size of test images (width, height)
-            
+
         Returns:
             Optimal batch size that doesn't cause memory errors
         """
         if not self.enable_gpu:
             self.logger.debug("GPU not enabled, skipping batch size tuning")
             return self.batch_size
-        
+
         try:
             import torch
-            import cv2
-            import numpy as np
-            
+
             if not torch.cuda.is_available():
                 self.logger.debug("CUDA not available, skipping batch size tuning")
                 return self.batch_size
-            
+
             self.logger.debug(f"Starting GPU batch size tuning (max: {max_batch_size})")
-            
+
             # Create test images if not provided
             if test_image_paths is None:
                 test_image_paths = self._create_test_images(max_test_images, image_size)
-            
+
             # Limit test images
             test_image_paths = test_image_paths[:max_test_images]
-            
+
             optimal_batch_size = start_batch_size
             last_successful_batch_size = start_batch_size
-            
+
             # Binary search approach for efficiency
             low, high = start_batch_size, max_batch_size
-            
+
             while low <= high:
                 mid_batch_size = (low + high) // 2
-                
+
                 self.logger.debug(f"Testing batch size: {mid_batch_size}")
-                
+
                 if self._test_batch_size(test_image_paths, mid_batch_size):
                     # Success - try larger batch size
                     optimal_batch_size = mid_batch_size
@@ -404,37 +423,41 @@ class FaceDetector:
                 else:
                     # Failure - try smaller batch size
                     high = mid_batch_size - 1
-                    self.logger.warning(f"❌ Batch size {mid_batch_size} failed (GPU memory)")
-            
+                    self.logger.warning(
+                        f"❌ Batch size {mid_batch_size} failed (GPU memory)"
+                    )
+
             # Clean up test images if we created them
             if test_image_paths and len(test_image_paths) > 0:
                 self._cleanup_test_images(test_image_paths)
-            
+
             self.logger.debug(f"🎯 Optimal GPU batch size: {optimal_batch_size}")
             return optimal_batch_size
-            
+
         except Exception as e:
             self.logger.error(f"GPU batch size tuning failed: {e}")
             return self.batch_size
-    
+
     def _create_test_images(self, count: int, image_size: tuple) -> List[Path]:
         """Create synthetic test images for batch size tuning."""
         import numpy as np
         import tempfile
         from pathlib import Path
-        
+
         test_images = []
         temp_dir = Path(tempfile.mkdtemp(prefix="sportball_gpu_tuning_"))
-        
+
         try:
             for i in range(count):
                 # Create a synthetic image with some faces (rectangles)
-                image_array = np.random.randint(0, 255, (image_size[1], image_size[0], 3), dtype=np.uint8)
-                
+                image_array = np.random.randint(
+                    0, 255, (image_size[1], image_size[0], 3), dtype=np.uint8
+                )
+
                 # Convert to PIL Image for drawing
                 pil_image = Image.fromarray(image_array)
                 draw = ImageDraw.Draw(pil_image)
-                
+
                 # Add some rectangular "faces" for detection
                 for _ in range(np.random.randint(1, 4)):
                     x = np.random.randint(0, image_size[0] - 100)
@@ -442,24 +465,24 @@ class FaceDetector:
                     w = np.random.randint(50, 150)
                     h = np.random.randint(50, 150)
                     draw.rectangle([x, y, x + w, y + h], fill=(255, 255, 255))
-                
+
                 # Save test image
                 test_path = temp_dir / f"test_image_{i:03d}.jpg"
-                pil_image.save(str(test_path), 'JPEG')
+                pil_image.save(str(test_path), "JPEG")
                 test_images.append(test_path)
-                
+
         except Exception as e:
             self.logger.error(f"Failed to create test images: {e}")
             # Clean up on error
             self._cleanup_test_images(test_images)
             return []
-        
+
         return test_images
-    
+
     def _cleanup_test_images(self, test_image_paths: List[Path]):
         """Clean up temporary test images."""
         import shutil
-        
+
         try:
             if test_image_paths:
                 # Get the temp directory from the first image
@@ -468,40 +491,41 @@ class FaceDetector:
                     shutil.rmtree(temp_dir, ignore_errors=True)
         except Exception as e:
             self.logger.warning(f"Failed to cleanup test images: {e}")
-    
+
     def _test_batch_size(self, test_image_paths: List[Path], batch_size: int) -> bool:
         """Test if a specific batch size works without GPU memory errors."""
         try:
             import torch
-            
+
             # Clear GPU cache before test
             torch.cuda.empty_cache()
-            
+
             # Test with a subset of images
             test_batch = test_image_paths[:batch_size]
-            
+
             # Try to process the batch
             results = self._process_face_batch(
-                test_batch, 
-                confidence=0.5, 
+                test_batch,
+                confidence=0.5,
                 min_faces=0,  # Allow 0 faces for test
-                max_faces=None, 
-                face_size=64
+                max_faces=None,
+                face_size=64,
             )
-            
+
             # Check if we got results
             success = len(results) == len(test_batch)
-            
+
             # Clear GPU cache after test
             torch.cuda.empty_cache()
-            
+
             return success
-            
+
         except RuntimeError as e:
             if "out of memory" in str(e).lower():
                 # Clear GPU cache on memory error
                 try:
                     import torch
+
                     torch.cuda.empty_cache()
                 except:
                     pass
@@ -512,37 +536,40 @@ class FaceDetector:
         except Exception:
             # Any other error
             return False
-    
+
     @gpu_accelerated(fallback_cpu=True)
     @cached_result(expire_seconds=3600)  # Cache for 1 hour
-    def detect_faces(self, 
-                    image_path: Path, 
-                    confidence: Optional[float] = None,
-                    min_faces: int = 1,
-                    max_faces: Optional[int] = None,
-                    face_size: int = 64) -> FaceDetectionResult:
+    def detect_faces(
+        self,
+        image_path: Path,
+        confidence: Optional[float] = None,
+        min_faces: int = 1,
+        max_faces: Optional[int] = None,
+        face_size: int = 64,
+    ) -> FaceDetectionResult:
         """
         Detect faces in an image.
-        
+
         Args:
             image_path: Path to the image file
             confidence: Detection confidence threshold
             min_faces: Minimum number of faces to detect
             max_faces: Maximum number of faces to detect
             face_size: Minimum face size in pixels
-            
+
         Returns:
             FaceDetectionResult containing detected faces
         """
         import time
+
         start_time = time.time()
-        
+
         try:
             # Load image
             try:
                 pil_image = Image.open(image_path)
-                if pil_image.mode != 'RGB':
-                    pil_image = pil_image.convert('RGB')
+                if pil_image.mode != "RGB":
+                    pil_image = pil_image.convert("RGB")
                 image = np.array(pil_image)
             except Exception as e:
                 return FaceDetectionResult(
@@ -550,38 +577,44 @@ class FaceDetector:
                     face_count=0,
                     success=False,
                     processing_time=0,
-                    error=f"Failed to load image: {e}"
+                    error=f"Failed to load image: {e}",
                 )
-            
+
             original_height, original_width = image.shape[:2]
-            
+
             # Resize image to 1080p for optimal detection performance and reduced false positives
             target_width = 1920  # 1080p width
             target_height = 1080  # 1080p height
-            
+
             # Calculate scaling factor to fit within 1080p while maintaining aspect ratio
-            scale_factor = min(target_width / original_width, target_height / original_height)
-            
+            scale_factor = min(
+                target_width / original_width, target_height / original_height
+            )
+
             # Keep original image for final coordinates, use resized for detection
             original_image = image.copy()
-            
+
             if scale_factor < 1.0:
                 # Only resize if image is larger than 1080p
                 new_width = int(original_width * scale_factor)
                 new_height = int(original_height * scale_factor)
                 # Resize using PIL
-                resized_pil = pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                resized_pil = pil_image.resize(
+                    (new_width, new_height), Image.Resampling.LANCZOS
+                )
                 image = np.array(resized_pil)
-                self.logger.debug(f"Resized image from {original_width}x{original_height} to {new_width}x{new_height}")
+                self.logger.debug(
+                    f"Resized image from {original_width}x{original_height} to {new_width}x{new_height}"
+                )
             else:
                 scale_factor = 1.0  # No scaling needed
-            
+
             # Use GPU model if available, otherwise fall back to CPU
             if self.gpu_model is not None and self.device == "cuda":
                 faces = self._detect_faces_gpu(image, confidence, face_size)
             else:
                 faces = self._detect_faces_cpu(image, face_size)
-            
+
             # Filter faces by confidence and size, converting coordinates back to original image size
             detected_faces = []
             for i, (x, y, w, h) in enumerate(faces):
@@ -593,29 +626,33 @@ class FaceDetector:
                     orig_h = int(h / scale_factor)
                 else:
                     orig_x, orig_y, orig_w, orig_h = x, y, w, h
-                
+
                 # Check minimum face size using original coordinates
                 if orig_w >= face_size and orig_h >= face_size:
                     # Calculate confidence (simplified)
-                    face_confidence = min(1.0, (orig_w * orig_h) / (face_size * face_size))
-                    
+                    face_confidence = min(
+                        1.0, (orig_w * orig_h) / (face_size * face_size)
+                    )
+
                     if confidence is None or face_confidence >= confidence:
                         detected_face = DetectedFace(
                             face_id=i,
                             bbox=(orig_x, orig_y, orig_w, orig_h),
-                            confidence=face_confidence
+                            confidence=face_confidence,
                         )
-                        
+
                         # Add face encoding if available (use original image for encoding)
                         if self.face_recognition_available:
                             try:
-                                face_encoding = self._get_face_encoding(original_image, (orig_x, orig_y, orig_w, orig_h))
+                                face_encoding = self._get_face_encoding(
+                                    original_image, (orig_x, orig_y, orig_w, orig_h)
+                                )
                                 detected_face.encoding = face_encoding
                             except Exception as e:
                                 self.logger.warning(f"Failed to get face encoding: {e}")
-                        
+
                         detected_faces.append(detected_face)
-            
+
             # Apply min/max face constraints
             if len(detected_faces) < min_faces:
                 return FaceDetectionResult(
@@ -623,23 +660,23 @@ class FaceDetector:
                     face_count=0,
                     success=False,
                     processing_time=time.time() - start_time,
-                    error=f"Not enough faces detected (found {len(detected_faces)}, required {min_faces})"
+                    error=f"Not enough faces detected (found {len(detected_faces)}, required {min_faces})",
                 )
-            
+
             if max_faces and len(detected_faces) > max_faces:
                 # Sort by confidence and take top N
                 detected_faces.sort(key=lambda f: f.confidence, reverse=True)
                 detected_faces = detected_faces[:max_faces]
-            
+
             processing_time = time.time() - start_time
-            
+
             return FaceDetectionResult(
                 faces=detected_faces,
                 face_count=len(detected_faces),
                 success=True,
-                processing_time=processing_time
+                processing_time=processing_time,
             )
-            
+
         except Exception as e:
             self.logger.error(f"Face detection failed: {e}")
             return FaceDetectionResult(
@@ -647,19 +684,21 @@ class FaceDetector:
                 face_count=0,
                 success=False,
                 processing_time=time.time() - start_time,
-                error=str(e)
+                error=str(e),
             )
-    
-    def detect_faces_batch(self, 
-                          image_paths: List[Path], 
-                          confidence: Optional[float] = None,
-                          min_faces: int = 1,
-                          max_faces: Optional[int] = None,
-                          face_size: int = 64,
-                          save_sidecar: bool = True) -> Dict[str, FaceDetectionResult]:
+
+    def detect_faces_batch(
+        self,
+        image_paths: List[Path],
+        confidence: Optional[float] = None,
+        min_faces: int = 1,
+        max_faces: Optional[int] = None,
+        face_size: int = 64,
+        save_sidecar: bool = True,
+    ) -> Dict[str, FaceDetectionResult]:
         """
         Detect faces in multiple images using batch processing.
-        
+
         Args:
             image_paths: List of image paths
             confidence: Detection confidence threshold
@@ -667,19 +706,23 @@ class FaceDetector:
             max_faces: Maximum number of faces to detect
             face_size: Minimum face size in pixels
             save_sidecar: Whether to save results to sidecar files immediately
-            
+
         Returns:
             Dictionary mapping image paths to detection results
         """
-        self.logger.debug(f"Processing {len(image_paths)} images in batches of {self.batch_size}")
-        
+        self.logger.debug(
+            f"Processing {len(image_paths)} images in batches of {self.batch_size}"
+        )
+
         results = {}
-        
+
         # Process images in batches
         for i in range(0, len(image_paths), self.batch_size):
-            batch_paths = image_paths[i:i + self.batch_size]
-            self.logger.debug(f"Processing face detection batch {i//self.batch_size + 1}: {len(batch_paths)} images")
-            
+            batch_paths = image_paths[i : i + self.batch_size]
+            self.logger.debug(
+                f"Processing face detection batch {i // self.batch_size + 1}: {len(batch_paths)} images"
+            )
+
             try:
                 batch_results = self._process_face_batch(
                     batch_paths, confidence, min_faces, max_faces, face_size
@@ -694,10 +737,14 @@ class FaceDetector:
                 # Fallback to individual processing
                 for image_path in batch_paths:
                     try:
-                        result = self.detect_faces(image_path, confidence, min_faces, max_faces, face_size)
+                        result = self.detect_faces(
+                            image_path, confidence, min_faces, max_faces, face_size
+                        )
                         results[str(image_path)] = result
                     except KeyboardInterrupt:
-                        self.logger.warning("Face detection interrupted during fallback processing")
+                        self.logger.warning(
+                            "Face detection interrupted during fallback processing"
+                        )
                         return results
                     except Exception as img_error:
                         self.logger.error(f"Error processing {image_path}: {img_error}")
@@ -706,33 +753,36 @@ class FaceDetector:
                             face_count=0,
                             success=False,
                             processing_time=0.0,
-                            error=str(img_error)
+                            error=str(img_error),
                         )
-        
+
         return results
-    
-    def _process_face_batch(self, 
-                           image_paths: List[Path], 
-                           confidence: Optional[float],
-                           min_faces: int,
-                           max_faces: Optional[int],
-                           face_size: int) -> Dict[str, FaceDetectionResult]:
+
+    def _process_face_batch(
+        self,
+        image_paths: List[Path],
+        confidence: Optional[float],
+        min_faces: int,
+        max_faces: Optional[int],
+        face_size: int,
+    ) -> Dict[str, FaceDetectionResult]:
         """Process a batch of images for face detection."""
         import time
+
         start_time = time.time()
-        
+
         results = {}
-        
+
         # Load all images in the batch
         batch_images = []
         batch_metadata = []
-        
+
         for image_path in image_paths:
             try:
                 try:
                     pil_image = Image.open(image_path)
-                    if pil_image.mode != 'RGB':
-                        pil_image = pil_image.convert('RGB')
+                    if pil_image.mode != "RGB":
+                        pil_image = pil_image.convert("RGB")
                     image = np.array(pil_image)
                 except Exception as e:
                     results[str(image_path)] = FaceDetectionResult(
@@ -740,419 +790,475 @@ class FaceDetector:
                         face_count=0,
                         success=False,
                         processing_time=0.0,
-                        error=f"Failed to load image: {e}"
+                        error=f"Failed to load image: {e}",
                     )
                     continue
-                
+
                 batch_images.append(image)
-                batch_metadata.append({
-                    'path': image_path,
-                    'original_height': image.shape[0],
-                    'original_width': image.shape[1]
-                })
+                batch_metadata.append(
+                    {
+                        "path": image_path,
+                        "original_height": image.shape[0],
+                        "original_width": image.shape[1],
+                    }
+                )
             except Exception as e:
                 results[str(image_path)] = FaceDetectionResult(
                     faces=[],
                     face_count=0,
                     success=False,
                     processing_time=0.0,
-                    error=str(e)
+                    error=str(e),
                 )
-        
+
         if not batch_images:
             return results
-        
+
         # Process each image in the batch
         batch_processing_time = time.time() - start_time
-        
+
         # Use GPU batch processing if available
         if self.device == "cuda" and self.gpu_model == "face_recognition":
             self.logger.debug("Using GPU batch processing")
-            return self._process_gpu_batch(batch_images, batch_metadata, confidence, min_faces, max_faces, face_size, start_time)
+            return self._process_gpu_batch(
+                batch_images,
+                batch_metadata,
+                confidence,
+                min_faces,
+                max_faces,
+                face_size,
+                start_time,
+            )
         else:
-            self.logger.debug(f"Using CPU batch processing (device={self.device}, gpu_model={self.gpu_model})")
+            self.logger.debug(
+                f"Using CPU batch processing (device={self.device}, gpu_model={self.gpu_model})"
+            )
             # Fall back to CPU processing
-            return self._process_cpu_batch(batch_images, batch_metadata, confidence, min_faces, max_faces, face_size, start_time)
-    
-    def _process_gpu_batch(self, batch_images, batch_metadata, confidence, min_faces, max_faces, face_size, start_time):
+            return self._process_cpu_batch(
+                batch_images,
+                batch_metadata,
+                confidence,
+                min_faces,
+                max_faces,
+                face_size,
+                start_time,
+            )
+
+    def _process_gpu_batch(
+        self,
+        batch_images,
+        batch_metadata,
+        confidence,
+        min_faces,
+        max_faces,
+        face_size,
+        start_time,
+    ):
         """Process batch using GPU-accelerated face_recognition library with true batch processing."""
         import time
+
         results = {}
-        
+
         try:
             import face_recognition
-            import numpy as np
-            
+
             # Monitor GPU memory usage
             self._log_gpu_memory("Before GPU batch processing")
-            
+
             # Images are already in RGB format from PIL
             batch_images_rgb = batch_images
-            
+
             # Use sequential processing for GPU acceleration
             # Sequential is often faster for GPU operations due to internal parallelization
-            for i, (image_rgb, metadata) in enumerate(zip(batch_images_rgb, batch_metadata)):
-                
+            for i, (image_rgb, metadata) in enumerate(
+                zip(batch_images_rgb, batch_metadata)
+            ):
                 try:
                     # Use CNN model for GPU acceleration
                     try:
                         face_locations = face_recognition.face_locations(
                             image_rgb,
-                            model="cnn"  # CNN model uses GPU acceleration
+                            model="cnn",  # CNN model uses GPU acceleration
                         )
                     except Exception:
                         # Fall back to HOG model if CNN fails
                         face_locations = face_recognition.face_locations(
-                            image_rgb,
-                            model="hog"
+                            image_rgb, model="hog"
                         )
-                    
+
                     # Convert face_recognition format to our format
                     detected_faces = []
                     for j, (top, right, bottom, left) in enumerate(face_locations):
                         x, y, w, h = left, top, right - left, bottom - top
-                        
+
                         if w >= face_size and h >= face_size:
-                            face_confidence = 0.9  # face_recognition doesn't provide confidence
-                            
+                            face_confidence = (
+                                0.9  # face_recognition doesn't provide confidence
+                            )
+
                             if confidence is None or face_confidence >= confidence:
                                 detected_face = DetectedFace(
                                     face_id=j,
                                     bbox=(x, y, w, h),
-                                    confidence=face_confidence
+                                    confidence=face_confidence,
                                 )
-                                
+
                                 # Add face encoding
                                 try:
                                     face_encoding = face_recognition.face_encodings(
-                                        image_rgb, 
-                                        [(top, right, bottom, left)]
+                                        image_rgb, [(top, right, bottom, left)]
                                     )[0]
                                     detected_face.encoding = face_encoding
                                 except Exception as e:
                                     self.logger.warning(f"Failed to encode face: {e}")
-                                
+
                                 detected_faces.append(detected_face)
-                    
+
                     # Apply face count limits
                     if max_faces and len(detected_faces) > max_faces:
                         detected_faces = detected_faces[:max_faces]
-                    
+
                     # Check minimum face count
                     success = len(detected_faces) >= min_faces
-                    
-                    results[str(metadata['path'])] = FaceDetectionResult(
+
+                    results[str(metadata["path"])] = FaceDetectionResult(
                         faces=detected_faces,
                         face_count=len(detected_faces),
                         success=success,
                         processing_time=(time.time() - start_time) / len(batch_images),
-                        error=None if success else f"Found {len(detected_faces)} faces, need at least {min_faces}"
+                        error=None
+                        if success
+                        else f"Found {len(detected_faces)} faces, need at least {min_faces}",
                     )
-                    
+
                 except Exception as e:
-                    results[str(metadata['path'])] = FaceDetectionResult(
+                    results[str(metadata["path"])] = FaceDetectionResult(
                         faces=[],
                         face_count=0,
                         success=False,
                         processing_time=0.0,
-                        error=str(e)
+                        error=str(e),
                     )
-            
+
         except Exception as e:
             self.logger.error(f"GPU parallel batch processing failed: {e}")
             # Fall back to CPU processing
-            return self._process_cpu_batch(batch_images, batch_metadata, confidence, min_faces, max_faces, face_size, start_time)
-        
+            return self._process_cpu_batch(
+                batch_images,
+                batch_metadata,
+                confidence,
+                min_faces,
+                max_faces,
+                face_size,
+                start_time,
+            )
+
         return results
-    
+
     def _process_single_image_gpu(self, data):
         """Process a single image with GPU acceleration."""
         import time
         import face_recognition
-        import cv2
-        
+
         start_time = time.time()
-        image_rgb = data['image_rgb']
-        metadata = data['metadata']
-        confidence = data['confidence']
-        min_faces = data['min_faces']
-        max_faces = data['max_faces']
-        face_size = data['face_size']
-        
+        image_rgb = data["image_rgb"]
+        metadata = data["metadata"]
+        confidence = data["confidence"]
+        min_faces = data["min_faces"]
+        max_faces = data["max_faces"]
+        face_size = data["face_size"]
+
         try:
             # Use CNN model for GPU acceleration
             try:
                 face_locations = face_recognition.face_locations(
                     image_rgb,
-                    model="cnn"  # CNN model uses GPU acceleration
+                    model="cnn",  # CNN model uses GPU acceleration
                 )
             except Exception:
                 # Fall back to HOG model if CNN fails
-                face_locations = face_recognition.face_locations(
-                    image_rgb,
-                    model="hog"
-                )
-            
+                face_locations = face_recognition.face_locations(image_rgb, model="hog")
+
             # Convert face_recognition format to our format
             detected_faces = []
             for j, (top, right, bottom, left) in enumerate(face_locations):
                 x, y, w, h = left, top, right - left, bottom - top
-                
+
                 if w >= face_size and h >= face_size:
                     face_confidence = 0.9  # face_recognition doesn't provide confidence
-                    
+
                     if confidence is None or face_confidence >= confidence:
                         detected_face = DetectedFace(
-                            face_id=j,
-                            bbox=(x, y, w, h),
-                            confidence=face_confidence
+                            face_id=j, bbox=(x, y, w, h), confidence=face_confidence
                         )
-                        
+
                         # Add face encoding
                         try:
                             face_encoding = face_recognition.face_encodings(
-                                image_rgb, 
-                                [(top, right, bottom, left)]
+                                image_rgb, [(top, right, bottom, left)]
                             )[0]
                             detected_face.encoding = face_encoding
                         except Exception as e:
                             self.logger.warning(f"Failed to encode face: {e}")
-                        
+
                         detected_faces.append(detected_face)
-            
+
             # Apply face count limits
             if max_faces and len(detected_faces) > max_faces:
                 detected_faces = detected_faces[:max_faces]
-            
+
             # Check minimum face count
             success = len(detected_faces) >= min_faces
-            
+
             return FaceDetectionResult(
                 faces=detected_faces,
                 face_count=len(detected_faces),
                 success=success,
                 processing_time=time.time() - start_time,
-                error=None if success else f"Found {len(detected_faces)} faces, need at least {min_faces}"
+                error=None
+                if success
+                else f"Found {len(detected_faces)} faces, need at least {min_faces}",
             )
-            
+
         except Exception as e:
             return FaceDetectionResult(
                 faces=[],
                 face_count=0,
                 success=False,
                 processing_time=time.time() - start_time,
-                error=str(e)
+                error=str(e),
             )
-    
-    def _process_cpu_batch(self, batch_images, batch_metadata, confidence, min_faces, max_faces, face_size, start_time):
+
+    def _process_cpu_batch(
+        self,
+        batch_images,
+        batch_metadata,
+        confidence,
+        min_faces,
+        max_faces,
+        face_size,
+        start_time,
+    ):
         """Process batch using individual face_recognition processing."""
         import time
         import face_recognition
+
         results = {}
-        
+
         # Process each image individually (more reliable than batch_face_locations)
         batch_processing_time = time.time() - start_time
-        
+
         for i, (image, metadata) in enumerate(zip(batch_images, batch_metadata)):
             try:
                 # Image is already in RGB format from PIL
                 rgb_image = image
-                
+
                 # Use CNN model for GPU acceleration if available
                 try:
-                    face_locations = face_recognition.face_locations(rgb_image, model="cnn")
+                    face_locations = face_recognition.face_locations(
+                        rgb_image, model="cnn"
+                    )
                 except Exception:
                     # Fall back to HOG model if CNN fails
-                    face_locations = face_recognition.face_locations(rgb_image, model="hog")
-                
+                    face_locations = face_recognition.face_locations(
+                        rgb_image, model="hog"
+                    )
+
                 # Filter faces by confidence and size
                 detected_faces = []
                 for j, (top, right, bottom, left) in enumerate(face_locations):
                     # Convert to (x, y, w, h) format
                     x, y, w, h = left, top, right - left, bottom - top
-                    
+
                     if w >= face_size and h >= face_size:
                         # Calculate confidence (simplified)
                         face_confidence = min(1.0, (w * h) / (face_size * face_size))
-                        
+
                         if confidence is None or face_confidence >= confidence:
                             detected_face = DetectedFace(
-                                face_id=j,
-                                bbox=(x, y, w, h),
-                                confidence=face_confidence
+                                face_id=j, bbox=(x, y, w, h), confidence=face_confidence
                             )
-                            
+
                             # Add face encoding if available
                             if self.face_recognition_available:
                                 try:
-                                    face_encoding = self._get_face_encoding(image, (x, y, w, h))
+                                    face_encoding = self._get_face_encoding(
+                                        image, (x, y, w, h)
+                                    )
                                     detected_face.encoding = face_encoding
                                 except Exception as e:
-                                    self.logger.warning(f"Failed to get face encoding: {e}")
-                            
+                                    self.logger.warning(
+                                        f"Failed to get face encoding: {e}"
+                                    )
+
                             detected_faces.append(detected_face)
-                
+
                 # Apply min/max face constraints
                 if len(detected_faces) < min_faces:
-                    results[str(metadata['path'])] = FaceDetectionResult(
+                    results[str(metadata["path"])] = FaceDetectionResult(
                         faces=[],
                         face_count=0,
                         success=False,
                         processing_time=batch_processing_time / len(batch_images),
-                        error=f"Not enough faces detected (found {len(detected_faces)}, required {min_faces})"
+                        error=f"Not enough faces detected (found {len(detected_faces)}, required {min_faces})",
                     )
                     continue
-                
+
                 if max_faces and len(detected_faces) > max_faces:
                     # Sort by confidence and take top N
                     detected_faces.sort(key=lambda f: f.confidence, reverse=True)
                     detected_faces = detected_faces[:max_faces]
-                
-                results[str(metadata['path'])] = FaceDetectionResult(
+
+                results[str(metadata["path"])] = FaceDetectionResult(
                     faces=detected_faces,
                     face_count=len(detected_faces),
                     success=True,
-                    processing_time=batch_processing_time / len(batch_images)
+                    processing_time=batch_processing_time / len(batch_images),
                 )
-                
+
             except Exception as e:
-                results[str(metadata['path'])] = FaceDetectionResult(
+                results[str(metadata["path"])] = FaceDetectionResult(
                     faces=[],
                     face_count=0,
                     success=False,
                     processing_time=batch_processing_time / len(batch_images),
-                    error=str(e)
+                    error=str(e),
                 )
-        
+
         return results
-    
-    def _get_face_encoding(self, image: np.ndarray, bbox: tuple) -> Optional[List[float]]:
+
+    def _get_face_encoding(
+        self, image: np.ndarray, bbox: tuple
+    ) -> Optional[List[float]]:
         """
         Get face encoding for a detected face.
-        
+
         Args:
             image: Input image
             bbox: Face bounding box (x, y, w, h)
-            
+
         Returns:
             Face encoding or None if failed
         """
         if not self.face_recognition_available:
             return None
-        
+
         try:
             x, y, w, h = bbox
-            face_image = image[y:y+h, x:x+w]
-            
+            face_image = image[y : y + h, x : x + w]
+
             # Image is already in RGB format from PIL
             face_rgb = face_image
-            
+
             # Get face encodings
             encodings = face_recognition.face_encodings(face_rgb)
-            
+
             if encodings:
                 return encodings[0].tolist()
-            
+
         except Exception as e:
             self.logger.warning(f"Failed to get face encoding: {e}")
-        
+
         return None
-    
-    def extract_faces(self, 
-                     image_path: Path, 
-                     output_dir: Path,
-                     padding: int = 10) -> Dict[str, Any]:
+
+    def extract_faces(
+        self, image_path: Path, output_dir: Path, padding: int = 10
+    ) -> Dict[str, Any]:
         """
         Extract detected faces from an image at their natural detected size.
-        
+
         Args:
             image_path: Path to the input image
             output_dir: Directory to save extracted faces
             padding: Padding around face in pixels
-            
+
         Returns:
             Dictionary containing extraction results
         """
         try:
             # Detect faces first
             detection_result = self.detect_faces(image_path)
-            
+
             if not detection_result.success:
                 return {
                     "success": False,
                     "error": detection_result.error,
-                    "faces_extracted": 0
+                    "faces_extracted": 0,
                 }
-            
+
             # Load image
             try:
                 pil_image = Image.open(image_path)
-                if pil_image.mode != 'RGB':
-                    pil_image = pil_image.convert('RGB')
+                if pil_image.mode != "RGB":
+                    pil_image = pil_image.convert("RGB")
                 image = np.array(pil_image)
             except Exception as e:
                 return {
                     "success": False,
                     "error": f"Failed to load image: {e}",
-                    "faces_extracted": 0
+                    "faces_extracted": 0,
                 }
-            
+
             # Create output directory
             output_dir.mkdir(parents=True, exist_ok=True)
-            
+
             extracted_faces = []
-            
+
             for i, face in enumerate(detection_result.faces):
                 x, y, w, h = face.bbox
-                
+
                 # Add padding
                 x_start = max(0, x - padding)
                 y_start = max(0, y - padding)
                 x_end = min(image.shape[1], x + w + padding)
                 y_end = min(image.shape[0], y + h + padding)
-                
+
                 # Extract face at its natural detected size from full-resolution image
                 face_image = image[y_start:y_end, x_start:x_end]
-                
+
                 # Save face
                 face_filename = f"{image_path.stem}_face_{i:02d}.jpg"
                 face_path = output_dir / face_filename
-                
+
                 # Save face image using PIL
                 pil_face_image = Image.fromarray(face_image)
-                pil_face_image.save(str(face_path), 'JPEG', quality=95)
-                
-                extracted_faces.append({
-                    "face_id": face.face_id,
-                    "bbox": face.bbox,
-                    "confidence": face.confidence,
-                    "output_path": str(face_path)
-                })
-            
+                pil_face_image.save(str(face_path), "JPEG", quality=95)
+
+                extracted_faces.append(
+                    {
+                        "face_id": face.face_id,
+                        "bbox": face.bbox,
+                        "confidence": face.confidence,
+                        "output_path": str(face_path),
+                    }
+                )
+
             return {
                 "success": True,
                 "faces_extracted": len(extracted_faces),
-                "faces": extracted_faces
+                "faces": extracted_faces,
             }
-            
+
         except Exception as e:
             self.logger.error(f"Face extraction failed: {e}")
-            return {
-                "success": False,
-                "error": str(e),
-                "faces_extracted": 0
-            }
-    
-    def _format_result(self, result: FaceDetectionResult, image_path: Path, image_width: int = None, image_height: int = None) -> Dict[str, Any]:
+            return {"success": False, "error": str(e), "faces_extracted": 0}
+
+    def _format_result(
+        self,
+        result: FaceDetectionResult,
+        image_path: Path,
+        image_width: int = None,
+        image_height: int = None,
+    ) -> Dict[str, Any]:
         """
         Format face detection result for JSON serialization.
-        
+
         Args:
             result: Face detection result
             image_path: Path to the image file
             image_width: Image width in pixels (for ratio calculation)
             image_height: Image height in pixels (for ratio calculation)
-            
+
         Returns:
             Dictionary containing formatted face detection data
         """
@@ -1160,7 +1266,10 @@ class FaceDetector:
         if image_width is None or image_height is None:
             try:
                 pil_image = Image.open(image_path)
-                image_height, image_width = pil_image.size[1], pil_image.size[0]  # PIL size is (width, height)
+                image_height, image_width = (
+                    pil_image.size[1],
+                    pil_image.size[0],
+                )  # PIL size is (width, height)
             except Exception:
                 # Fallback to default dimensions if image can't be loaded
                 image_width = 1920
@@ -1174,37 +1283,39 @@ class FaceDetector:
                     "image_path": str(image_path),
                     "faces_found": 0,
                     "processing_time": float(result.processing_time),
-                    "extraction_timestamp": __import__('datetime').datetime.now().isoformat()
-                }
+                    "extraction_timestamp": __import__("datetime")
+                    .datetime.now()
+                    .isoformat(),
+                },
             }
-        
+
         # Format faces for sportball compatibility
         faces = []
         for face in result.faces:
             # Convert pixel coordinates to normalized ratios (0-1)
             x_pixel, y_pixel, w_pixel, h_pixel = face.bbox
-            
+
             face_data = {
                 "face_id": int(face.face_id),
                 "bbox": {
                     "x": float(x_pixel) / image_width,
                     "y": float(y_pixel) / image_height,
                     "width": float(w_pixel) / image_width,
-                    "height": float(h_pixel) / image_height
+                    "height": float(h_pixel) / image_height,
                 },
-                "confidence": float(face.confidence)
+                "confidence": float(face.confidence),
             }
-            
+
             # Add encoding if available
             if face.encoding is not None:
                 # Convert numpy array to list for JSON serialization
-                if hasattr(face.encoding, 'tolist'):
+                if hasattr(face.encoding, "tolist"):
                     face_data["encoding"] = face.encoding.tolist()
                 else:
                     face_data["encoding"] = list(face.encoding)
-            
+
             faces.append(face_data)
-        
+
         return {
             "success": True,
             "faces": faces,
@@ -1214,20 +1325,27 @@ class FaceDetector:
                 "image_height": int(image_height),
                 "faces_found": int(result.face_count),
                 "processing_time": float(result.processing_time),
-                "extraction_timestamp": __import__('datetime').datetime.now().isoformat(),
-                "face_size_threshold": int(getattr(self, 'face_size', 64)),
-                "confidence_threshold": float(getattr(self, 'confidence_threshold', 0.5))
-            }
+                "extraction_timestamp": __import__("datetime")
+                .datetime.now()
+                .isoformat(),
+                "face_size_threshold": int(getattr(self, "face_size", 64)),
+                "confidence_threshold": float(
+                    getattr(self, "confidence_threshold", 0.5)
+                ),
+            },
         }
-    
+
     def _log_gpu_memory(self, context: str):
         """Log current GPU memory usage."""
         try:
             import torch
+
             if torch.cuda.is_available():
                 allocated = torch.cuda.memory_allocated() / 1024**2  # MB
-                reserved = torch.cuda.memory_reserved() / 1024**2     # MB
-                self.logger.debug(f"GPU Memory [{context}]: {allocated:.1f}MB allocated, {reserved:.1f}MB reserved")
+                reserved = torch.cuda.memory_reserved() / 1024**2  # MB
+                self.logger.debug(
+                    f"GPU Memory [{context}]: {allocated:.1f}MB allocated, {reserved:.1f}MB reserved"
+                )
             else:
                 self.logger.debug(f"GPU Memory [{context}]: CUDA not available")
         except Exception as e:
@@ -1238,18 +1356,20 @@ class InsightFaceDetector:
     """
     Face detection using InsightFace library for high-performance face detection and recognition.
     """
-    
-    def __init__(self, 
-                 enable_gpu: bool = True,
-                 cache_enabled: bool = True,
-                 confidence_threshold: float = 0.5,
-                 min_face_size: int = 64,
-                 batch_size: int = 8,
-                 model_name: str = "buffalo_l",
-                 verbose: bool = False):
+
+    def __init__(
+        self,
+        enable_gpu: bool = True,
+        cache_enabled: bool = True,
+        confidence_threshold: float = 0.5,
+        min_face_size: int = 64,
+        batch_size: int = 8,
+        model_name: str = "buffalo_l",
+        verbose: bool = False,
+    ):
         """
         Initialize InsightFace detector.
-        
+
         Args:
             enable_gpu: Whether to enable GPU acceleration
             cache_enabled: Whether to enable result caching
@@ -1266,24 +1386,27 @@ class InsightFaceDetector:
         self.batch_size = batch_size
         self.model_name = model_name
         self.verbose = verbose
-        
+
         # Initialize logger
         self.logger = logger.bind(component="insightface_detector")
-        
+
         # Initialize InsightFace model
         self.app = None
         self.device = "cpu"
         self.gpu_available = False
-        
+
         if not INSIGHTFACE_AVAILABLE:
-            self.logger.error("InsightFace not available - install with: pip install insightface")
+            self.logger.error(
+                "InsightFace not available - install with: pip install insightface"
+            )
             return
-        
+
         try:
             # Set device
             if self.enable_gpu:
                 try:
                     import torch
+
                     if torch.cuda.is_available():
                         self.device = "cuda:0"
                         self.gpu_available = True
@@ -1292,49 +1415,64 @@ class InsightFaceDetector:
                     else:
                         self.device = "cpu"
                         if self.verbose:
-                            self.logger.warning("CUDA not available, using CPU for InsightFace")
+                            self.logger.warning(
+                                "CUDA not available, using CPU for InsightFace"
+                            )
                 except ImportError:
                     self.device = "cpu"
                     if self.verbose:
-                        self.logger.warning("PyTorch not available, using CPU for InsightFace")
+                        self.logger.warning(
+                            "PyTorch not available, using CPU for InsightFace"
+                        )
             else:
                 self.device = "cpu"
                 if self.verbose:
                     self.logger.debug("Using CPU for InsightFace")
-            
+
             # Suppress InsightFace verbose output if not in verbose mode
-            import sys
             import os
             from contextlib import redirect_stdout, redirect_stderr
-            
+
             if not self.verbose:
                 # Redirect stdout and stderr to suppress InsightFace verbose output
-                with redirect_stdout(open(os.devnull, 'w')), redirect_stderr(open(os.devnull, 'w')):
+                with redirect_stdout(open(os.devnull, "w")), redirect_stderr(
+                    open(os.devnull, "w")
+                ):
                     # Initialize InsightFace app
                     self.app = insightface.app.FaceAnalysis(
                         name=self.model_name,
-                        providers=['CUDAExecutionProvider', 'CPUExecutionProvider'] if self.device.startswith('cuda') else ['CPUExecutionProvider']
+                        providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
+                        if self.device.startswith("cuda")
+                        else ["CPUExecutionProvider"],
                     )
-                    self.app.prepare(ctx_id=0 if self.device == "cpu" else 0, det_size=(640, 640))
+                    self.app.prepare(
+                        ctx_id=0 if self.device == "cpu" else 0, det_size=(640, 640)
+                    )
             else:
                 # Initialize InsightFace app with verbose output
                 self.app = insightface.app.FaceAnalysis(
                     name=self.model_name,
-                    providers=['CUDAExecutionProvider', 'CPUExecutionProvider'] if self.device.startswith('cuda') else ['CPUExecutionProvider']
+                    providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
+                    if self.device.startswith("cuda")
+                    else ["CPUExecutionProvider"],
                 )
-                self.app.prepare(ctx_id=0 if self.device == "cpu" else 0, det_size=(640, 640))
-            
+                self.app.prepare(
+                    ctx_id=0 if self.device == "cpu" else 0, det_size=(640, 640)
+                )
+
             if self.verbose:
-                self.logger.debug(f"InsightFace initialized with model: {self.model_name}")
-            
+                self.logger.debug(
+                    f"InsightFace initialized with model: {self.model_name}"
+                )
+
         except Exception as e:
             self.logger.error(f"Failed to initialize InsightFace: {e}")
             self.app = None
-    
+
     def get_model_info(self) -> Dict[str, Any]:
         """
         Get information about the loaded InsightFace model and GPU status.
-        
+
         Returns:
             Dictionary containing model and GPU information
         """
@@ -1344,13 +1482,14 @@ class InsightFaceDetector:
             "gpu_enabled": self.enable_gpu,
             "gpu_available": self.gpu_available,
             "model_name": self.model_name,
-            "insightface_available": INSIGHTFACE_AVAILABLE
+            "insightface_available": INSIGHTFACE_AVAILABLE,
         }
-        
+
         # Test actual GPU availability if enabled
         if self.enable_gpu:
             try:
                 import torch
+
                 if torch.cuda.is_available():
                     # Test actual GPU memory allocation
                     try:
@@ -1372,33 +1511,36 @@ class InsightFaceDetector:
         else:
             info["gpu_test_passed"] = False
             info["gpu_test_error"] = "GPU disabled by user"
-        
+
         return info
-    
+
     @gpu_accelerated(fallback_cpu=True)
     @cached_result(expire_seconds=3600)  # Cache for 1 hour
-    def detect_faces(self, 
-                    image_path: Path, 
-                    confidence: Optional[float] = None,
-                    min_faces: int = 1,
-                    max_faces: Optional[int] = None,
-                    face_size: int = 64) -> FaceDetectionResult:
+    def detect_faces(
+        self,
+        image_path: Path,
+        confidence: Optional[float] = None,
+        min_faces: int = 1,
+        max_faces: Optional[int] = None,
+        face_size: int = 64,
+    ) -> FaceDetectionResult:
         """
         Detect faces in an image using InsightFace.
-        
+
         Args:
             image_path: Path to the image file
             confidence: Detection confidence threshold
             min_faces: Minimum number of faces to detect
             max_faces: Maximum number of faces to detect
             face_size: Minimum face size in pixels
-            
+
         Returns:
             FaceDetectionResult containing detected faces
         """
         import time
+
         start_time = time.time()
-        
+
         try:
             if self.app is None:
                 return FaceDetectionResult(
@@ -1406,14 +1548,14 @@ class InsightFaceDetector:
                     face_count=0,
                     success=False,
                     processing_time=0,
-                    error="InsightFace not initialized"
+                    error="InsightFace not initialized",
                 )
-            
+
             # Load image
             try:
                 pil_image = Image.open(image_path)
-                if pil_image.mode != 'RGB':
-                    pil_image = pil_image.convert('RGB')
+                if pil_image.mode != "RGB":
+                    pil_image = pil_image.convert("RGB")
                 image = np.array(pil_image)
             except Exception as e:
                 return FaceDetectionResult(
@@ -1421,35 +1563,41 @@ class InsightFaceDetector:
                     face_count=0,
                     success=False,
                     processing_time=0,
-                    error=f"Failed to load image: {e}"
+                    error=f"Failed to load image: {e}",
                 )
-            
+
             original_height, original_width = image.shape[:2]
-            
+
             # Resize image to 1080p for optimal detection performance and reduced false positives
             target_width = 1920  # 1080p width
             target_height = 1080  # 1080p height
-            
+
             # Calculate scaling factor to fit within 1080p while maintaining aspect ratio
-            scale_factor = min(target_width / original_width, target_height / original_height)
-            
+            scale_factor = min(
+                target_width / original_width, target_height / original_height
+            )
+
             # Keep original image for final coordinates, use resized for detection
             original_image = image.copy()
-            
+
             if scale_factor < 1.0:
                 # Only resize if image is larger than 1080p
                 new_width = int(original_width * scale_factor)
                 new_height = int(original_height * scale_factor)
                 # Resize using PIL
-                resized_pil = pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                resized_pil = pil_image.resize(
+                    (new_width, new_height), Image.Resampling.LANCZOS
+                )
                 image = np.array(resized_pil)
-                self.logger.debug(f"Resized image from {original_width}x{original_height} to {new_width}x{new_height}")
+                self.logger.debug(
+                    f"Resized image from {original_width}x{original_height} to {new_width}x{new_height}"
+                )
             else:
                 scale_factor = 1.0  # No scaling needed
-            
+
             # Detect faces using InsightFace
             faces = self.app.get(image)
-            
+
             # Filter faces by confidence and size, converting coordinates back to original image size
             detected_faces = []
             for i, face in enumerate(faces):
@@ -1457,7 +1605,7 @@ class InsightFaceDetector:
                 bbox = face.bbox.astype(int)
                 x, y, x2, y2 = bbox
                 w, h = x2 - x, y2 - y
-                
+
                 # Convert coordinates back to original image size
                 if scale_factor < 1.0:
                     orig_x = int(x / scale_factor)
@@ -1468,24 +1616,32 @@ class InsightFaceDetector:
                     orig_h = orig_y2 - orig_y
                 else:
                     orig_x, orig_y, orig_w, orig_h = x, y, w, h
-                
+
                 # Check minimum face size using original coordinates
                 if orig_w >= face_size and orig_h >= face_size:
                     # Get confidence score
                     face_confidence = float(face.det_score)
-                    
+
                     # Apply confidence threshold
-                    conf_threshold = confidence if confidence is not None else self.confidence_threshold
+                    conf_threshold = (
+                        confidence
+                        if confidence is not None
+                        else self.confidence_threshold
+                    )
                     if face_confidence >= conf_threshold:
                         detected_face = DetectedFace(
                             face_id=i,
                             bbox=(orig_x, orig_y, orig_w, orig_h),
                             confidence=face_confidence,
-                            landmarks=face.kps.tolist() if hasattr(face, 'kps') else None,
-                            encoding=face.embedding.tolist() if hasattr(face, 'embedding') else None
+                            landmarks=face.kps.tolist()
+                            if hasattr(face, "kps")
+                            else None,
+                            encoding=face.embedding.tolist()
+                            if hasattr(face, "embedding")
+                            else None,
                         )
                         detected_faces.append(detected_face)
-            
+
             # Apply min/max face constraints
             if len(detected_faces) < min_faces:
                 return FaceDetectionResult(
@@ -1493,23 +1649,23 @@ class InsightFaceDetector:
                     face_count=0,
                     success=False,
                     processing_time=time.time() - start_time,
-                    error=f"Not enough faces detected (found {len(detected_faces)}, required {min_faces})"
+                    error=f"Not enough faces detected (found {len(detected_faces)}, required {min_faces})",
                 )
-            
+
             if max_faces and len(detected_faces) > max_faces:
                 # Sort by confidence and take top N
                 detected_faces.sort(key=lambda f: f.confidence, reverse=True)
                 detected_faces = detected_faces[:max_faces]
-            
+
             processing_time = time.time() - start_time
-            
+
             return FaceDetectionResult(
                 faces=detected_faces,
                 face_count=len(detected_faces),
                 success=True,
-                processing_time=processing_time
+                processing_time=processing_time,
             )
-            
+
         except Exception as e:
             self.logger.error(f"InsightFace detection failed: {e}")
             return FaceDetectionResult(
@@ -1517,19 +1673,21 @@ class InsightFaceDetector:
                 face_count=0,
                 success=False,
                 processing_time=time.time() - start_time,
-                error=str(e)
+                error=str(e),
             )
-    
-    def detect_faces_batch(self, 
-                          image_paths: List[Path], 
-                          confidence: Optional[float] = None,
-                          min_faces: int = 1,
-                          max_faces: Optional[int] = None,
-                          face_size: int = 64,
-                          save_sidecar: bool = True) -> Dict[str, FaceDetectionResult]:
+
+    def detect_faces_batch(
+        self,
+        image_paths: List[Path],
+        confidence: Optional[float] = None,
+        min_faces: int = 1,
+        max_faces: Optional[int] = None,
+        face_size: int = 64,
+        save_sidecar: bool = True,
+    ) -> Dict[str, FaceDetectionResult]:
         """
         Detect faces in multiple images using parallel GPU batch processing.
-        
+
         Args:
             image_paths: List of image paths
             confidence: Detection confidence threshold
@@ -1537,64 +1695,76 @@ class InsightFaceDetector:
             max_faces: Maximum number of faces to detect
             face_size: Minimum face size in pixels
             save_sidecar: Whether to save results to sidecar files immediately
-            
+
         Returns:
             Dictionary mapping image paths to detection results
         """
         # Use sequential processing - it's faster than pseudo-batching
-        return self._process_sequential(image_paths, confidence, min_faces, max_faces, face_size, save_sidecar)
-    
-    def _process_sequential(self, 
-                           image_paths: List[Path], 
-                           confidence: Optional[float],
-                           min_faces: int,
-                           max_faces: Optional[int],
-                           face_size: int,
-                           save_sidecar: bool = True) -> Dict[str, FaceDetectionResult]:
+        return self._process_sequential(
+            image_paths, confidence, min_faces, max_faces, face_size, save_sidecar
+        )
+
+    def _process_sequential(
+        self,
+        image_paths: List[Path],
+        confidence: Optional[float],
+        min_faces: int,
+        max_faces: Optional[int],
+        face_size: int,
+        save_sidecar: bool = True,
+    ) -> Dict[str, FaceDetectionResult]:
         """Process images sequentially (most efficient approach)."""
         import time
-        import cv2
-        
+
         start_time = time.time()
         results = {}
-        
+
         # Initialize sidecar manager for immediate saving
         if save_sidecar:
             from ..sidecar import SidecarManager
+
             sidecar_manager = SidecarManager()
-        
+
         # Process images sequentially without progress bar (main CLI handles progress)
-        
+
         for i, img_path in enumerate(image_paths):
             try:
                 # Check for shutdown request
-                if hasattr(self, '_shutdown_requested') and self._shutdown_requested:
-                    self.logger.warning("Shutdown requested, stopping sequential processing")
+                if hasattr(self, "_shutdown_requested") and self._shutdown_requested:
+                    self.logger.warning(
+                        "Shutdown requested, stopping sequential processing"
+                    )
                     break
-                
+
                 # Load image
                 try:
                     pil_image = Image.open(img_path)
-                    if pil_image.mode != 'RGB':
-                        pil_image = pil_image.convert('RGB')
+                    if pil_image.mode != "RGB":
+                        pil_image = pil_image.convert("RGB")
                     image = np.array(pil_image)
                 except Exception as e:
                     results[str(img_path)] = FaceDetectionResult(
-                        faces=[], face_count=0, success=False, processing_time=0.0,
-                        error=f"Failed to load image: {e}"
+                        faces=[],
+                        face_count=0,
+                        success=False,
+                        processing_time=0.0,
+                        error=f"Failed to load image: {e}",
                     )
                     continue
-                
+
                 # Process with InsightFace
                 if self.app is None:
                     results[str(img_path)] = FaceDetectionResult(
-                        faces=[], face_count=0, success=False, processing_time=0.0,
-                        error="InsightFace not initialized - check installation and dependencies"
+                        faces=[],
+                        face_count=0,
+                        success=False,
+                        processing_time=0.0,
+                        error="InsightFace not initialized - check installation and dependencies",
                     )
                     continue
-                
+
                 faces = self.app.get(image)
-                
+
                 # Filter faces by confidence and size
                 detected_faces = []
                 for j, face in enumerate(faces):
@@ -1602,154 +1772,185 @@ class InsightFaceDetector:
                     bbox = face.bbox.astype(int)
                     x, y, x2, y2 = bbox
                     w, h = x2 - x, y2 - y
-                    
+
                     # Check minimum face size
                     if w >= face_size and h >= face_size:
                         # Get confidence score
                         face_confidence = float(face.det_score)
-                        
+
                         # Apply confidence threshold
-                        conf_threshold = confidence if confidence is not None else self.confidence_threshold
+                        conf_threshold = (
+                            confidence
+                            if confidence is not None
+                            else self.confidence_threshold
+                        )
                         if face_confidence >= conf_threshold:
                             detected_face = DetectedFace(
                                 face_id=j,
                                 bbox=(x, y, w, h),
                                 confidence=face_confidence,
-                                landmarks=face.kps.tolist() if hasattr(face, 'kps') else None,
-                                encoding=face.embedding.tolist() if hasattr(face, 'embedding') else None
+                                landmarks=face.kps.tolist()
+                                if hasattr(face, "kps")
+                                else None,
+                                encoding=face.embedding.tolist()
+                                if hasattr(face, "embedding")
+                                else None,
                             )
                             detected_faces.append(detected_face)
-                
+
                 # Apply min/max face constraints
                 success = len(detected_faces) >= min_faces
                 if max_faces and len(detected_faces) > max_faces:
                     detected_faces.sort(key=lambda f: f.confidence, reverse=True)
                     detected_faces = detected_faces[:max_faces]
-                
+
                 # Calculate processing time for this image
                 processing_time = time.time() - start_time
-                
+
                 result = FaceDetectionResult(
                     faces=detected_faces,
                     face_count=len(detected_faces),
                     success=success,
                     processing_time=processing_time,
-                    error=None if success else f"Found {len(detected_faces)} faces, need at least {min_faces}"
+                    error=None
+                    if success
+                    else f"Found {len(detected_faces)} faces, need at least {min_faces}",
                 )
-                
+
                 results[str(img_path)] = result
-                
+
                 # Save sidecar file immediately after processing this image
                 if save_sidecar:
                     try:
                         # Load image dimensions for ratio calculation
                         image_height, image_width = image.shape[:2]
-                        
+
                         # Format the result for JSON serialization
                         formatted_result = self._format_result(
-                            result, 
-                            img_path,
-                            image_width,
-                            image_height
+                            result, img_path, image_width, image_height
                         )
-                        
+
                         # Save to sidecar file immediately
                         sidecar_manager.save_data_merge(
-                            img_path, 
-                            "face_detection", 
+                            img_path,
+                            "face_detection",
                             formatted_result,
-                            metadata={"confidence": confidence, "min_faces": min_faces, "face_size": face_size}
+                            metadata={
+                                "confidence": confidence,
+                                "min_faces": min_faces,
+                                "face_size": face_size,
+                            },
                         )
-                        
-                        self.logger.debug(f"Saved face detection results for {img_path.name}")
-                        
+
+                        self.logger.debug(
+                            f"Saved face detection results for {img_path.name}"
+                        )
+
                     except Exception as save_error:
-                        self.logger.warning(f"Failed to save sidecar for {img_path}: {save_error}")
+                        self.logger.warning(
+                            f"Failed to save sidecar for {img_path}: {save_error}"
+                        )
                         # Continue processing even if sidecar save fails
-                
+
             except Exception as e:
                 self.logger.error(f"Error processing {img_path}: {e}")
                 results[str(img_path)] = FaceDetectionResult(
-                    faces=[], face_count=0, success=False, processing_time=0.0, error=str(e)
+                    faces=[],
+                    face_count=0,
+                    success=False,
+                    processing_time=0.0,
+                    error=str(e),
                 )
-        
+
         total_time = time.time() - start_time
-        
+
         return results
-    
-    def _process_gpu_batch(self, 
-                          image_paths: List[Path], 
-                          confidence: Optional[float],
-                          min_faces: int,
-                          max_faces: Optional[int],
-                          face_size: int) -> Dict[str, FaceDetectionResult]:
+
+    def _process_gpu_batch(
+        self,
+        image_paths: List[Path],
+        confidence: Optional[float],
+        min_faces: int,
+        max_faces: Optional[int],
+        face_size: int,
+    ) -> Dict[str, FaceDetectionResult]:
         """Process batch using true GPU batch processing with InsightFace."""
         import time
-        import cv2
         import numpy as np
-        
+
         start_time = time.time()
         results = {}
-        
+
         try:
             # Load all images into GPU memory at once
             batch_images = []
             batch_metadata = []
-            
+
             for image_path in image_paths:
                 try:
                     try:
                         pil_image = Image.open(image_path)
-                        if pil_image.mode != 'RGB':
-                            pil_image = pil_image.convert('RGB')
+                        if pil_image.mode != "RGB":
+                            pil_image = pil_image.convert("RGB")
                         image = np.array(pil_image)
-                    except Exception as e:
+                    except Exception:
                         continue
-                    
+
                     batch_images.append(image)
-                    batch_metadata.append({
-                        'path': image_path,
-                        'height': image.shape[0],
-                        'width': image.shape[1]
-                    })
-                    else:
-                        results[str(image_path)] = FaceDetectionResult(
-                            faces=[], face_count=0, success=False, processing_time=0.0,
-                            error="Failed to load image"
-                        )
+                    batch_metadata.append(
+                        {
+                            "path": image_path,
+                            "height": image.shape[0],
+                            "width": image.shape[1],
+                        }
+                    )
                 except Exception as e:
                     results[str(image_path)] = FaceDetectionResult(
-                        faces=[], face_count=0, success=False, processing_time=0.0,
-                        error=str(e)
+                        faces=[],
+                        face_count=0,
+                        success=False,
+                        processing_time=0.0,
+                        error=str(e),
                     )
-            
+
             if not batch_images:
                 return results
-            
+
             # Process all images in parallel using GPU
-            self.logger.debug(f"Processing {len(batch_images)} images simultaneously on GPU")
-            
+            self.logger.debug(
+                f"Processing {len(batch_images)} images simultaneously on GPU"
+            )
+
             # Check if InsightFace is initialized
             if self.app is None:
                 # Fall back to individual processing with error handling
-                for i, (image, metadata) in enumerate(zip(batch_images, batch_metadata)):
-                    results[str(metadata['path'])] = FaceDetectionResult(
-                        faces=[], face_count=0, success=False, processing_time=0.0,
-                        error="InsightFace not initialized - check installation and dependencies"
+                for i, (image, metadata) in enumerate(
+                    zip(batch_images, batch_metadata)
+                ):
+                    results[str(metadata["path"])] = FaceDetectionResult(
+                        faces=[],
+                        face_count=0,
+                        success=False,
+                        processing_time=0.0,
+                        error="InsightFace not initialized - check installation and dependencies",
                     )
                 return results
-            
+
             # Use InsightFace's batch processing capability
             batch_faces = self.app.get(batch_images)
-            
+
             # Process results
             for i, (image, metadata) in enumerate(zip(batch_images, batch_metadata)):
                 try:
                     if i < len(batch_faces):
-                        faces = batch_faces[i] if isinstance(batch_faces[i], list) else [batch_faces[i]]
+                        faces = (
+                            batch_faces[i]
+                            if isinstance(batch_faces[i], list)
+                            else [batch_faces[i]]
+                        )
                     else:
                         faces = []
-                    
+
                     # Filter faces by confidence and size
                     detected_faces = []
                     for j, face in enumerate(faces):
@@ -1757,67 +1958,89 @@ class InsightFaceDetector:
                         bbox = face.bbox.astype(int)
                         x, y, x2, y2 = bbox
                         w, h = x2 - x, y2 - y
-                        
+
                         # Check minimum face size
                         if w >= face_size and h >= face_size:
                             # Get confidence score
                             face_confidence = float(face.det_score)
-                            
+
                             # Apply confidence threshold
-                            conf_threshold = confidence if confidence is not None else self.confidence_threshold
+                            conf_threshold = (
+                                confidence
+                                if confidence is not None
+                                else self.confidence_threshold
+                            )
                             if face_confidence >= conf_threshold:
                                 detected_face = DetectedFace(
                                     face_id=j,
                                     bbox=(x, y, w, h),
                                     confidence=face_confidence,
-                                    landmarks=face.kps.tolist() if hasattr(face, 'kps') else None,
-                                    encoding=face.embedding.tolist() if hasattr(face, 'embedding') else None
+                                    landmarks=face.kps.tolist()
+                                    if hasattr(face, "kps")
+                                    else None,
+                                    encoding=face.embedding.tolist()
+                                    if hasattr(face, "embedding")
+                                    else None,
                                 )
                                 detected_faces.append(detected_face)
-                    
+
                     # Apply min/max face constraints
                     success = len(detected_faces) >= min_faces
                     if max_faces and len(detected_faces) > max_faces:
                         detected_faces.sort(key=lambda f: f.confidence, reverse=True)
                         detected_faces = detected_faces[:max_faces]
-                    
+
                     processing_time = (time.time() - start_time) / len(batch_images)
-                    
-                    results[str(metadata['path'])] = FaceDetectionResult(
+
+                    results[str(metadata["path"])] = FaceDetectionResult(
                         faces=detected_faces,
                         face_count=len(detected_faces),
                         success=success,
                         processing_time=processing_time,
-                        error=None if success else f"Found {len(detected_faces)} faces, need at least {min_faces}"
+                        error=None
+                        if success
+                        else f"Found {len(detected_faces)} faces, need at least {min_faces}",
                     )
-                    
+
                 except Exception as e:
-                    results[str(metadata['path'])] = FaceDetectionResult(
-                        faces=[], face_count=0, success=False, processing_time=0.0, error=str(e)
+                    results[str(metadata["path"])] = FaceDetectionResult(
+                        faces=[],
+                        face_count=0,
+                        success=False,
+                        processing_time=0.0,
+                        error=str(e),
                     )
-            
+
             total_time = time.time() - start_time
-            self.logger.debug(f"GPU batch processing completed: {len(batch_images)} images in {total_time:.2f}s ({total_time/len(batch_images):.3f}s per image)")
-            
+            self.logger.debug(
+                f"GPU batch processing completed: {len(batch_images)} images in {total_time:.2f}s ({total_time / len(batch_images):.3f}s per image)"
+            )
+
         except Exception as e:
             self.logger.error(f"GPU batch processing failed: {e}")
             # Fall back to individual processing
-            return self._process_cpu_batch(image_paths, confidence, min_faces, max_faces, face_size)
-        
+            return self._process_cpu_batch(
+                image_paths, confidence, min_faces, max_faces, face_size
+            )
+
         return results
-    
-    def _process_cpu_batch(self, 
-                          image_paths: List[Path], 
-                          confidence: Optional[float],
-                          min_faces: int,
-                          max_faces: Optional[int],
-                          face_size: int) -> Dict[str, FaceDetectionResult]:
+
+    def _process_cpu_batch(
+        self,
+        image_paths: List[Path],
+        confidence: Optional[float],
+        min_faces: int,
+        max_faces: Optional[int],
+        face_size: int,
+    ) -> Dict[str, FaceDetectionResult]:
         """Process batch using individual CPU processing."""
         results = {}
-        
+
         for i, image_path in enumerate(image_paths):
             try:
-                result = self.detect_faces(image_path, confidence, min_faces, max_faces, face_size)
+                result = self.detect_faces(
+                    image_path, confidence, min_faces, max_faces, face_size
+                )
                 results[str(image_path)] = result
             except Exception as e:
                 self.logger.error(f"Error processing {image_path}: {e}")
@@ -1826,107 +2049,111 @@ class InsightFaceDetector:
                     face_count=0,
                     success=False,
                     processing_time=0.0,
-                    error=str(e)
+                    error=str(e),
                 )
-        
+
         return results
-    
-    def extract_faces(self, 
-                     image_path: Path, 
-                     output_dir: Path,
-                     padding: int = 10) -> Dict[str, Any]:
+
+    def extract_faces(
+        self, image_path: Path, output_dir: Path, padding: int = 10
+    ) -> Dict[str, Any]:
         """
         Extract detected faces from an image at their natural detected size.
-        
+
         Args:
             image_path: Path to the input image
             output_dir: Directory to save extracted faces
             padding: Padding around face in pixels
-            
+
         Returns:
             Dictionary containing extraction results
         """
         try:
             # Detect faces first
             detection_result = self.detect_faces(image_path)
-            
+
             if not detection_result.success:
                 return {
                     "success": False,
                     "error": detection_result.error,
-                    "faces_extracted": 0
+                    "faces_extracted": 0,
                 }
-            
+
             # Load image
             try:
                 pil_image = Image.open(image_path)
-                if pil_image.mode != 'RGB':
-                    pil_image = pil_image.convert('RGB')
+                if pil_image.mode != "RGB":
+                    pil_image = pil_image.convert("RGB")
                 image = np.array(pil_image)
             except Exception as e:
                 return {
                     "success": False,
                     "error": f"Failed to load image: {e}",
-                    "faces_extracted": 0
+                    "faces_extracted": 0,
                 }
-            
+
             # Create output directory
             output_dir.mkdir(parents=True, exist_ok=True)
-            
+
             extracted_faces = []
-            
+
             for i, face in enumerate(detection_result.faces):
                 x, y, w, h = face.bbox
-                
+
                 # Add padding
                 x_start = max(0, x - padding)
                 y_start = max(0, y - padding)
                 x_end = min(image.shape[1], x + w + padding)
                 y_end = min(image.shape[0], y + h + padding)
-                
+
                 # Extract face at its natural detected size from full-resolution image
                 face_image = image[y_start:y_end, x_start:x_end]
-                
+
                 # Save face
                 face_filename = f"{image_path.stem}_insightface_face_{i:02d}.jpg"
                 face_path = output_dir / face_filename
-                
+
                 # Save face image using PIL
                 pil_face_image = Image.fromarray(face_image)
-                pil_face_image.save(str(face_path), 'JPEG', quality=95)
-                
-                extracted_faces.append({
-                    "face_id": face.face_id,
-                    "bbox": face.bbox,
-                    "confidence": face.confidence,
-                    "output_path": str(face_path)
-                })
-            
+                pil_face_image.save(str(face_path), "JPEG", quality=95)
+
+                extracted_faces.append(
+                    {
+                        "face_id": face.face_id,
+                        "bbox": face.bbox,
+                        "confidence": face.confidence,
+                        "output_path": str(face_path),
+                    }
+                )
+
             return {
                 "success": True,
                 "faces_extracted": len(extracted_faces),
-                "faces": extracted_faces
+                "faces": extracted_faces,
             }
-            
+
         except Exception as e:
             self.logger.error(f"InsightFace extraction failed: {e}")
-            return {
-                "success": False,
-                "error": str(e),
-                "faces_extracted": 0
-            }
-    
-    def _format_result(self, result: FaceDetectionResult, image_path: Path, image_width: int = None, image_height: int = None, face_size: int = 64) -> Dict[str, Any]:
+            return {"success": False, "error": str(e), "faces_extracted": 0}
+
+    def _format_result(
+        self,
+        result: FaceDetectionResult,
+        image_path: Path,
+        image_width: int = None,
+        image_height: int = None,
+        face_size: int = 64,
+    ) -> Dict[str, Any]:
         """
         Format face detection result for JSON serialization.
-        
+
         Args:
             result: Face detection result
             image_path: Path to the image file
             image_width: Image width in pixels (for ratio calculation)
             image_height: Image height in pixels (for ratio calculation)
             face_size: Minimum face size threshold used
-            
+
         Returns:
             Dictionary containing formatted face detection data
         """
@@ -1934,12 +2161,15 @@ class InsightFaceDetector:
         if image_width is None or image_height is None:
             try:
                 pil_image = Image.open(image_path)
-                image_height, image_width = pil_image.size[1], pil_image.size[0]  # PIL size is (width, height)
+                image_height, image_width = (
+                    pil_image.size[1],
+                    pil_image.size[0],
+                )  # PIL size is (width, height)
             except Exception:
                 # Fallback to default dimensions if image can't be loaded
                 image_width = 1920
                 image_height = 1080
-        
+
         if not result.success:
             return {
                 "success": False,
@@ -1949,28 +2179,30 @@ class InsightFaceDetector:
                     "image_path": str(image_path),
                     "faces_found": 0,
                     "processing_time": float(result.processing_time),
-                    "extraction_timestamp": __import__('datetime').datetime.now().isoformat(),
-                    "detector": "insightface"
-                }
+                    "extraction_timestamp": __import__("datetime")
+                    .datetime.now()
+                    .isoformat(),
+                    "detector": "insightface",
+                },
             }
-        
+
         # Format faces for sportball compatibility
         faces = []
         for face in result.faces:
             # Convert pixel coordinates to normalized ratios (0-1)
             x_pixel, y_pixel, w_pixel, h_pixel = face.bbox
-            
+
             face_data = {
                 "face_id": int(face.face_id),
                 "bbox": {
                     "x": float(x_pixel) / image_width,
                     "y": float(y_pixel) / image_height,
                     "width": float(w_pixel) / image_width,
-                    "height": float(h_pixel) / image_height
+                    "height": float(h_pixel) / image_height,
                 },
-                "confidence": float(face.confidence)
+                "confidence": float(face.confidence),
             }
-            
+
             # Add landmarks if available (normalize to percentages like bbox)
             if face.landmarks is not None:
                 # Normalize landmarks from pixel coordinates to percentages (0-1)
@@ -1985,13 +2217,13 @@ class InsightFaceDetector:
                         # Keep original format if not a coordinate pair
                         normalized_landmarks.append(landmark)
                 face_data["landmarks"] = normalized_landmarks
-            
+
             # Add encoding if available
             if face.encoding is not None:
                 face_data["encoding"] = face.encoding
-            
+
             faces.append(face_data)
-        
+
         return {
             "success": True,
             "faces": faces,
@@ -2001,10 +2233,12 @@ class InsightFaceDetector:
                 "image_height": int(image_height),
                 "faces_found": int(result.face_count),
                 "processing_time": float(result.processing_time),
-                "extraction_timestamp": __import__('datetime').datetime.now().isoformat(),
+                "extraction_timestamp": __import__("datetime")
+                .datetime.now()
+                .isoformat(),
                 "detector": "insightface",
                 "model_name": self.model_name,
                 "face_size_threshold": int(face_size),
-                "confidence_threshold": float(self.confidence_threshold)
-            }
+                "confidence_threshold": float(self.confidence_threshold),
+            },
         }

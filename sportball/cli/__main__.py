@@ -6,10 +6,13 @@ the CLI when needed, avoiding the heavy dependencies in the main
 sportball package.
 """
 
+
 def main():
     """Main entry point for the CLI."""
     from .main import cli
+
     cli()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

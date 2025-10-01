@@ -11,11 +11,11 @@ except ImportError:
         @staticmethod
         def get_version():
             return "1.1.0"
-        
+
         @staticmethod
         def get_cmdclass():
             return {}
-    
+
     versioneer = MockVersioneer()
 
 from setuptools import setup, find_packages
@@ -64,27 +64,22 @@ setup(
         "opencv-contrib-python>=4.8.0",
         "Pillow>=10.0.0",
         "numpy>=1.24.0",
-        
         # Machine Learning
         "torch>=2.0.0",
         "torchvision>=0.15.0",
         "scikit-learn>=1.3.0",
-        
         # Face Detection
         "face-recognition>=1.3.0",
         "dlib>=19.24.0",
         "insightface>=0.7.3",
         "onnxruntime>=1.16.0",
-        
         # Object Detection
         "ultralytics>=8.0.0",
-        
         # CLI and UI
         "click>=8.1.0",
         "rich>=13.0.0",
         "tqdm>=4.65.0",
         "loguru>=0.7.0",
-        
         # Data Processing
         "pandas>=2.0.0",
         "matplotlib>=3.7.0",

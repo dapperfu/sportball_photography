@@ -14,15 +14,15 @@ from . import (
     quality_commands,
     utility_commands,
     sidecar_commands,
-    annotate_commands
+    annotate_commands,
 )
 
 __all__ = [
     "face_commands",
-    "object_commands", 
+    "object_commands",
     "game_commands",
     "quality_commands",
     "utility_commands",
     "sidecar_commands",
-    "annotate_commands"
+    "annotate_commands",
 ]
