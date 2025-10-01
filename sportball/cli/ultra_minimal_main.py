@@ -152,8 +152,14 @@ def _load_commands():
         utility_commands,
         sidecar_commands,
         annotate_commands,
+        unified_commands,
     )
 
+    # Add unified commands first (these are the primary commands)
+    cli.add_command(unified_commands.detect, name="detect")
+    cli.add_command(unified_commands.extract, name="extract")
+    
+    # Add individual command groups
     cli.add_command(face_commands.face_group, name="face")
     cli.add_command(object_commands.object_group, name="object")
     cli.add_command(game_commands.game_group, name="games")
@@ -199,13 +205,16 @@ _{script_name}_completion() {{
     
     # Main commands
     if [[ $COMP_CWORD -eq 1 ]]; then
-        opts="face games object quality sidecar util completion --help --version --base-dir --gpu --no-gpu --workers --cache --no-cache --verbose --quiet"
+        opts="detect extract face games object quality sidecar util completion --help --version --base-dir --gpu --no-gpu --workers --cache --no-cache --verbose --quiet"
         COMPREPLY=( $(compgen -W "${{opts}}" -- "${{cur}}") )
         return 0
     fi
     
     # Sub-commands based on main command
     case "${{COMP_WORDS[1]}}" in
+        detect|extract)
+            # These are standalone commands, no sub-commands
+            ;;
         face)
             if [[ $COMP_CWORD -eq 2 ]]; then
                 opts="detect recognize cluster benchmark"
@@ -286,6 +295,8 @@ _{script_name}() {{
         command)
             local commands
             commands=(
+                'detect:Detect faces and objects in images using unified processing'
+                'extract:Extract detected faces and objects from images'
                 'face:Face detection and recognition commands'
                 'games:Game detection and splitting commands'
                 'object:Object detection and extraction commands'
@@ -298,6 +309,9 @@ _{script_name}() {{
             ;;
         args)
             case $line[1] in
+                detect|extract)
+                    # These are standalone commands, no sub-commands
+                    ;;
                 face)
                     _arguments '1: :(detect recognize cluster benchmark)'
                     ;;
