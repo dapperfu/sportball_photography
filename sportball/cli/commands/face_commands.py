@@ -180,12 +180,39 @@ def detect(ctx: click.Context,
         _get_console().print("✅ All images already processed (use --force to reprocess)", style="green")
         return
     
-    _get_console().print(f"🔍 Starting face detection...", style="blue")
-    
     # Use core's sequential processing for face detection
     # Lazy import to avoid heavy dependencies at startup
     from ..utils import get_core
     core = get_core(ctx)
+    
+    # Get model and GPU information before starting detection
+    # Create a fresh detector with the correct GPU setting from CLI
+    from ...detectors.face import InsightFaceDetector
+    test_detector = InsightFaceDetector(
+        enable_gpu=gpu,
+        cache_enabled=core.cache_enabled,
+        verbose=core.verbose
+    )
+    model_info = test_detector.get_model_info()
+    
+    # Display enhanced startup message
+    console = _get_console()
+    console.print(f"🔍 Starting face detection...", style="blue")
+    
+    # Display model information
+    model_name = model_info.get("model", "unknown")
+    device = model_info.get("device", "cpu")
+    gpu_enabled = model_info.get("gpu_enabled", False)
+    gpu_test_passed = model_info.get("gpu_test_passed", False)
+    
+    if gpu_enabled and gpu_test_passed:
+        gpu_memory = model_info.get("gpu_memory_gb", 0)
+        console.print(f"📱 Model: {model_name} | Device: {device} | GPU: ✅ Available ({gpu_memory}GB)", style="green")
+    elif gpu_enabled and not gpu_test_passed:
+        gpu_error = model_info.get("gpu_test_error", "Unknown error")
+        console.print(f"📱 Model: {model_name} | Device: {device} | GPU: ❌ Failed ({gpu_error})", style="yellow")
+    else:
+        console.print(f"📱 Model: {model_name} | Device: {device} | GPU: Disabled", style="blue")
     
     # Prepare detection parameters
     detection_kwargs = {
@@ -430,7 +457,29 @@ def benchmark(ctx: click.Context,
         min_face_size=min_face_size
     )
     
-    _get_console().print("🚀 Starting face detection benchmark...", style="blue")
+    # Get model and GPU information before starting benchmark
+    from ...detectors.face import FaceDetector
+    test_detector = FaceDetector(enable_gpu=gpu)
+    model_info = test_detector.get_model_info()
+    
+    # Display enhanced startup message
+    console = _get_console()
+    console.print("🚀 Starting face detection benchmark...", style="blue")
+    
+    # Display model information
+    model_name = model_info.get("model", "unknown")
+    device = model_info.get("device", "cpu")
+    gpu_enabled = model_info.get("gpu_enabled", False)
+    gpu_test_passed = model_info.get("gpu_test_passed", False)
+    
+    if gpu_enabled and gpu_test_passed:
+        gpu_memory = model_info.get("gpu_memory_gb", 0)
+        console.print(f"📱 Model: {model_name} | Device: {device} | GPU: ✅ Available ({gpu_memory}GB)", style="green")
+    elif gpu_enabled and not gpu_test_passed:
+        gpu_error = model_info.get("gpu_test_error", "Unknown error")
+        console.print(f"📱 Model: {model_name} | Device: {device} | GPU: ❌ Failed ({gpu_error})", style="yellow")
+    else:
+        console.print(f"📱 Model: {model_name} | Device: {device} | GPU: Disabled", style="blue")
     
     # Run benchmark
     try:

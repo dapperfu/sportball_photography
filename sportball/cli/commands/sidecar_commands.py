@@ -229,6 +229,19 @@ def collect_sidecar_statistics(directory: Path,
         sizes = stats_data['data_sizes'][operation_name]
         stats_data['data_sizes'][operation_name] = sum(sizes) / len(sizes) if sizes else 0
     
+    # Add the formatted data for display compatibility
+    stats_data['avg_processing_times'] = stats_data['processing_times'].copy()
+    stats_data['avg_data_sizes'] = stats_data['data_sizes'].copy()
+    
+    # Calculate success rate percentages
+    stats_data['success_rate_percentages'] = {}
+    for operation_name in stats_data['success_rates']:
+        success_data = stats_data['success_rates'][operation_name]
+        if success_data['total'] > 0:
+            stats_data['success_rate_percentages'][operation_name] = (success_data['success'] / success_data['total']) * 100
+        else:
+            stats_data['success_rate_percentages'][operation_name] = 0
+    
     # Update progress bar description with results
     pbar.set_description(f"Found {stats_data['total_images']} images ({stats_data['symlink_count']} symlinks), {stats_data['total_sidecars']} sidecar files")
     

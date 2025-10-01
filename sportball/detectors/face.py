@@ -117,6 +117,7 @@ class FaceDetector:
         # Initialize face detection models
         self.device = "cpu"
         self.gpu_model = None
+        self.gpu_available = False
         
         # Try to initialize GPU-based face detection first
         if self.enable_gpu:
@@ -124,6 +125,7 @@ class FaceDetector:
                 import torch
                 if torch.cuda.is_available():
                     self.device = "cuda"
+                    self.gpu_available = True
                     self._initialize_gpu_models()
                     self.logger.debug("GPU-based face detection initialized")
                 else:
@@ -137,6 +139,49 @@ class FaceDetector:
         
         # Initialize face recognition if available
         self.face_recognition_available = FACE_RECOGNITION_AVAILABLE
+    
+    def get_model_info(self) -> Dict[str, Any]:
+        """
+        Get information about the loaded model and GPU status.
+        
+        Returns:
+            Dictionary containing model and GPU information
+        """
+        info = {
+            "model": self.gpu_model or "unknown",
+            "device": self.device,
+            "gpu_enabled": self.enable_gpu,
+            "gpu_available": self.gpu_available,
+            "face_recognition_available": self.face_recognition_available
+        }
+        
+        # Test actual GPU availability if enabled
+        if self.enable_gpu:
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    # Test actual GPU memory allocation
+                    try:
+                        test_tensor = torch.zeros(1).cuda()
+                        gpu_memory = torch.cuda.get_device_properties(0).total_memory
+                        info["gpu_memory_gb"] = round(gpu_memory / (1024**3), 2)
+                        info["gpu_test_passed"] = True
+                        del test_tensor
+                        torch.cuda.empty_cache()
+                    except Exception as e:
+                        info["gpu_test_passed"] = False
+                        info["gpu_test_error"] = str(e)
+                else:
+                    info["gpu_test_passed"] = False
+                    info["gpu_test_error"] = "CUDA not available"
+            except ImportError:
+                info["gpu_test_passed"] = False
+                info["gpu_test_error"] = "PyTorch not available"
+        else:
+            info["gpu_test_passed"] = False
+            info["gpu_test_error"] = "GPU disabled by user"
+        
+        return info
     
     def _initialize_gpu_models(self):
         """Initialize GPU-based face detection models."""
@@ -1216,6 +1261,7 @@ class InsightFaceDetector:
         # Initialize InsightFace model
         self.app = None
         self.device = "cpu"
+        self.gpu_available = False
         
         if not INSIGHTFACE_AVAILABLE:
             self.logger.error("InsightFace not available - install with: pip install insightface")
@@ -1228,6 +1274,7 @@ class InsightFaceDetector:
                     import torch
                     if torch.cuda.is_available():
                         self.device = "cuda:0"
+                        self.gpu_available = True
                         if self.verbose:
                             self.logger.debug("Using GPU for InsightFace")
                     else:
@@ -1271,6 +1318,50 @@ class InsightFaceDetector:
         except Exception as e:
             self.logger.error(f"Failed to initialize InsightFace: {e}")
             self.app = None
+    
+    def get_model_info(self) -> Dict[str, Any]:
+        """
+        Get information about the loaded InsightFace model and GPU status.
+        
+        Returns:
+            Dictionary containing model and GPU information
+        """
+        info = {
+            "model": f"InsightFace ({self.model_name})",
+            "device": self.device,
+            "gpu_enabled": self.enable_gpu,
+            "gpu_available": self.gpu_available,
+            "model_name": self.model_name,
+            "insightface_available": INSIGHTFACE_AVAILABLE
+        }
+        
+        # Test actual GPU availability if enabled
+        if self.enable_gpu:
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    # Test actual GPU memory allocation
+                    try:
+                        test_tensor = torch.zeros(1).cuda()
+                        gpu_memory = torch.cuda.get_device_properties(0).total_memory
+                        info["gpu_memory_gb"] = round(gpu_memory / (1024**3), 2)
+                        info["gpu_test_passed"] = True
+                        del test_tensor
+                        torch.cuda.empty_cache()
+                    except Exception as e:
+                        info["gpu_test_passed"] = False
+                        info["gpu_test_error"] = str(e)
+                else:
+                    info["gpu_test_passed"] = False
+                    info["gpu_test_error"] = "CUDA not available"
+            except ImportError:
+                info["gpu_test_passed"] = False
+                info["gpu_test_error"] = "PyTorch not available"
+        else:
+            info["gpu_test_passed"] = False
+            info["gpu_test_error"] = "GPU disabled by user"
+        
+        return info
     
     @gpu_accelerated(fallback_cpu=True)
     @cached_result(expire_seconds=3600)  # Cache for 1 hour
