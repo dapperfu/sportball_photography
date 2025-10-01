@@ -11,6 +11,8 @@ Generated via Cursor IDE (cursor.sh) with AI assistance
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from loguru import logger
+import json
+import cv2
 
 from .sidecar import SidecarManager
 from .decorators import (
@@ -18,6 +20,12 @@ from .decorators import (
     timing_decorator
 )
 from .detection.integration import DetectionIntegration
+
+
+def _get_console():
+    """Lazy import of Console to avoid heavy imports at startup."""
+    from rich.console import Console
+    return Console()
 
 
 class SportballCore:
@@ -420,7 +428,13 @@ class SportballCore:
                      max_workers: Optional[int] = None,
                      **kwargs) -> Dict[str, Any]:
         """
-        Extract detected faces from images with parallel processing.
+        Extract detected faces from images with massively parallel processing.
+        
+        Optimized workflow:
+        1. Load JSON sidecar files to find which images have faces
+        2. Find corresponding image files
+        3. Process all qualifying images in parallel
+        4. Save extracted faces
         
         Args:
             image_paths: Single image path or list of image paths
@@ -440,88 +454,144 @@ class SportballCore:
         # Ensure output directory exists
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Determine number of workers
-        if max_workers is None:
-            max_workers = min(len(image_paths), self.max_workers or 4)
+        # Step 1: Load JSON files and find which images have faces
+        from tqdm import tqdm
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import os
         
+        _get_console().print("🔍 Scanning sidecar files for face detection data...", style="blue")
+        
+        # Find all sidecar files in the input directories
+        sidecar_files = []
+        for image_path in image_paths:
+            if image_path.is_file():
+                # Single file - look for sidecar in same directory
+                sidecar_path = image_path.with_suffix('.json')
+                if sidecar_path.exists():
+                    sidecar_files.append(sidecar_path)
+            else:
+                # Directory - find all JSON files
+                sidecar_files.extend(image_path.rglob('*.json'))
+        
+        # Filter sidecar files that contain face detection data
+        qualifying_images = []
+        
+        with tqdm(sidecar_files, desc="Scanning sidecar files", unit="files") as pbar:
+            for sidecar_file in sidecar_files:
+                try:
+                    with open(sidecar_file, 'r') as f:
+                        data = json.load(f)
+                    
+                    # Check if this sidecar contains face detection data
+                    if 'data' in data and data['data'].get('success', False):
+                        faces = data['data'].get('faces', [])
+                        if len(faces) > 0:
+                            # Find the corresponding image file
+                            image_name = sidecar_file.stem
+                            for ext in ['.jpg', '.jpeg', '.png', '.bmp', '.tiff']:
+                                image_path = sidecar_file.parent / f"{image_name}{ext}"
+                                if image_path.exists():
+                                    qualifying_images.append((image_path, faces))
+                                    break
+                    
+                except Exception as e:
+                    self.logger.warning(f"Failed to read sidecar file {sidecar_file}: {e}")
+                
+                pbar.update(1)
+        
+        if not qualifying_images:
+            _get_console().print("❌ No images with detected faces found", style="red")
+            return {}
+        
+        _get_console().print(f"✅ Found {len(qualifying_images)} images with faces to process", style="green")
+        
+        # Step 2: Determine number of workers for massive parallel processing
+        if max_workers is None:
+            max_workers = min(len(qualifying_images), os.cpu_count() * 2, 32)  # Cap at 32 workers
+        
+        _get_console().print(f"🚀 Using {max_workers} parallel workers", style="blue")
+        
+        # Step 3: Process all qualifying images in parallel
         results = {}
         
-        # Use parallel processing for multiple images
-        if len(image_paths) > 1 and max_workers > 1:
-            from concurrent.futures import ThreadPoolExecutor, as_completed
-            from tqdm import tqdm
+        def extract_faces_from_image(image_data: tuple) -> tuple:
+            """Extract faces from a single image with pre-loaded face data."""
+            image_path, faces_data = image_data
             
-            def extract_single_image(image_path: Path) -> tuple:
-                """Extract faces from a single image."""
-                try:
-                    # Load detection data
-                    detection_data = self.sidecar.load_data(image_path, "face_detection")
-                    if not detection_data:
-                        # Perform detection first
-                        detection_data = self.detect_faces(image_path, save_sidecar=True)
+            try:
+                # Load the image
+                image = cv2.imread(str(image_path))
+                if image is None:
+                    return str(image_path), {"success": False, "error": "Failed to load image", "faces_extracted": 0}
+                
+                # Create image-specific output directory
+                image_output_dir = output_dir / image_path.stem
+                image_output_dir.mkdir(parents=True, exist_ok=True)
+                
+                extracted_faces = []
+                
+                # Extract each face
+                for i, face in enumerate(faces_data):
+                    bbox = face.get('bbox', {})
+                    if not bbox:
+                        continue
                     
-                    # Extract faces using InsightFace detector (most reliable)
-                    face_detector = self.face_detector
-                    extraction_result = face_detector.extract_faces(
-                        image_path, 
-                        output_dir,
-                        padding=padding,
-                        **kwargs
-                    )
+                    # Calculate face coordinates with padding
+                    x = max(0, int(bbox.get('x', 0)) - padding)
+                    y = max(0, int(bbox.get('y', 0)) - padding)
+                    width = min(image.shape[1] - x, int(bbox.get('width', 0)) + 2 * padding)
+                    height = min(image.shape[0] - y, int(bbox.get('height', 0)) + 2 * padding)
                     
-                    return str(image_path), extraction_result
+                    # Extract face region
+                    face_region = image[y:y+height, x:x+width]
                     
-                except Exception as e:
-                    self.logger.error(f"Face extraction failed for {image_path}: {e}")
-                    return str(image_path), {"error": str(e), "success": False}
-            
-            # Process images in parallel with progress bar
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                # Submit all tasks
-                future_to_path = {
-                    executor.submit(extract_single_image, image_path): image_path 
-                    for image_path in image_paths
+                    if face_region.size > 0:
+                        # Save extracted face
+                        face_filename = f"face_{i+1:03d}.jpg"
+                        face_path = image_output_dir / face_filename
+                        
+                        success = cv2.imwrite(str(face_path), face_region)
+                        if success:
+                            extracted_faces.append({
+                                'face_id': i,
+                                'bbox': bbox,
+                                'output_path': str(face_path),
+                                'confidence': face.get('confidence', 0.0)
+                            })
+                
+                return str(image_path), {
+                    "success": True,
+                    "faces_extracted": len(extracted_faces),
+                    "faces": extracted_faces,
+                    "output_directory": str(image_output_dir)
                 }
                 
-                # Process completed tasks with progress bar
-                with tqdm(total=len(image_paths), desc="Extracting faces", unit="images") as pbar:
-                    for future in as_completed(future_to_path):
-                        image_path, result = future.result()
-                        results[image_path] = result
-                        pbar.update(1)
-                        
-                        # Update progress bar description with current stats
-                        successful = sum(1 for r in results.values() if r.get('success', False))
-                        total_faces = sum(r.get('faces_extracted', 0) for r in results.values())
-                        pbar.set_postfix({
-                            'successful': successful,
-                            'faces': total_faces
-                        })
+            except Exception as e:
+                self.logger.error(f"Face extraction failed for {image_path}: {e}")
+                return str(image_path), {"success": False, "error": str(e), "faces_extracted": 0}
         
-        else:
-            # Sequential processing for single image or when parallel processing is disabled
-            for image_path in image_paths:
-                try:
-                    # Load detection data
-                    detection_data = self.sidecar.load_data(image_path, "face_detection")
-                    if not detection_data:
-                        # Perform detection first
-                        detection_data = self.detect_faces(image_path, save_sidecar=True)
+        # Process all images in parallel with progress bar
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_path = {
+                executor.submit(extract_faces_from_image, image_data): image_data[0] 
+                for image_data in qualifying_images
+            }
+            
+            # Process completed tasks with detailed progress bar
+            with tqdm(total=len(qualifying_images), desc="Extracting faces", unit="images") as pbar:
+                for future in as_completed(future_to_path):
+                    image_path, result = future.result()
+                    results[image_path] = result
+                    pbar.update(1)
                     
-                    # Extract faces using InsightFace detector (most reliable)
-                    face_detector = self.face_detector
-                    extraction_result = face_detector.extract_faces(
-                        image_path, 
-                        output_dir,
-                        padding=padding,
-                        **kwargs
-                    )
-                    
-                    results[str(image_path)] = extraction_result
-                    
-                except Exception as e:
-                    self.logger.error(f"Face extraction failed for {image_path}: {e}")
-                    results[str(image_path)] = {"error": str(e), "success": False}
+                    # Update progress bar with real-time stats
+                    successful = sum(1 for r in results.values() if r.get('success', False))
+                    total_faces = sum(r.get('faces_extracted', 0) for r in results.values())
+                    pbar.set_postfix({
+                        'successful': successful,
+                        'faces': total_faces
+                    })
         
         return results
     
