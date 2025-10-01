@@ -171,7 +171,18 @@ class FaceDetector:
         try:
             import insightface
             self.gpu_model = "insightface"
-            self.logger.debug("InsightFace model loaded for CPU processing")
+            
+            # Check if CUDA is available for InsightFace
+            try:
+                import onnxruntime as ort
+                if 'CUDAExecutionProvider' in ort.get_available_providers():
+                    self.device = "cuda"  # InsightFace will use CUDA even if PyTorch doesn't
+                    self.logger.debug("InsightFace model loaded with CUDA support")
+                else:
+                    self.logger.debug("InsightFace model loaded for CPU processing")
+            except ImportError:
+                self.logger.debug("InsightFace model loaded for CPU processing")
+                
         except ImportError:
             if FACE_RECOGNITION_AVAILABLE:
                 self.gpu_model = "face_recognition"
