@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional, List
 
 # Import shared utilities to avoid duplication
-from ..shared_utils import get_console, get_progress_components, get_table, setup_verbose_logging, check_and_display_sidecar_status, display_processing_start
+from ..shared_utils import get_console, get_progress_components, get_table, setup_verbose_logging, check_and_display_sidecar_status, display_processing_start, display_system_info
 
 
 console = None  # Will be initialized lazily
@@ -119,7 +119,7 @@ def detect(
     image_paths = find_image_files(input_path, recursive=recursive)
 
     if not image_paths:
-        _get_console().print("❌ No image files found", style="red")
+        get_console().print("❌ No image files found", style="red")
         return
 
     # Parse class names
@@ -127,7 +127,7 @@ def detect(
     if class_names:
         classes = [name.strip() for name in class_names.split(",")]
 
-    _get_console().print(f"📊 Found {len(image_paths)} images to analyze", style="blue")
+    get_console().print(f"📊 Found {len(image_paths)} images to analyze", style="blue")
 
     # Check for existing sidecar files
     get_console().print("🔍 Checking for existing sidecar files...", style="blue")
@@ -149,6 +149,9 @@ def detect(
     from ..utils import get_core
 
     core = get_core(ctx)
+
+    # Display comprehensive system information if verbose
+    display_system_info(core, "object_detection", verbose)
 
     # Prepare detection parameters
     detection_kwargs = {
@@ -207,7 +210,7 @@ def display_object_results(
         return
 
     # Create results table
-    table = _get_table()(title="Object Detection Results")
+    table = get_table()(title="Object Detection Results")
     table.add_column("Image", style="cyan")
     table.add_column("Objects Found", style="green", justify="right")
     table.add_column("Classes", style="yellow")
@@ -245,22 +248,22 @@ def display_object_results(
                 error_msg[:50] + "..." if len(error_msg) > 50 else error_msg,
             )
 
-    _get_console().print(table)
-    _get_console().print(
+    get_console().print(table)
+    get_console().print(
         f"\n📊 Summary: {successful_images}/{len(results)} images processed, {total_objects} objects detected"
     )
 
     # Display class statistics
     if class_counts:
-        _get_console().print("\n📈 Object Class Statistics:")
+        get_console().print("\n📈 Object Class Statistics:")
         for class_name, count in sorted(
             class_counts.items(), key=lambda x: x[1], reverse=True
         ):
-            _get_console().print(f"  {class_name}: {count}")
+            get_console().print(f"  {class_name}: {count}")
 
     # Extract objects if requested
     if extract_objects and output_dir:
-        _get_console().print(
+        get_console().print(
             f"\n💾 Extracting objects to {output_dir}...", style="blue"
         )
         extraction_results = core.extract_objects(image_paths, output_dir)
@@ -325,7 +328,7 @@ def extract(
     image_paths = find_image_files(input_path, recursive=recursive)
 
     if not image_paths:
-        _get_console().print("❌ No image files found", style="red")
+        get_console().print("❌ No image files found", style="red")
         return
 
     # Show progress for initialization and processing
@@ -385,7 +388,7 @@ def analyze(
     By default, directories are processed recursively. Use --no-recursive to disable.
     """
 
-    _get_console().print(f"📊 Analyzing objects in {input_path}...", style="blue")
+    get_console().print(f"📊 Analyzing objects in {input_path}...", style="blue")
 
     # Find image files (recursive by default)
     recursive = not no_recursive
@@ -395,7 +398,7 @@ def analyze(
     image_paths = find_image_files(input_path, recursive=recursive)
 
     if not image_paths:
-        _get_console().print("❌ No image files found", style="red")
+        get_console().print("❌ No image files found", style="red")
         return
 
     # Show progress for initialization and processing
@@ -407,7 +410,7 @@ def analyze(
     # Perform object detection for analysis - let tqdm handle progress display
     detection_kwargs = {"confidence": confidence, "save_sidecar": save_sidecar}
     if workers and workers > 1:
-        _get_console().print(f"🔄 Analyzing objects with {workers} parallel workers...", style="blue")
+        get_console().print(f"🔄 Analyzing objects with {workers} parallel workers...", style="blue")
         results = core.detect_objects(image_paths, max_workers=workers, **detection_kwargs)
     else:
         results = core.detect_objects(image_paths, **detection_kwargs)
@@ -420,7 +423,7 @@ def display_extraction_results(results: dict):
     """Display object extraction results."""
 
     # Create results table
-    table = _get_table()(title="Object Extraction Results")
+    table = get_table()(title="Object Extraction Results")
     table.add_column("Image", style="cyan")
     table.add_column("Objects Extracted", style="green", justify="right")
     table.add_column("Output Directory", style="yellow")
@@ -453,8 +456,8 @@ def display_extraction_results(results: dict):
                 error_msg[:50] + "..." if len(error_msg) > 50 else error_msg,
             )
 
-    _get_console().print(table)
-    _get_console().print(
+    get_console().print(table)
+    get_console().print(
         f"\n📊 Summary: {successful_extractions}/{len(results)} extractions successful, {total_objects} objects extracted"
     )
 
@@ -501,11 +504,11 @@ def display_object_analysis(results: dict):
                 size_stats[class_name].append(area)
 
     # Display summary
-    _get_console().print("\n📊 Object Analysis Summary")
-    _get_console().print(f"Total images processed: {total_images}")
-    _get_console().print(f"Successful detections: {successful_detections}")
-    _get_console().print(f"Total objects detected: {total_objects}")
-    _get_console().print(
+    get_console().print("\n📊 Object Analysis Summary")
+    get_console().print(f"Total images processed: {total_images}")
+    get_console().print(f"Successful detections: {successful_detections}")
+    get_console().print(f"Total objects detected: {total_objects}")
+    get_console().print(
         f"Average objects per image: {total_objects / total_images:.2f}"
         if total_images > 0
         else "N/A"
@@ -513,8 +516,8 @@ def display_object_analysis(results: dict):
 
     # Display class statistics
     if class_counts:
-        _get_console().print("\n📈 Object Class Distribution:")
-        class_table = _get_table()()
+        get_console().print("\n📈 Object Class Distribution:")
+        class_table = get_table()()
         class_table.add_column("Class", style="cyan")
         class_table.add_column("Count", style="green", justify="right")
         class_table.add_column("Percentage", style="yellow", justify="right")
@@ -544,15 +547,15 @@ def display_object_analysis(results: dict):
                 f"{avg_size:.0f} px²",
             )
 
-        _get_console().print(class_table)
+        get_console().print(class_table)
 
     # Display confidence distribution
     if confidence_stats:
-        _get_console().print("\n📊 Confidence Distribution:")
+        get_console().print("\n📊 Confidence Distribution:")
         for class_name, confidences in confidence_stats.items():
             avg_conf = sum(confidences) / len(confidences)
             min_conf = min(confidences)
             max_conf = max(confidences)
-            _get_console().print(
+            get_console().print(
                 f"  {class_name}: avg={avg_conf:.3f}, min={min_conf:.3f}, max={max_conf:.3f}"
             )

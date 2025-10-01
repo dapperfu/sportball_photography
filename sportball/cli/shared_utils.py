@@ -74,3 +74,65 @@ def display_processing_start(image_count: int, workers: int = None) -> None:
         console.print(f"🔄 Processing {image_count} images with {workers} parallel workers...", style="blue")
     else:
         console.print(f"🔄 Processing {image_count} images...", style="blue")
+
+
+def display_system_info(core, operation_type: str = "detection", verbose: int = 1) -> None:
+    """Display comprehensive system information for detection operations."""
+    if verbose < 1:
+        return
+        
+    console = get_console()
+    console.print("\n🔧 System Information:", style="bold blue")
+    
+    # Get face detector info
+    try:
+        face_detector = core.face_detector
+        face_model_info = face_detector.get_model_info()
+        face_model_name = face_model_info.get("model", "unknown")
+        face_device = face_model_info.get("device", "cpu")
+        face_gpu_enabled = face_model_info.get("gpu_enabled", False)
+        face_gpu_test_passed = face_model_info.get("gpu_test_passed", False)
+        
+        console.print(f"   Face Detection:")
+        console.print(f"     Model: {face_model_name}")
+        console.print(f"     Device: {face_device}")
+        if face_gpu_enabled and face_gpu_test_passed:
+            console.print(f"     GPU: ✅ Enabled and tested", style="green")
+        elif face_gpu_enabled:
+            console.print(f"     GPU: ⚠️  Enabled but test failed", style="yellow")
+        else:
+            console.print(f"     GPU: ❌ Disabled", style="red")
+    except Exception as e:
+        console.print(f"   Face Detection: ❌ Error getting info: {e}", style="red")
+    
+    # Get object detector info
+    try:
+        object_detector = core.get_object_detector()
+        
+        # Try to get model info, fallback to basic info
+        try:
+            object_model_info = object_detector.get_model_info()
+            object_model_name = object_model_info.get("model", "unknown")
+            object_device = object_model_info.get("device", "cpu")
+            object_gpu_enabled = object_model_info.get("gpu_enabled", False)
+            object_gpu_test_passed = object_model_info.get("gpu_test_passed", False)
+        except AttributeError:
+            # Fallback for detectors without get_model_info
+            object_model_name = "YOLOv8"
+            object_device = getattr(object_detector, 'device', 'cpu')
+            object_gpu_enabled = getattr(object_detector, 'enable_gpu', False)
+            object_gpu_test_passed = object_gpu_enabled and object_device.startswith('cuda')
+        
+        console.print(f"   Object Detection:")
+        console.print(f"     Model: {object_model_name}")
+        console.print(f"     Device: {object_device}")
+        if object_gpu_enabled and object_gpu_test_passed:
+            console.print(f"     GPU: ✅ Enabled and tested", style="green")
+        elif object_gpu_enabled:
+            console.print(f"     GPU: ⚠️  Enabled but test failed", style="yellow")
+        else:
+            console.print(f"     GPU: ❌ Disabled", style="red")
+    except Exception as e:
+        console.print(f"   Object Detection: ❌ Error getting info: {e}", style="red")
+    
+    console.print()  # Add spacing
