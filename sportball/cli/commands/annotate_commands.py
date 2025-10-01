@@ -30,7 +30,13 @@ def _get_table():
     return Table
 
 
-@click.command(context_settings={'help_option_names': ['-h', '--help']})
+@click.group(context_settings={'help_option_names': ['-h', '--help']})
+def viz_group():
+    """Visualization and annotation commands."""
+    pass
+
+
+@viz_group.command()
 @click.argument('input_path', type=click.Path(exists=True, path_type=Path))
 @click.argument('output_path', type=click.Path(path_type=Path))
 @click.option('--size', '-s',
@@ -198,9 +204,11 @@ def _annotate_single_image(image_path: Path,
     # Load face data if faces are enabled
     if not no_faces:
         face_data = core.sidecar.load_data(image_path, "face_detection")
-        if face_data and face_data.get('success', False):
-            faces = face_data.get('faces', [])
-            has_faces = len(faces) > 0
+        if face_data and 'face_detection' in face_data:
+            face_detection_data = face_data['face_detection']
+            if face_detection_data.get('success', False):
+                faces = face_detection_data.get('faces', [])
+                has_faces = len(faces) > 0
     
     # Load object data if objects are enabled
     if not no_objects:
@@ -240,15 +248,23 @@ def _annotate_single_image(image_path: Path,
     scale_y = new_height / original_height
     
     # Load and annotate faces
-    if not no_faces and has_faces and face_data:
-        faces = face_data.get('faces', [])
+    if not no_faces and has_faces and face_data and 'face_detection' in face_data:
+        face_detection_data = face_data['face_detection']
+        faces = face_detection_data.get('faces', [])
         for i, face in enumerate(faces):
             bbox = face.get('bbox', {})
             if bbox:
-                x = int(bbox.get('x', 0) * scale_x)
-                y = int(bbox.get('y', 0) * scale_y)
-                width = int(bbox.get('width', 0) * scale_x)
-                height = int(bbox.get('height', 0) * scale_y)
+                # Convert normalized coordinates to pixel coordinates
+                x = int(bbox.get('x', 0) * original_width)
+                y = int(bbox.get('y', 0) * original_height)
+                width = int(bbox.get('width', 0) * original_width)
+                height = int(bbox.get('height', 0) * original_height)
+                
+                # Scale to output size
+                x = int(x * scale_x)
+                y = int(y * scale_y)
+                width = int(width * scale_x)
+                height = int(height * scale_y)
                 
                 confidence = face.get('confidence', 0.0)
                 label = f"Face {i+1}"
