@@ -100,8 +100,8 @@ class SportballCore:
             cache_enabled=self.cache_enabled
         )
     
-    def get_opencv_detector(self, batch_size: int = 8):
-        """Get OpenCV face detector with custom batch size."""
+    def get_flexible_detector(self, batch_size: int = 8):
+        """Get flexible face detector with custom batch size (uses InsightFace/face_recognition)."""
         from .detectors.face import FaceDetector
         return FaceDetector(
             enable_gpu=self.enable_gpu,

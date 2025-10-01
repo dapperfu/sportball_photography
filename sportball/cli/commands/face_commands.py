@@ -335,7 +335,7 @@ def extract(ctx: click.Context,
               help='Maximum number of images to benchmark (default: 50)')
 @click.option('--detectors', '-d',
               type=str,
-              help='Comma-separated list of detectors to test (opencv_face_recognition,insightface)')
+              help='Comma-separated list of detectors to test (flexible_detector,insightface)')
 @click.option('--confidence', '-c',
               type=float,
               default=0.5,

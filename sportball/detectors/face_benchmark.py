@@ -73,15 +73,15 @@ class FaceDetectionBenchmark:
     def _initialize_detectors(self) -> None:
         """Initialize all available face detectors."""
         try:
-            # Initialize standard FaceDetector (OpenCV + face_recognition)
-            self.detectors['opencv_face_recognition'] = FaceDetector(
+            # Initialize flexible FaceDetector (InsightFace + face_recognition)
+            self.detectors['flexible_detector'] = FaceDetector(
                 enable_gpu=self.enable_gpu,
                 confidence_threshold=self.confidence_threshold,
                 min_face_size=self.min_face_size
             )
-            self.logger.info("Initialized OpenCV + face_recognition detector")
+            self.logger.info("Initialized flexible detector (InsightFace + face_recognition)")
         except Exception as e:
-            self.logger.warning(f"Failed to initialize OpenCV detector: {e}")
+            self.logger.warning(f"Failed to initialize flexible detector: {e}")
         
         try:
             # Initialize InsightFace detector

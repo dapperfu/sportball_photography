@@ -82,7 +82,11 @@ class FaceDetectionResult:
 
 class FaceDetector:
     """
-    Face detection and recognition using OpenCV and face_recognition.
+    Face detection and recognition using InsightFace and face_recognition libraries.
+    
+    This detector provides a flexible interface that automatically chooses the best
+    available backend between InsightFace (preferred) and face_recognition.
+    No OpenCV fallbacks are used to ensure modern, high-quality detection.
     """
     
     def __init__(self, 
