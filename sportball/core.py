@@ -574,12 +574,14 @@ class SportballCore:
         
         # Face detection
         try:
-            face_result = face_detector.detect_faces(
-                image_path, 
+            # Use detect_faces_batch for single image to ensure proper initialization
+            face_results = face_detector.detect_faces_batch(
+                [image_path], 
                 confidence=confidence,
                 border_padding=border_padding,
                 **kwargs
             )
+            face_result = face_results[str(image_path)]
             
             # Convert to dict format
             face_dict = {

@@ -175,6 +175,7 @@ def collect_sidecar_statistics(
         "processing_times": {},
         "success_rates": {},
         "data_sizes": {},
+        "object_type_counts": {},  # New: YOLOv8 object type statistics
         "filter_applied": operation_filter,
         "broken_symlink_details": [],
     }
@@ -269,6 +270,16 @@ def collect_sidecar_statistics(
                             stats_data["data_sizes"][operation_name] = []
                         stats_data["data_sizes"][operation_name].append(data_size)
 
+                        # Track YOLOv8 object types if this is object detection data
+                        if operation_key == "yolov8" and operation_data.get("success", False):
+                            objects = operation_data.get("objects", [])
+                            for obj in objects:
+                                if isinstance(obj, dict) and "class_name" in obj:
+                                    class_name = obj["class_name"]
+                                    if class_name not in stats_data["object_type_counts"]:
+                                        stats_data["object_type_counts"][class_name] = 0
+                                    stats_data["object_type_counts"][class_name] += 1
+
             except Exception:
                 # Skip corrupted sidecar files
                 continue
@@ -360,6 +371,32 @@ def display_table_stats(stats_data: Dict[str, Any]):
             )
 
         _get_console().print(ops_table)
+
+    # YOLOv8 Object Type Breakdown
+    if stats_data["object_type_counts"]:
+        obj_table = Table(title="YOLOv8 Object Type Breakdown")
+        obj_table.add_column("Object Type", style="cyan")
+        obj_table.add_column("Count", style="green", justify="right")
+        obj_table.add_column("Percentage", style="yellow", justify="right")
+
+        total_objects = sum(stats_data["object_type_counts"].values())
+        
+        # Sort by count (descending)
+        sorted_objects = sorted(
+            stats_data["object_type_counts"].items(), 
+            key=lambda x: x[1], 
+            reverse=True
+        )
+
+        for obj_type, count in sorted_objects:
+            percentage = (count / total_objects * 100) if total_objects > 0 else 0
+            obj_table.add_row(
+                obj_type.title(),
+                str(count),
+                f"{percentage:.1f}%"
+            )
+
+        _get_console().print(obj_table)
 
     # Coverage analysis
     if stats_data.get("file_coverage"):
@@ -470,6 +507,28 @@ def display_summary_stats(stats_data: Dict[str, Any]):
             _get_console().print(
                 f"  {operation.replace('_', ' ').title()}: {count} files ({percentage:.1f}%)"
             )
+
+    # YOLOv8 Object Type Summary
+    if stats_data["object_type_counts"]:
+        _get_console().print("\n🎯 YOLOv8 Object Types Found:")
+        total_objects = sum(stats_data["object_type_counts"].values())
+        
+        # Sort by count (descending) and show top 10
+        sorted_objects = sorted(
+            stats_data["object_type_counts"].items(), 
+            key=lambda x: x[1], 
+            reverse=True
+        )
+        
+        for obj_type, count in sorted_objects[:10]:  # Show top 10
+            percentage = (count / total_objects * 100) if total_objects > 0 else 0
+            _get_console().print(
+                f"  {obj_type.title()}: {count} ({percentage:.1f}%)"
+            )
+        
+        if len(sorted_objects) > 10:
+            remaining = len(sorted_objects) - 10
+            _get_console().print(f"  ... and {remaining} more object types")
 
 
 def display_json_stats(stats_data: Dict[str, Any]):
