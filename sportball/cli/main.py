@@ -60,27 +60,33 @@ def cli(
     Examples:
 
     \b
-    # Detect faces in images
-    sportball face detect /path/to/images
+    # Unified detection (faces + objects) - RECOMMENDED
+    sportball detect /path/to/images --workers 8
 
     \b
-    # Extract objects from images
-    sportball object extract /path/to/images --output /path/to/output
+    # Extract faces and objects
+    sportball extract /path/to/images --output /path/to/output
+
+    \b
+    # Detect specific objects only
+    sportball detect /path/to/images --classes "sports ball,person"
 
     \b
     # Split photos into games
     sportball games split /path/to/photos --output /path/to/games
 
     \b
-    # Detect balls specifically
-    sportball object detect /path/to/images --classes "sports ball"
-
-    \b
     # Assess photo quality
     sportball quality assess /path/to/images
 
-    # Analyze sidecar files
-    sportball sidecar stats /path/to/images
+    \b
+    # Annotate images with detection results
+    sportball annotate /path/to/images --output /path/to/annotated
+
+    \b
+    # Legacy commands (still available)
+    sportball face detect /path/to/images
+    sportball object detect /path/to/images
 
     Bash Completion:
     To enable bash completion, add this to your ~/.bashrc or ~/.bash_profile:
@@ -147,6 +153,7 @@ def cli(
 def _load_commands():
     """Load command groups only when needed."""
     from .commands import (
+        unified_commands,
         face_commands,
         object_commands,
         game_commands,
@@ -156,6 +163,11 @@ def _load_commands():
         annotate_commands,
     )
 
+    # Add unified commands as primary commands
+    cli.add_command(unified_commands.detect, name="detect")
+    cli.add_command(unified_commands.extract, name="extract")
+    
+    # Keep legacy commands for backward compatibility
     cli.add_command(face_commands.face_group, name="face")
     cli.add_command(object_commands.object_group, name="object")
     cli.add_command(game_commands.game_group, name="games")

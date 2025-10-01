@@ -313,6 +313,353 @@ class SportballCore:
         return results
 
     @timing_decorator
+    @gpu_accelerated(fallback_cpu=True)
+    def detect_unified(
+        self,
+        image_paths: Union[Path, List[Path]],
+        save_sidecar: bool = True,
+        force: bool = False,
+        max_workers: Optional[int] = None,
+        confidence: float = 0.5,
+        classes: Optional[List[str]] = None,
+        border_padding: float = 0.25,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """
+        Detect both faces and objects in images using unified processing.
+        
+        This method processes each image only once, running both face detection
+        and object detection on the same loaded image for efficiency.
+        
+        Args:
+            image_paths: Single image path or list of image paths
+            save_sidecar: Whether to save results to sidecar files
+            force: Whether to force detection even if sidecar exists
+            max_workers: Maximum number of parallel workers (None for auto)
+            confidence: Detection confidence threshold
+            classes: List of object classes to detect
+            border_padding: Border padding for face detection
+            **kwargs: Additional arguments
+            
+        Returns:
+            Dictionary containing both face and object detection results
+        """
+        if isinstance(image_paths, Path):
+            image_paths = [image_paths]
+
+        self.logger.info(f"Unified detection in {len(image_paths)} images")
+
+        # Get detectors
+        face_detector = self.face_detector
+        object_detector = self.get_object_detector()
+
+        # Determine processing strategy
+        if max_workers is None or max_workers <= 1:
+            # Sequential processing
+            return self._detect_unified_sequential(
+                image_paths, face_detector, object_detector, 
+                save_sidecar, force, confidence, classes, border_padding, **kwargs
+            )
+        else:
+            # Parallel processing
+            return self._detect_unified_parallel(
+                image_paths, face_detector, object_detector, max_workers,
+                save_sidecar, force, confidence, classes, border_padding, **kwargs
+            )
+
+    def _detect_unified_sequential(
+        self,
+        image_paths: List[Path],
+        face_detector,
+        object_detector,
+        save_sidecar: bool,
+        force: bool,
+        confidence: float,
+        classes: Optional[List[str]],
+        border_padding: float,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """Sequential unified detection."""
+        from tqdm import tqdm
+        
+        face_results = {}
+        object_results = {}
+        
+        # Use tqdm for progress tracking
+        try:
+            progress_bar = tqdm(
+                total=len(image_paths),
+                desc="Unified detection",
+                unit="images",
+                bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}",
+            )
+        except ImportError:
+            progress_bar = None
+
+        for image_path in image_paths:
+            try:
+                # Process single image with both detectors
+                face_result, object_result = self._process_single_image_unified(
+                    image_path, face_detector, object_detector,
+                    save_sidecar, force, confidence, classes, border_padding, **kwargs
+                )
+                
+                face_results[str(image_path)] = face_result
+                object_results[str(image_path)] = object_result
+                
+                # Update progress
+                if progress_bar:
+                    progress_bar.set_postfix(file=image_path.name)
+                    progress_bar.update(1)
+                    
+            except Exception as e:
+                self.logger.error(f"Error processing {image_path}: {e}")
+                # Create error results
+                face_results[str(image_path)] = {
+                    "success": False,
+                    "error": str(e),
+                    "face_count": 0,
+                    "faces": []
+                }
+                object_results[str(image_path)] = {
+                    "success": False,
+                    "error": str(e),
+                    "objects_found": 0,
+                    "detected_objects": []
+                }
+                
+                # Update progress even on error
+                if progress_bar:
+                    progress_bar.set_postfix(file=image_path.name)
+                    progress_bar.update(1)
+
+        # Close progress bar
+        if progress_bar:
+            progress_bar.close()
+
+        return {
+            "faces": face_results,
+            "objects": object_results
+        }
+
+    def _detect_unified_parallel(
+        self,
+        image_paths: List[Path],
+        face_detector,
+        object_detector,
+        max_workers: int,
+        save_sidecar: bool,
+        force: bool,
+        confidence: float,
+        classes: Optional[List[str]],
+        border_padding: float,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """Parallel unified detection."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from tqdm import tqdm
+        
+        def process_image(image_path: Path):
+            """Process a single image with both detectors."""
+            try:
+                return self._process_single_image_unified(
+                    image_path, face_detector, object_detector,
+                    save_sidecar, force, confidence, classes, border_padding, **kwargs
+                )
+            except Exception as e:
+                self.logger.error(f"Error processing {image_path}: {e}")
+                # Return error results
+                error_face_result = {
+                    "success": False,
+                    "error": str(e),
+                    "face_count": 0,
+                    "faces": []
+                }
+                error_object_result = {
+                    "success": False,
+                    "error": str(e),
+                    "objects_found": 0,
+                    "detected_objects": []
+                }
+                return error_face_result, error_object_result
+
+        face_results = {}
+        object_results = {}
+        
+        # Use tqdm for progress tracking
+        try:
+            progress_bar = tqdm(
+                total=len(image_paths),
+                desc="Unified detection",
+                unit="images",
+                bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}",
+            )
+        except ImportError:
+            progress_bar = None
+
+        # Process images in parallel
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_path = {
+                executor.submit(process_image, image_path): image_path 
+                for image_path in image_paths
+            }
+            
+            # Collect results as they complete
+            for future in as_completed(future_to_path):
+                image_path = future_to_path[future]
+                try:
+                    face_result, object_result = future.result()
+                    face_results[str(image_path)] = face_result
+                    object_results[str(image_path)] = object_result
+                    
+                    # Update progress
+                    if progress_bar:
+                        progress_bar.set_postfix(file=image_path.name)
+                        progress_bar.update(1)
+                        
+                except Exception as e:
+                    self.logger.error(f"Unexpected error processing {image_path}: {e}")
+                    # Create error results
+                    face_results[str(image_path)] = {
+                        "success": False,
+                        "error": str(e),
+                        "face_count": 0,
+                        "faces": []
+                    }
+                    object_results[str(image_path)] = {
+                        "success": False,
+                        "error": str(e),
+                        "objects_found": 0,
+                        "detected_objects": []
+                    }
+                    
+                    # Update progress even on error
+                    if progress_bar:
+                        progress_bar.set_postfix(file=image_path.name)
+                        progress_bar.update(1)
+
+        # Close progress bar
+        if progress_bar:
+            progress_bar.close()
+
+        return {
+            "faces": face_results,
+            "objects": object_results
+        }
+
+    def _process_single_image_unified(
+        self,
+        image_path: Path,
+        face_detector,
+        object_detector,
+        save_sidecar: bool,
+        force: bool,
+        confidence: float,
+        classes: Optional[List[str]],
+        border_padding: float,
+        **kwargs,
+    ) -> tuple:
+        """Process a single image with both face and object detection."""
+        import time
+        from PIL import Image
+        import numpy as np
+        
+        # Load image once
+        try:
+            pil_image = Image.open(image_path)
+            image_array = np.array(pil_image)
+        except Exception as e:
+            raise Exception(f"Failed to load image: {e}")
+        
+        # Face detection
+        try:
+            face_result = face_detector.detect_faces(
+                image_path, 
+                confidence=confidence,
+                border_padding=border_padding,
+                **kwargs
+            )
+            
+            # Convert to dict format
+            face_dict = {
+                "success": face_result.success,
+                "face_count": face_result.face_count,
+                "faces": [face.to_dict() for face in face_result.faces],
+                "processing_time": face_result.processing_time,
+                "error": face_result.error if face_result.error else None
+            }
+            
+        except Exception as e:
+            face_dict = {
+                "success": False,
+                "face_count": 0,
+                "faces": [],
+                "processing_time": 0.0,
+                "error": str(e)
+            }
+        
+        # Object detection
+        try:
+            # Set target classes if specified
+            if classes:
+                object_detector.target_objects = set(classes)
+                # Recalculate target class IDs
+                target_objects_lower = {obj.lower() for obj in object_detector.target_objects}
+                object_detector.target_class_ids = set()
+                for class_name, class_id in object_detector.class_name_to_id.items():
+                    if class_name.lower() in target_objects_lower:
+                        object_detector.target_class_ids.add(class_id)
+            
+            object_result = object_detector.detect_objects_in_image(image_path, force)
+            
+            # Convert to dict format
+            object_dict = {
+                "success": object_result.error is None,
+                "objects_found": object_result.objects_found,
+                "detected_objects": [obj.to_dict() for obj in object_result.detected_objects],
+                "detection_time": object_result.detection_time,
+                "error": object_result.error if object_result.error else None
+            }
+            
+        except Exception as e:
+            object_dict = {
+                "success": False,
+                "objects_found": 0,
+                "detected_objects": [],
+                "detection_time": 0.0,
+                "error": str(e)
+            }
+        
+        # Save sidecar files if requested
+        if save_sidecar:
+            try:
+                # Save face sidecar
+                if face_dict["success"]:
+                    face_sidecar_data = {
+                        "faces": face_dict["faces"],
+                        "face_count": face_dict["face_count"],
+                        "processing_time": face_dict["processing_time"],
+                        "detector": "unified"
+                    }
+                    self.sidecar.save_sidecar(image_path, face_sidecar_data, "faces")
+                
+                # Save object sidecar
+                if object_dict["success"]:
+                    object_sidecar_data = {
+                        "objects": object_dict["detected_objects"],
+                        "objects_found": object_dict["objects_found"],
+                        "detection_time": object_dict["detection_time"],
+                        "detector": "unified"
+                    }
+                    self.sidecar.save_sidecar(image_path, object_sidecar_data, "objects")
+                    
+            except Exception as e:
+                self.logger.warning(f"Failed to save sidecar for {image_path}: {e}")
+        
+        return face_dict, object_dict
+
+    @timing_decorator
     def detect_games(
         self,
         photo_directory: Path,
