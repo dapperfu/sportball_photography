@@ -18,6 +18,7 @@ from typing import List, Optional, Set, Dict, Any, Union, Tuple
 import cv2
 import numpy as np
 from tqdm import tqdm
+from PIL import Image
 from loguru import logger
 
 # Try to import ultralytics for YOLOv8
@@ -882,6 +883,38 @@ class ObjectDetector:
             }
         }
     
+    def _copy_exif_data_with_fast_exif_rs(self, original_image_path: Path, output_image_path: Path) -> bool:
+        """
+        Copy EXIF data from original image to output image using fast-exif-rs.
+        
+        Args:
+            original_image_path: Path to the original image with EXIF data
+            output_image_path: Path to the output image to receive EXIF data
+            
+        Returns:
+            True if EXIF copying was successful, False otherwise
+        """
+        try:
+            import fast_exif_rs_py
+            
+            # Create a temporary file for the EXIF-copied image
+            temp_path = output_image_path.with_suffix('.tmp' + output_image_path.suffix)
+            
+            # Use fast-exif-rs to copy all EXIF data
+            copier = fast_exif_rs_py.PyFastExifCopier()
+            copier.copy_all_exif(str(original_image_path), str(output_image_path), str(temp_path))
+            
+            # Replace the original output image with the EXIF-copied version
+            temp_path.replace(output_image_path)
+            
+            return True
+            
+        except Exception as e:
+            # If EXIF copying fails, the original output image remains unchanged
+            # This ensures the extraction process doesn't fail due to EXIF issues
+            logger.debug(f"EXIF copying failed for {output_image_path}: {e}")
+            return False
+
     def extract_objects(self, 
                       image_path: Path, 
                       detection_data: Dict[str, Any], 
@@ -988,7 +1021,13 @@ class ObjectDetector:
                             object_image, class_name, confidence
                         )
                     
-                    cv2.imwrite(str(object_path), object_image)
+                    # Convert OpenCV image to PIL and save with EXIF preservation
+                    object_image_rgb = cv2.cvtColor(object_image, cv2.COLOR_BGR2RGB)
+                    pil_object_image = Image.fromarray(object_image_rgb)
+                    pil_object_image.save(str(object_path), 'JPEG', quality=95)
+                    
+                    # Copy EXIF data from original image to extracted object
+                    self._copy_exif_data_with_fast_exif_rs(image_path, object_path)
                     
                     individual_objects.append({
                         'filename': object_filename,
@@ -1024,7 +1063,14 @@ class ObjectDetector:
         if create_annotated and objects:
             annotated_filename = f"{image_path.stem}_annotated.jpg"
             annotated_image_path = image_output_dir / annotated_filename
-            cv2.imwrite(str(annotated_image_path), image)
+            
+            # Convert OpenCV image to PIL and save with EXIF preservation
+            annotated_image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            pil_annotated_image = Image.fromarray(annotated_image_rgb)
+            pil_annotated_image.save(str(annotated_image_path), 'JPEG', quality=95)
+            
+            # Copy EXIF data from original image to annotated image
+            self._copy_exif_data_with_fast_exif_rs(image_path, annotated_image_path)
         
         return {
             "success": True,
