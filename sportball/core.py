@@ -178,14 +178,16 @@ class SportballCore:
                      image_paths: Union[Path, List[Path]], 
                      save_sidecar: bool = True,
                      batch_size: int = 4,
+                     max_workers: Optional[int] = None,
                      **kwargs) -> Dict[str, Any]:
         """
-        Detect faces in images using small-batch processing with immediate JSON saving.
+        Detect faces in images using parallel processing with immediate JSON saving.
         
         Args:
             image_paths: Single image path or list of image paths
             save_sidecar: Whether to save results to sidecar files
             batch_size: Number of images to process in each batch (default: 4)
+            max_workers: Maximum number of parallel workers (None for auto)
             **kwargs: Additional arguments for face detection
             
         Returns:
@@ -197,8 +199,13 @@ class SportballCore:
         # Use InsightFace detector (default and most reliable)
         face_detector = self.face_detector
         
-        # Process all images at once - the detector handles batching internally
-        results = face_detector.detect_faces_batch(image_paths, **kwargs)
+        # Determine processing strategy based on worker count
+        if max_workers is None or max_workers == 1:
+            # Use sequential processing for single worker or auto-detection
+            results = face_detector.detect_faces_batch(image_paths, **kwargs)
+        else:
+            # Use parallel processing for multiple workers
+            results = self._detect_faces_parallel(image_paths, face_detector, max_workers, **kwargs)
         
         # Save JSON files after processing
         if save_sidecar:
@@ -228,6 +235,55 @@ class SportballCore:
                         formatted_result,
                         metadata={"kwargs": kwargs}
                     )
+        
+        return results
+    
+    def _detect_faces_parallel(self, 
+                              image_paths: List[Path], 
+                              face_detector, 
+                              max_workers: int, 
+                              **kwargs) -> Dict[str, Any]:
+        """
+        Detect faces in images using parallel processing with ThreadPoolExecutor.
+        
+        Args:
+            image_paths: List of image paths
+            face_detector: Face detector instance
+            max_workers: Maximum number of parallel workers
+            **kwargs: Additional arguments for face detection
+            
+        Returns:
+            Dictionary containing detection results
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from tqdm import tqdm
+        
+        results = {}
+        
+        def detect_single_image(image_path: Path) -> tuple:
+            """Detect faces in a single image."""
+            try:
+                result = face_detector.detect_faces(image_path, **kwargs)
+                return str(image_path), result
+            except Exception as e:
+                self.logger.error(f"Face detection failed for {image_path}: {e}")
+                return str(image_path), None
+        
+        # Process images in parallel
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_path = {
+                executor.submit(detect_single_image, image_path): image_path
+                for image_path in image_paths
+            }
+            
+            # Process completed tasks with progress bar
+            with tqdm(total=len(image_paths), desc="Detecting faces", unit="images") as pbar:
+                for future in as_completed(future_to_path):
+                    image_path, result = future.result()
+                    if result is not None:
+                        results[image_path] = result
+                    pbar.update(1)
         
         return results
     

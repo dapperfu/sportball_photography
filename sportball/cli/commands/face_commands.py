@@ -84,6 +84,9 @@ def face_group():
 @click.option('--verbose', '-v', 
               count=True, 
               help='Enable verbose logging (-v for info, -vv for debug)')
+@click.option('--workers', '-w',
+              type=int,
+              help='Number of parallel workers (default: auto)')
 @click.option('--batch-size', 'batch_size',
               type=int,
               default=8,
@@ -100,6 +103,7 @@ def detect(ctx: click.Context,
            force: bool,
            no_recursive: bool,
            verbose: int,
+           workers: Optional[int],
            batch_size: int,
            auto_tune: bool):
     """
@@ -195,27 +199,33 @@ def detect(ctx: click.Context,
         # Use Rich progress bar for better user experience
         Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn = _get_progress()
         
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TextColumn("[progress.completed]{task.completed}/{task.total}"),
-            TimeElapsedColumn(),
-            console=console,
-            transient=False
-        ) as progress:
-            task = progress.add_task("Detecting faces", total=len(files_to_process))
-            
-            # Process images in chunks to update progress
-            chunk_size = max(1, len(files_to_process) // 100)  # Update progress ~100 times
-            results_dict = {}
-            
-            for i in range(0, len(files_to_process), chunk_size):
-                chunk = files_to_process[i:i + chunk_size]
-                chunk_results = core.detect_faces(chunk, **detection_kwargs)
-                results_dict.update(chunk_results)
-                progress.update(task, advance=len(chunk))
+        # Process all images at once for parallel processing
+        if workers and workers > 1:
+            # Use parallel processing - let the core handle progress bars
+            results_dict = core.detect_faces(files_to_process, max_workers=workers, **detection_kwargs)
+        else:
+            # Use sequential processing with progress bar
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TextColumn("[progress.completed]{task.completed}/{task.total}"),
+                TimeElapsedColumn(),
+                console=console,
+                transient=False
+            ) as progress:
+                task = progress.add_task("Detecting faces", total=len(files_to_process))
+                
+                # Process images in chunks to update progress
+                chunk_size = max(1, len(files_to_process) // 100)  # Update progress ~100 times
+                results_dict = {}
+                
+                for i in range(0, len(files_to_process), chunk_size):
+                    chunk = files_to_process[i:i + chunk_size]
+                    chunk_results = core.detect_faces(chunk, max_workers=workers, **detection_kwargs)
+                    results_dict.update(chunk_results)
+                    progress.update(task, advance=len(chunk))
                 
     except KeyboardInterrupt:
         _get_console().print("\n🛑 Face detection interrupted by user", style="yellow")
