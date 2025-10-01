@@ -486,30 +486,61 @@ class FaceDetector:
                     error="Failed to load image"
                 )
             
+            original_height, original_width = image.shape[:2]
+            
+            # Resize image to 1080p for optimal detection performance and reduced false positives
+            target_width = 1920  # 1080p width
+            target_height = 1080  # 1080p height
+            
+            # Calculate scaling factor to fit within 1080p while maintaining aspect ratio
+            scale_factor = min(target_width / original_width, target_height / original_height)
+            
+            # Keep original image for final coordinates, use resized for detection
+            original_image = image.copy()
+            
+            if scale_factor < 1.0:
+                # Only resize if image is larger than 1080p
+                new_width = int(original_width * scale_factor)
+                new_height = int(original_height * scale_factor)
+                image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+                self.logger.debug(f"Resized image from {original_width}x{original_height} to {new_width}x{new_height}")
+            else:
+                scale_factor = 1.0  # No scaling needed
+            
             # Use GPU model if available, otherwise fall back to CPU
             if self.gpu_model is not None and self.device == "cuda":
                 faces = self._detect_faces_gpu(image, confidence, face_size)
             else:
                 faces = self._detect_faces_cpu(image, face_size)
             
-            # Filter faces by confidence and size
+            # Filter faces by confidence and size, converting coordinates back to original image size
             detected_faces = []
             for i, (x, y, w, h) in enumerate(faces):
-                if w >= face_size and h >= face_size:
+                # Convert coordinates back to original image size
+                if scale_factor < 1.0:
+                    orig_x = int(x / scale_factor)
+                    orig_y = int(y / scale_factor)
+                    orig_w = int(w / scale_factor)
+                    orig_h = int(h / scale_factor)
+                else:
+                    orig_x, orig_y, orig_w, orig_h = x, y, w, h
+                
+                # Check minimum face size using original coordinates
+                if orig_w >= face_size and orig_h >= face_size:
                     # Calculate confidence (simplified)
-                    face_confidence = min(1.0, (w * h) / (face_size * face_size))
+                    face_confidence = min(1.0, (orig_w * orig_h) / (face_size * face_size))
                     
                     if confidence is None or face_confidence >= confidence:
                         detected_face = DetectedFace(
                             face_id=i,
-                            bbox=(x, y, w, h),
+                            bbox=(orig_x, orig_y, orig_w, orig_h),
                             confidence=face_confidence
                         )
                         
-                        # Add face encoding if available
+                        # Add face encoding if available (use original image for encoding)
                         if self.face_recognition_available:
                             try:
-                                face_encoding = self._get_face_encoding(image, (x, y, w, h))
+                                face_encoding = self._get_face_encoding(original_image, (orig_x, orig_y, orig_w, orig_h))
                                 detected_face.encoding = face_encoding
                             except Exception as e:
                                 self.logger.warning(f"Failed to get face encoding: {e}")
@@ -1271,10 +1302,31 @@ class InsightFaceDetector:
                     error="Failed to load image"
                 )
             
+            original_height, original_width = image.shape[:2]
+            
+            # Resize image to 1080p for optimal detection performance and reduced false positives
+            target_width = 1920  # 1080p width
+            target_height = 1080  # 1080p height
+            
+            # Calculate scaling factor to fit within 1080p while maintaining aspect ratio
+            scale_factor = min(target_width / original_width, target_height / original_height)
+            
+            # Keep original image for final coordinates, use resized for detection
+            original_image = image.copy()
+            
+            if scale_factor < 1.0:
+                # Only resize if image is larger than 1080p
+                new_width = int(original_width * scale_factor)
+                new_height = int(original_height * scale_factor)
+                image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+                self.logger.debug(f"Resized image from {original_width}x{original_height} to {new_width}x{new_height}")
+            else:
+                scale_factor = 1.0  # No scaling needed
+            
             # Detect faces using InsightFace
             faces = self.app.get(image)
             
-            # Filter faces by confidence and size
+            # Filter faces by confidence and size, converting coordinates back to original image size
             detected_faces = []
             for i, face in enumerate(faces):
                 # Get bounding box
@@ -1282,8 +1334,19 @@ class InsightFaceDetector:
                 x, y, x2, y2 = bbox
                 w, h = x2 - x, y2 - y
                 
-                # Check minimum face size
-                if w >= face_size and h >= face_size:
+                # Convert coordinates back to original image size
+                if scale_factor < 1.0:
+                    orig_x = int(x / scale_factor)
+                    orig_y = int(y / scale_factor)
+                    orig_x2 = int(x2 / scale_factor)
+                    orig_y2 = int(y2 / scale_factor)
+                    orig_w = orig_x2 - orig_x
+                    orig_h = orig_y2 - orig_y
+                else:
+                    orig_x, orig_y, orig_w, orig_h = x, y, w, h
+                
+                # Check minimum face size using original coordinates
+                if orig_w >= face_size and orig_h >= face_size:
                     # Get confidence score
                     face_confidence = float(face.det_score)
                     
@@ -1292,7 +1355,7 @@ class InsightFaceDetector:
                     if face_confidence >= conf_threshold:
                         detected_face = DetectedFace(
                             face_id=i,
-                            bbox=(x, y, w, h),
+                            bbox=(orig_x, orig_y, orig_w, orig_h),
                             confidence=face_confidence,
                             landmarks=face.kps.tolist() if hasattr(face, 'kps') else None,
                             encoding=face.embedding.tolist() if hasattr(face, 'embedding') else None
