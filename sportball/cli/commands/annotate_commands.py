@@ -423,9 +423,9 @@ def _annotate_single_image(
         success = False
         error_msg = f"Failed to save annotated image: {e}"
 
-    # Copy EXIF data from original image to annotated image using piexif
+    # Copy EXIF data from original image to annotated image using fast-exif-rs
     if success:
-        exif_copied = _copy_exif_data_with_piexif(image_path, output_file)
+        exif_copied = _copy_exif_data_with_fast_exif_rs(image_path, output_file)
         if not exif_copied:
             # EXIF copying failed, but the annotation was successful
             # This is not a critical failure, so we continue
@@ -443,11 +443,11 @@ def _annotate_single_image(
         return {"success": False, "error": error_msg}
 
 
-def _copy_exif_data_with_piexif(
+def _copy_exif_data_with_fast_exif_rs(
     original_image_path: Path, annotated_image_path: Path
 ) -> bool:
     """
-    Copy EXIF data from original image to annotated image using piexif.
+    Copy EXIF data from original image to annotated image using fast-exif-rs.
 
     Args:
         original_image_path: Path to the original image with EXIF data
@@ -457,20 +457,21 @@ def _copy_exif_data_with_piexif(
         True if EXIF copying was successful, False otherwise
     """
     try:
-        import piexif
-        from PIL import Image
+        import fast_exif_rs_py
 
-        # Load the original image and extract EXIF data
-        with Image.open(original_image_path) as original_img:
-            exif_dict = piexif.load(original_img.info.get("exif", b""))
+        # Create a temporary file for the EXIF-copied image
+        temp_path = annotated_image_path.with_suffix(
+            ".tmp" + annotated_image_path.suffix
+        )
 
-        # Load the annotated image and insert EXIF data
-        with Image.open(annotated_image_path) as annotated_img:
-            # Convert EXIF data back to bytes
-            exif_bytes = piexif.dump(exif_dict)
-            
-            # Save the image with EXIF data
-            annotated_img.save(annotated_image_path, exif=exif_bytes)
+        # Use fast-exif-rs to copy all EXIF data
+        copier = fast_exif_rs_py.PyFastExifCopier()
+        copier.copy_all_exif(
+            str(original_image_path), str(annotated_image_path), str(temp_path)
+        )
+
+        # Replace the original annotated image with the EXIF-copied version
+        temp_path.replace(annotated_image_path)
 
         return True
 
