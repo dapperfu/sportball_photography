@@ -229,6 +229,7 @@ def detect(ctx: click.Context,
         # Process all images at once for parallel processing
         if workers and workers > 1:
             # Use parallel processing - let the core handle progress bars
+            console.print("🔄 Processing images in parallel...", style="blue")
             results_dict = core.detect_faces(files_to_process, max_workers=workers, **detection_kwargs)
         else:
             # Use sequential processing with progress bar
@@ -253,7 +254,7 @@ def detect(ctx: click.Context,
                     chunk_results = core.detect_faces(chunk, max_workers=workers, **detection_kwargs)
                     results_dict.update(chunk_results)
                     progress.update(task, advance=len(chunk))
-                
+        
     except KeyboardInterrupt:
         _get_console().print("\n🛑 Face detection interrupted by user", style="yellow")
         return
@@ -262,27 +263,43 @@ def detect(ctx: click.Context,
         return
     
     # Convert results to list format for compatibility
+    console.print("📊 Processing results...", style="blue")
     results = []
     total_faces_found = 0
     total_time = 0.0
     
-    for image_file in files_to_process:
-        if str(image_file) in results_dict:
-            result = results_dict[str(image_file)]
-            results.append(result)
-            total_faces_found += result.face_count
-            total_time += result.processing_time
-        else:
-            # Handle missing results
-            from ...detectors.face import FaceDetectionResult
-            error_result = FaceDetectionResult(
-                faces=[],
-                face_count=0,
-                success=False,
-                processing_time=0.0,
-                error="No result returned"
-            )
-            results.append(error_result)
+    # Add progress indicator for result processing
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        TextColumn("[progress.completed]{task.completed}/{task.total}"),
+        TimeElapsedColumn(),
+        console=console,
+        transient=False
+    ) as progress:
+        task = progress.add_task("Processing results", total=len(files_to_process))
+        
+        for image_file in files_to_process:
+            if str(image_file) in results_dict:
+                result = results_dict[str(image_file)]
+                results.append(result)
+                total_faces_found += result.face_count
+                total_time += result.processing_time
+            else:
+                # Handle missing results
+                from ...detectors.face import FaceDetectionResult
+                error_result = FaceDetectionResult(
+                    faces=[],
+                    face_count=0,
+                    success=False,
+                    processing_time=0.0,
+                    error="No result returned"
+                )
+                results.append(error_result)
+            
+            progress.update(task, advance=1)
     
     # Display final results
     display_face_detection_results(results, len(files_to_process), total_faces_found, total_time, len(skipped_files))

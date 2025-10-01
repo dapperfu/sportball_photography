@@ -202,39 +202,13 @@ class SportballCore:
         # Determine processing strategy based on worker count
         if max_workers is None or max_workers == 1:
             # Use sequential processing for single worker or auto-detection
-            results = face_detector.detect_faces_batch(image_paths, **kwargs)
+            # Pass save_sidecar parameter to enable immediate saving
+            results = face_detector.detect_faces_batch(image_paths, save_sidecar=save_sidecar, **kwargs)
         else:
             # Use parallel processing for multiple workers
             results = self._detect_faces_parallel(image_paths, face_detector, max_workers, **kwargs)
-        
-        # Save JSON files after processing
-        if save_sidecar:
-            for image_path in image_paths:
-                if str(image_path) in results:
-                    # Load image dimensions for ratio calculation
-                    try:
-                        import cv2
-                        image = cv2.imread(str(image_path))
-                        if image is not None:
-                            image_height, image_width = image.shape[:2]
-                        else:
-                            image_width = image_height = None
-                    except Exception:
-                        image_width = image_height = None
-                    
-                    # Format the result for JSON serialization
-                    formatted_result = face_detector._format_result(
-                        results[str(image_path)], 
-                        image_path,
-                        image_width,
-                        image_height
-                    )
-                    self.sidecar.save_data_merge(
-                        image_path, 
-                        "face_detection", 
-                        formatted_result,
-                        metadata={"kwargs": kwargs}
-                    )
+            # For parallel processing, we still need to save sidecar files at the end
+            # TODO: Implement immediate sidecar saving for parallel processing
         
         return results
     

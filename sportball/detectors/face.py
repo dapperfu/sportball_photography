@@ -646,7 +646,8 @@ class FaceDetector:
                           confidence: Optional[float] = None,
                           min_faces: int = 1,
                           max_faces: Optional[int] = None,
-                          face_size: int = 64) -> Dict[str, FaceDetectionResult]:
+                          face_size: int = 64,
+                          save_sidecar: bool = True) -> Dict[str, FaceDetectionResult]:
         """
         Detect faces in multiple images using batch processing.
         
@@ -656,6 +657,7 @@ class FaceDetector:
             min_faces: Minimum number of faces to detect
             max_faces: Maximum number of faces to detect
             face_size: Minimum face size in pixels
+            save_sidecar: Whether to save results to sidecar files immediately
             
         Returns:
             Dictionary mapping image paths to detection results
@@ -1507,7 +1509,8 @@ class InsightFaceDetector:
                           confidence: Optional[float] = None,
                           min_faces: int = 1,
                           max_faces: Optional[int] = None,
-                          face_size: int = 64) -> Dict[str, FaceDetectionResult]:
+                          face_size: int = 64,
+                          save_sidecar: bool = True) -> Dict[str, FaceDetectionResult]:
         """
         Detect faces in multiple images using parallel GPU batch processing.
         
@@ -1517,25 +1520,32 @@ class InsightFaceDetector:
             min_faces: Minimum number of faces to detect
             max_faces: Maximum number of faces to detect
             face_size: Minimum face size in pixels
+            save_sidecar: Whether to save results to sidecar files immediately
             
         Returns:
             Dictionary mapping image paths to detection results
         """
         # Use sequential processing - it's faster than pseudo-batching
-        return self._process_sequential(image_paths, confidence, min_faces, max_faces, face_size)
+        return self._process_sequential(image_paths, confidence, min_faces, max_faces, face_size, save_sidecar)
     
     def _process_sequential(self, 
                            image_paths: List[Path], 
                            confidence: Optional[float],
                            min_faces: int,
                            max_faces: Optional[int],
-                           face_size: int) -> Dict[str, FaceDetectionResult]:
+                           face_size: int,
+                           save_sidecar: bool = True) -> Dict[str, FaceDetectionResult]:
         """Process images sequentially (most efficient approach)."""
         import time
         import cv2
         
         start_time = time.time()
         results = {}
+        
+        # Initialize sidecar manager for immediate saving
+        if save_sidecar:
+            from ..sidecar import SidecarManager
+            sidecar_manager = SidecarManager()
         
         # Process images sequentially without progress bar (main CLI handles progress)
         
@@ -1599,7 +1609,7 @@ class InsightFaceDetector:
                 # Calculate processing time for this image
                 processing_time = time.time() - start_time
                 
-                results[str(img_path)] = FaceDetectionResult(
+                result = FaceDetectionResult(
                     faces=detected_faces,
                     face_count=len(detected_faces),
                     success=success,
@@ -1607,6 +1617,35 @@ class InsightFaceDetector:
                     error=None if success else f"Found {len(detected_faces)} faces, need at least {min_faces}"
                 )
                 
+                results[str(img_path)] = result
+                
+                # Save sidecar file immediately after processing this image
+                if save_sidecar:
+                    try:
+                        # Load image dimensions for ratio calculation
+                        image_height, image_width = image.shape[:2]
+                        
+                        # Format the result for JSON serialization
+                        formatted_result = self._format_result(
+                            result, 
+                            img_path,
+                            image_width,
+                            image_height
+                        )
+                        
+                        # Save to sidecar file immediately
+                        sidecar_manager.save_data_merge(
+                            img_path, 
+                            "face_detection", 
+                            formatted_result,
+                            metadata={"confidence": confidence, "min_faces": min_faces, "face_size": face_size}
+                        )
+                        
+                        self.logger.debug(f"Saved face detection results for {img_path.name}")
+                        
+                    except Exception as save_error:
+                        self.logger.warning(f"Failed to save sidecar for {img_path}: {save_error}")
+                        # Continue processing even if sidecar save fails
                 
             except Exception as e:
                 self.logger.error(f"Error processing {img_path}: {e}")
