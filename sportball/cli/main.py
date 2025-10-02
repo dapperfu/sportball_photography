@@ -64,8 +64,16 @@ def cli(
     sportball detect /path/to/images --workers 8
 
     \b
-    # Extract faces and objects
-    sportball extract /path/to/images --output /path/to/output
+    # Unified extraction (faces + objects) - RECOMMENDED
+    sportball extract /path/to/images /path/to/output
+
+    \b
+    # Extract only faces
+    sportball extract /path/to/images /path/to/output --faces
+
+    \b
+    # Extract only objects with custom settings
+    sportball extract /path/to/images /path/to/output --objects --object-types "person,sports ball"
 
     \b
     # Detect specific objects only
@@ -84,9 +92,11 @@ def cli(
     sportball annotate /path/to/images --output /path/to/annotated
 
     \b
-    # Legacy commands (still available)
+    # Legacy commands (deprecated - use unified commands above)
     sportball face detect /path/to/images
     sportball object detect /path/to/images
+    sportball face extract /path/to/images --output /path/to/output
+    sportball object extract /path/to/images /path/to/output
 
     Bash Completion:
     To enable bash completion, add this to your ~/.bashrc or ~/.bash_profile:

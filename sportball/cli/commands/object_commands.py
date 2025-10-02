@@ -334,9 +334,13 @@ def extract(
     """
     Extract detected objects from images.
 
+    ⚠️  DEPRECATED: This command is deprecated. Use 'sportball extract --objects' instead.
+
     INPUT_PATH should be a directory containing images with object detection sidecar files.
     OUTPUT_DIR is where extracted objects will be saved.
     By default, directories are processed recursively. Use --no-recursive to disable.
+    
+    Migration: Use 'sportball extract <input_path> <output_dir> --objects --object-padding <padding>'
     """
 
     # Parse object types

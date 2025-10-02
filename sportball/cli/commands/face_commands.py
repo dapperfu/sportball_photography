@@ -353,7 +353,11 @@ def extract(
     """
     Extract detected faces to separate images at their natural detected size.
 
+    ⚠️  DEPRECATED: This command is deprecated. Use 'sportball extract --faces' instead.
+    
     INPUT_PATH should be a directory containing images with face detection sidecar files.
+    
+    Migration: Use 'sportball extract <input_path> <output_dir> --faces --face-padding <padding>'
     """
 
     # Setup logging based on verbose level

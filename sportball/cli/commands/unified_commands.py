@@ -221,6 +221,24 @@ def detect(
 @click.argument("input_path", type=click.Path(exists=True, path_type=Path))
 @click.argument("output_dir", type=click.Path(path_type=Path))
 @click.option(
+    "--faces",
+    "extract_faces",
+    is_flag=True,
+    help="Extract only faces from images",
+)
+@click.option(
+    "--objects",
+    "extract_objects", 
+    is_flag=True,
+    help="Extract only objects from images",
+)
+@click.option(
+    "--both",
+    "extract_both",
+    is_flag=True,
+    help="Extract both faces and objects from images",
+)
+@click.option(
     "--face-padding",
     "-fp",
     type=int,
@@ -259,11 +277,20 @@ def detect(
     count=True,
     help="Enable verbose logging (-v for info, -vv for debug)",
 )
+@click.option(
+    "--show-empty-results",
+    "show_empty_results",
+    is_flag=True,
+    help="Show output even when no faces/objects are extracted (default: suppress empty results)",
+)
 @click.pass_context
 def extract(
     ctx: click.Context,
     input_path: Path,
     output_dir: Path,
+    extract_faces: bool,
+    extract_objects: bool,
+    extract_both: bool,
     face_padding: int,
     object_padding: int,
     object_types: Optional[str],
@@ -272,13 +299,41 @@ def extract(
     no_recursive: bool,
     workers: Optional[int],
     verbose: int,
+    show_empty_results: bool,
 ):
     """
-    Extract detected faces and objects from images.
+    Extract detected faces and objects from images using unified processing.
+    
+    This command provides a single interface for extracting faces, objects, or both
+    from images with detection sidecar files. Use flags to specify what to extract.
     
     INPUT_PATH should be a directory containing images with detection sidecar files.
     OUTPUT_DIR is where extracted faces and objects will be saved.
+    
+    Extraction Types:
+    - --faces: Extract only faces (saved to <output_dir>/faces/)
+    - --objects: Extract only objects (saved to <output_dir>/objects/)  
+    - --both: Extract both faces and objects (default if no flag specified)
+    
     By default, directories are processed recursively. Use --no-recursive to disable.
+    
+    Examples:
+    
+    \b
+    # Extract both faces and objects (default behavior)
+    sb extract /path/to/images /path/to/output
+    
+    \b
+    # Extract only faces
+    sb extract /path/to/images /path/to/output --faces
+    
+    \b
+    # Extract only objects with custom padding
+    sb extract /path/to/images /path/to/output --objects --object-padding 20
+    
+    \b
+    # Extract specific object types
+    sb extract /path/to/images /path/to/output --objects --object-types "person,sports ball"
     """
     
     # Setup logging based on verbose level
@@ -287,11 +342,35 @@ def extract(
     elif verbose >= 1:
         _get_console().print("ℹ️  Info logging enabled", style="blue")
 
+    # FR-002.5: Validate flag mutual exclusivity
+    flags_specified = sum([extract_faces, extract_objects, extract_both])
+    if flags_specified > 1:
+        console = _get_console()
+        console.print("❌ Error: Only one extraction type flag can be specified at a time", style="red")
+        console.print("💡 Use --faces, --objects, or --both, but not multiple flags together", style="yellow")
+        return
+
+    # FR-002.4: Default behavior is --both when no flag is specified
+    if flags_specified == 0:
+        extract_both = True
+        extraction_type = "both"
+    elif extract_faces:
+        extraction_type = "faces"
+    elif extract_objects:
+        extraction_type = "objects"
+    elif extract_both:
+        extraction_type = "both"
+
     # Lazy import to avoid heavy dependencies at startup
     from ..utils import get_core, find_image_files
 
     core = get_core(ctx)
     console = _get_console()
+
+    # FR-006.2: Validate input path exists and contains images
+    if not input_path.exists():
+        console.print(f"❌ Input path does not exist: {input_path}", style="red")
+        return
 
     # Find image files
     recursive = not no_recursive
@@ -299,9 +378,22 @@ def extract(
 
     if not image_files:
         console.print("❌ No image files found", style="red")
+        console.print("💡 Make sure the input path contains valid image files (jpg, jpeg, png)", style="yellow")
         return
 
     console.print(f"📊 Found {len(image_files)} images to process", style="blue")
+
+    # FR-006.3: Validate output directory is writable
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        # Test write permissions
+        test_file = output_dir / ".write_test"
+        test_file.touch()
+        test_file.unlink()
+    except (PermissionError, OSError) as e:
+        console.print(f"❌ Cannot write to output directory: {output_dir}", style="red")
+        console.print(f"💡 Error: {e}", style="yellow")
+        return
 
     # Parse object types
     types = None
@@ -309,20 +401,94 @@ def extract(
         types = [t.strip() for t in object_types.split(",")]
         console.print(f"🎯 Extracting objects: {', '.join(types)}", style="blue")
 
-    # Extract faces and objects
-    extraction_results = core.extract_unified(
-        image_files,
-        output_dir,
-        face_padding=face_padding,
-        object_padding=object_padding,
-        object_types=types,
-        min_size=min_size,
-        max_size=max_size,
-        max_workers=workers,
-    )
+    # Display extraction configuration
+    console.print(f"🎯 Extraction type: {extraction_type}", style="blue")
+    console.print(f"📁 Output directory: {output_dir}", style="blue")
+    
+    if extraction_type in ["faces", "both"]:
+        console.print(f"👥 Face padding: {face_padding}px", style="blue")
+    if extraction_type in ["objects", "both"]:
+        console.print(f"🎯 Object padding: {object_padding}px", style="blue")
+        if types:
+            console.print(f"🎯 Object types: {', '.join(types)}", style="blue")
+        console.print(f"📏 Object size range: {min_size}px - {max_size or 'unlimited'}px", style="blue")
 
-    # Display extraction results
-    display_extraction_results(extraction_results)
+    # Perform extraction based on type
+    try:
+        if extraction_type == "faces":
+            # FR-002.1: Extract only faces
+            extraction_results = core.extract_faces(
+                image_files,
+                output_dir / "faces",
+                padding=face_padding,
+                max_workers=workers,
+            )
+            # Format results for display
+            formatted_results = {
+                "faces_extracted": sum(r.get("faces_extracted", 0) for r in extraction_results.values() if r.get("success", False)),
+                "objects_extracted": 0,
+                "output_directory": str(output_dir / "faces"),
+            }
+            
+        elif extraction_type == "objects":
+            # FR-002.2: Extract only objects
+            extraction_results = core.extract_objects(
+                image_files,
+                output_dir / "objects",
+                object_types=types,
+                min_size=min_size,
+                max_size=max_size,
+                padding=object_padding,
+                max_workers=workers,
+            )
+            # Format results for display
+            formatted_results = {
+                "faces_extracted": 0,
+                "objects_extracted": sum(r.get("objects_extracted", 0) for r in extraction_results.values() if r.get("success", False)),
+                "output_directory": str(output_dir / "objects"),
+            }
+            
+        else:  # extraction_type == "both"
+            # FR-002.3: Extract both faces and objects
+            # Create subdirectories
+            faces_dir = output_dir / "faces"
+            objects_dir = output_dir / "objects"
+            
+            # Extract faces
+            face_results = core.extract_faces(
+                image_files,
+                faces_dir,
+                padding=face_padding,
+                max_workers=workers,
+            )
+            
+            # Extract objects
+            object_results = core.extract_objects(
+                image_files,
+                objects_dir,
+                object_types=types,
+                min_size=min_size,
+                max_size=max_size,
+                padding=object_padding,
+                max_workers=workers,
+            )
+            
+            # Format results for display
+            formatted_results = {
+                "faces_extracted": sum(r.get("faces_extracted", 0) for r in face_results.values() if r.get("success", False)),
+                "objects_extracted": sum(r.get("objects_extracted", 0) for r in object_results.values() if r.get("success", False)),
+                "output_directory": str(output_dir),
+            }
+
+        # Display extraction results
+        display_unified_extraction_results(formatted_results, not show_empty_results)
+
+    except Exception as e:
+        console.print(f"❌ Extraction failed: {e}", style="red")
+        if verbose >= 1:
+            import traceback
+            console.print(traceback.format_exc(), style="red")
+        return
 
 
 def display_unified_results(results: Dict[str, Any], total_images: int, suppress_empty: bool):
@@ -376,6 +542,29 @@ def display_unified_results(results: Dict[str, Any], total_images: int, suppress
             
             if face_count > 0 or object_count > 0 or not suppress_empty:
                 console.print(f"   {Path(image_path).name}: {face_count} faces, {object_count} objects")
+
+
+def display_unified_extraction_results(results: Dict[str, Any], suppress_empty: bool):
+    """Display unified extraction results."""
+    console = _get_console()
+    
+    faces_extracted = results.get("faces_extracted", 0)
+    objects_extracted = results.get("objects_extracted", 0)
+    
+    # FR-004.5: Suppress empty results if requested
+    if suppress_empty and faces_extracted == 0 and objects_extracted == 0:
+        return
+    
+    console.print(f"\n✅ Unified extraction complete!", style="green")
+    console.print(f"📊 Extraction Summary:", style="bold blue")
+    
+    if faces_extracted > 0:
+        console.print(f"   👥 Faces extracted: {faces_extracted}")
+    if objects_extracted > 0:
+        console.print(f"   🎯 Objects extracted: {objects_extracted}")
+    
+    if "output_directory" in results:
+        console.print(f"   📁 Output directory: {results['output_directory']}")
 
 
 def display_extraction_results(results: Dict[str, Any]):
