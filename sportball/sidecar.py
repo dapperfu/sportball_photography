@@ -493,7 +493,7 @@ class Sidecar:
         )
 
         return {
-            "directory": str(directory),
+            "directory": str(directory.resolve()),
             "total_images": total_images,
             "symlink_count": symlink_count,
             "broken_symlinks": broken_symlinks,

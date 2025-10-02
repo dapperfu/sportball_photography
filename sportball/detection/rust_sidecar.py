@@ -452,7 +452,7 @@ class RustSidecarManager:
             "exported_at": json.dumps(
                 {"$date": {"$numberLong": str(int(__import__("time").time() * 1000))}}
             ),
-            "source_directory": str(directory),
+            "source_directory": str(directory.resolve()),
             "total_sidecars": len(sidecars),
             "sidecars": [
                 {

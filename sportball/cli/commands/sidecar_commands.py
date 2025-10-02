@@ -165,7 +165,7 @@ def collect_sidecar_statistics(
 
     # Initialize statistics
     stats_data = {
-        "directory": str(directory),
+        "directory": str(directory.resolve()),
         "total_images": len(image_files),
         "symlink_count": 0,
         "broken_symlinks": 0,
