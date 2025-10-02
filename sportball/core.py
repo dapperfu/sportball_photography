@@ -74,6 +74,9 @@ class SportballCore:
         self._game_detector = None
         self._quality_assessor = None
         self._face_clustering = None
+        self._pose_detector = None
+        self._color_analyzer = None
+        self._jersey_splitter = None
 
         self.logger = logger.bind(component="core")
         self.logger.info("Initialized SportballCore")
@@ -174,6 +177,43 @@ class SportballCore:
                 cache_enabled=self.cache_enabled, verbose=self.verbose
             )
         return self._face_clustering
+
+    @property
+    def pose_detector(self):
+        """Lazy-loaded pose detector."""
+        if self._pose_detector is None:
+            from .detectors.pose import PoseDetector
+
+            self._pose_detector = PoseDetector(
+                confidence_threshold=0.7,
+                cache_enabled=self.cache_enabled,
+                enable_gpu=self.enable_gpu,
+            )
+        return self._pose_detector
+
+    @property
+    def color_analyzer(self):
+        """Lazy-loaded color analyzer."""
+        if self._color_analyzer is None:
+            from .detectors.color_analysis import ColorAnalyzer
+
+            self._color_analyzer = ColorAnalyzer(
+                cache_enabled=self.cache_enabled,
+            )
+        return self._color_analyzer
+
+    @property
+    def jersey_splitter(self):
+        """Lazy-loaded jersey splitter."""
+        if self._jersey_splitter is None:
+            from .detectors.jersey_splitting import JerseyGameSplitter
+
+            self._jersey_splitter = JerseyGameSplitter(
+                pose_confidence_threshold=0.7,
+                color_similarity_threshold=0.15,
+                cache_enabled=self.cache_enabled,
+            )
+        return self._jersey_splitter
 
     @timing_decorator
     @gpu_accelerated(fallback_cpu=True)
@@ -1431,3 +1471,114 @@ class SportballCore:
             Dictionary with benchmark results
         """
         return self.detection.benchmark_performance(test_files, iterations)
+
+    @timing_decorator
+    @gpu_accelerated(fallback_cpu=True)
+    def split_games_by_jersey_color(
+        self,
+        image_paths: Union[Path, List[Path]],
+        output_dir: Optional[Path] = None,
+        save_sidecar: bool = True,
+        pose_confidence_threshold: float = 0.7,
+        color_similarity_threshold: float = 0.15,
+        min_team_photos: int = 5,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """
+        Split games based on jersey colors.
+
+        This method analyzes jersey colors in photographs to identify different
+        teams and automatically organize photos into separate games based on
+        team affiliations.
+
+        Args:
+            image_paths: Single image path or list of image paths
+            output_dir: Optional output directory for organized games
+            save_sidecar: Whether to save results to sidecar files
+            pose_confidence_threshold: Minimum confidence for pose detections
+            color_similarity_threshold: Threshold for grouping similar jersey colors
+            min_team_photos: Minimum photos required to form a team
+            **kwargs: Additional arguments for jersey splitting
+
+        Returns:
+            Dictionary containing jersey splitting results
+        """
+        if isinstance(image_paths, Path):
+            image_paths = [image_paths]
+
+        self.logger.info(f"Splitting games by jersey color for {len(image_paths)} images")
+
+        try:
+            # Get jersey splitter with custom parameters
+            jersey_splitter = self.get_jersey_splitter(
+                pose_confidence_threshold=pose_confidence_threshold,
+                color_similarity_threshold=color_similarity_threshold,
+                min_team_photos=min_team_photos,
+            )
+
+            # Perform jersey-based game splitting
+            result = jersey_splitter.split_games_by_jersey_color(
+                image_paths, output_dir=output_dir, save_sidecar=save_sidecar, **kwargs
+            )
+
+            # Convert result to dictionary format
+            result_dict = {
+                "success": result.success,
+                "error": result.error,
+                "processing_time": result.processing_time,
+                "split_decisions": [
+                    {
+                        "photo_path": str(decision.photo_path),
+                        "should_split": decision.should_split,
+                        "split_games": decision.split_games,
+                        "confidence": decision.confidence,
+                        "reasoning": decision.reasoning,
+                        "jersey_groups": [
+                            {
+                                "team_name": group.team_name,
+                                "dominant_color": group.dominant_color,
+                                "confidence": group.confidence,
+                            }
+                            for group in decision.jersey_groups
+                        ],
+                    }
+                    for decision in result.split_decisions
+                ],
+                "detected_teams": [
+                    {
+                        "team_name": team.team_name,
+                        "dominant_color": team.dominant_color,
+                        "photo_count": team.photo_count,
+                        "confidence": team.confidence,
+                        "photo_paths": [str(p) for p in team.photo_paths],
+                    }
+                    for team in result.detected_teams
+                ],
+            }
+
+            # Add summary
+            result_dict["summary"] = jersey_splitter.get_split_summary(result)
+
+            return result_dict
+
+        except Exception as e:
+            self.logger.error(f"Jersey splitting failed: {e}")
+            return {"error": str(e), "success": False}
+
+    def get_jersey_splitter(
+        self,
+        pose_confidence_threshold: float = 0.7,
+        color_similarity_threshold: float = 0.15,
+        min_team_photos: int = 5,
+        multi_team_threshold: float = 0.3,
+    ):
+        """Get jersey splitter with custom parameters."""
+        from .detectors.jersey_splitting import JerseyGameSplitter
+
+        return JerseyGameSplitter(
+            pose_confidence_threshold=pose_confidence_threshold,
+            color_similarity_threshold=color_similarity_threshold,
+            min_team_photos=min_team_photos,
+            multi_team_threshold=multi_team_threshold,
+            cache_enabled=self.cache_enabled,
+        )

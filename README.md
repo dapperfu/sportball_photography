@@ -9,6 +9,7 @@ A comprehensive Python package for analyzing and organizing sports photographs u
 - **Face Detection & Recognition** - Detect and cluster faces in sports photos
 - **Object Detection** - YOLOv8-powered object detection (players, balls, equipment)
 - **Game Boundary Detection** - Automatically split photos into games based on timestamps
+- **Jersey Color Splitting** - Split games based on jersey colors using pose detection and color analysis
 - **Photo Quality Assessment** - Multi-metric quality analysis and filtering
 - **Recursive Processing** - Process directories recursively by default
 - **Parallel Processing** - GPU-accelerated processing with multi-threading
@@ -91,6 +92,12 @@ sportball games split /path/to/photos /path/to/games --pattern "202509*_*"
 
 # Add manual split points
 sportball games split /path/to/photos /path/to/games --split-file splits.txt
+
+# Split games by jersey colors (requires pose detection)
+sportball games split /path/to/photos /path/to/games --split-by-jersey
+
+# Jersey splitting with custom parameters
+sportball games split /path/to/photos /path/to/games --split-by-jersey --pose-confidence 0.8 --color-similarity 0.1
 ```
 
 ### Ball Detection (via Object Detection)

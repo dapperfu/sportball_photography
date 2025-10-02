@@ -99,6 +99,33 @@ def game_group():
     is_flag=True,
     help="Only analyze and display results without creating folders",
 )
+@click.option(
+    "--split-by-jersey",
+    "split_by_jersey",
+    is_flag=True,
+    help="Split games based on jersey colors (requires pose detection)",
+)
+@click.option(
+    "--pose-confidence",
+    "pose_confidence",
+    type=float,
+    default=0.7,
+    help="Minimum confidence for pose detections (jersey splitting)",
+)
+@click.option(
+    "--color-similarity",
+    "color_similarity",
+    type=float,
+    default=0.15,
+    help="Threshold for grouping similar jersey colors (jersey splitting)",
+)
+@click.option(
+    "--min-team-photos",
+    "min_team_photos",
+    type=int,
+    default=5,
+    help="Minimum photos required to form a team (jersey splitting)",
+)
 @click.pass_context
 def split(
     ctx: click.Context,
@@ -112,6 +139,10 @@ def split(
     copy: bool,
     save_sidecar: bool,
     analyze_only: bool,
+    split_by_jersey: bool,
+    pose_confidence: float,
+    color_similarity: float,
+    min_team_photos: int,
 ):
     """
     Split photos into games with optional manual split points.
@@ -139,9 +170,25 @@ def split(
     \b
     # Copy files instead of symlinks
     sb games split /path/to/photos /path/to/games --copy
+
+    \b
+    # Split by jersey colors (requires pose detection)
+    sb games split /path/to/photos /path/to/games --split-by-jersey
+
+    \b
+    # Jersey splitting with custom parameters
+    sb games split /path/to/photos /path/to/games --split-by-jersey --pose-confidence 0.8 --color-similarity 0.1
     """
 
     core = get_core(ctx)
+
+    # Handle jersey-based splitting
+    if split_by_jersey:
+        _handle_jersey_splitting(
+            core, input_path, output_dir, analyze_only, copy, save_sidecar,
+            pose_confidence, color_similarity, min_team_photos
+        )
+        return
 
     if analyze_only:
         _get_console().print(f"📊 Analyzing games in {input_path}...", style="blue")
@@ -390,3 +437,288 @@ def create_organized_folders(
         f"✅ Created {len(game_folders)} organized game folders", style="green"
     )
     return game_folders
+
+
+def _handle_jersey_splitting(
+    core,
+    input_path: Path,
+    output_dir: Path,
+    analyze_only: bool,
+    copy_files: bool,
+    save_sidecar: bool,
+    pose_confidence: float,
+    color_similarity: float,
+    min_team_photos: int,
+):
+    """Handle jersey-based game splitting."""
+    console = _get_console()
+    
+    if analyze_only:
+        console.print(f"📊 Analyzing jersey colors in {input_path}...", style="blue")
+    else:
+        console.print(
+            f"🎨 Splitting games by jersey colors in {input_path}...", style="blue"
+        )
+        console.print(f"Output: {output_dir}")
+    
+    console.print(f"Pose confidence threshold: {pose_confidence}")
+    console.print(f"Color similarity threshold: {color_similarity}")
+    console.print(f"Minimum team photos: {min_team_photos}")
+    
+    # Find image files
+    image_files = []
+    for ext in [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]:
+        image_files.extend(input_path.rglob(f"*{ext}"))
+        image_files.extend(input_path.rglob(f"*{ext.upper()}"))
+    
+    if not image_files:
+        console.print("❌ No image files found", style="red")
+        return
+    
+    console.print(f"Found {len(image_files)} images to process")
+    
+    # Check for existing pose detection data
+    missing_pose_data = []
+    for image_file in image_files:
+        sidecar_data = core.sidecar.load_data(image_file, "pose_detection")
+        if not sidecar_data:
+            missing_pose_data.append(image_file)
+    
+    if missing_pose_data:
+        console.print(
+            f"⚠️  Warning: {len(missing_pose_data)} images missing pose detection data",
+            style="yellow"
+        )
+        console.print(
+            "Consider running pose detection first: sb pose detect /path/to/images",
+            style="yellow"
+        )
+    
+    # Perform jersey splitting
+    import time
+    start_time = time.time()
+    
+    Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn = _get_progress()
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Processing jersey colors...", total=None)
+        
+        # Perform jersey-based game splitting
+        results = core.split_games_by_jersey_color(
+            image_files,
+            output_dir=output_dir if not analyze_only else None,
+            save_sidecar=save_sidecar,
+            pose_confidence_threshold=pose_confidence,
+            color_similarity_threshold=color_similarity,
+            min_team_photos=min_team_photos,
+        )
+        
+        progress.update(task, completed=True, description="Jersey splitting complete")
+    
+    end_time = time.time()
+    processing_time = end_time - start_time
+    
+    # Display results
+    _display_jersey_splitting_results(results, output_dir, copy_files, analyze_only, processing_time)
+
+
+def _display_jersey_splitting_results(
+    results: dict, 
+    output_dir: Path, 
+    copy_files: bool, 
+    analyze_only: bool = False, 
+    processing_time: Optional[float] = None
+):
+    """Display jersey splitting results."""
+    console = _get_console()
+    
+    if not results.get("success", False):
+        console.print(
+            f"❌ Jersey splitting failed: {results.get('error', 'Unknown error')}",
+            style="red",
+        )
+        return
+    
+    summary = results.get("summary", {})
+    detected_teams = results.get("detected_teams", [])
+    split_decisions = results.get("split_decisions", [])
+    
+    if not detected_teams:
+        console.print("❌ No teams detected", style="red")
+        return
+    
+    # Display detected teams
+    Table = _get_table()
+    teams_table = Table(title="Detected Teams")
+    teams_table.add_column("Team Name", style="cyan")
+    teams_table.add_column("Dominant Color", style="green")
+    teams_table.add_column("Photo Count", style="magenta", justify="right")
+    teams_table.add_column("Confidence", style="yellow", justify="right")
+    
+    for team in detected_teams:
+        color_rgb = team.get("dominant_color", {}).get("rgb_color", (0, 0, 0))
+        color_str = f"RGB{color_rgb}"
+        
+        teams_table.add_row(
+            team.get("team_name", "Unknown"),
+            color_str,
+            str(team.get("photo_count", 0)),
+            f"{team.get('confidence', 0.0):.2f}",
+        )
+    
+    console.print(teams_table)
+    
+    # Display splitting statistics
+    total_photos = summary.get("total_photos", 0)
+    split_photos = summary.get("split_photos", 0)
+    single_team_photos = summary.get("single_team_photos", 0)
+    multi_team_photos = summary.get("multi_team_photos", 0)
+    no_team_photos = summary.get("no_team_photos", 0)
+    avg_confidence = summary.get("average_confidence", 0.0)
+    
+    # Format timing information
+    if processing_time is not None:
+        hours = int(processing_time // 3600)
+        minutes = int((processing_time % 3600) // 60)
+        seconds = int(processing_time % 60)
+        time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        
+        # Calculate photos per second
+        photos_per_second = total_photos / processing_time if processing_time > 0 else 0
+        
+        console.print(
+            f"\n📊 Summary: {len(detected_teams)} teams detected in {time_str}, "
+            f"{photos_per_second:.1f} photos/sec, {total_photos} photos total"
+        )
+    else:
+        console.print(
+            f"\n📊 Summary: {len(detected_teams)} teams detected, {total_photos} photos total"
+        )
+    
+    console.print(f"Split photos: {split_photos}")
+    console.print(f"Single team photos: {single_team_photos}")
+    console.print(f"Multi-team photos: {multi_team_photos}")
+    console.print(f"No team photos: {no_team_photos}")
+    console.print(f"Average confidence: {avg_confidence:.2f}")
+    
+    # Create organized folders (unless analyze-only mode)
+    if not analyze_only and output_dir:
+        console.print(
+            f"\n📁 Creating organized folders in {output_dir}...", style="blue"
+        )
+        _create_jersey_organized_folders(split_decisions, detected_teams, output_dir, copy_files)
+    else:
+        console.print(
+            "\n📊 Analysis complete - no folders created (use without --analyze-only to create folders)",
+            style="blue",
+        )
+
+
+def _create_jersey_organized_folders(
+    split_decisions: List[Dict], 
+    detected_teams: List[Dict], 
+    output_dir: Path, 
+    copy_files: bool = False
+) -> Dict[str, Path]:
+    """
+    Create organized folders for jersey-based game splitting.
+    
+    Args:
+        split_decisions: List of splitting decisions
+        detected_teams: List of detected teams
+        output_dir: Output directory for organized games
+        copy_files: Whether to copy files (True) or create symlinks (False)
+        
+    Returns:
+        Dictionary mapping team names to folder paths
+    """
+    console = _get_console()
+    
+    if not detected_teams:
+        console.print("❌ No teams to organize", style="red")
+        return {}
+    
+    console.print(
+        f"📁 Creating organized folders for {len(detected_teams)} teams...", style="blue"
+    )
+    
+    # Create output directory
+    output_dir.mkdir(parents=True, exist_ok=True)
+    team_folders = {}
+    
+    # Create folders for each team
+    for team in detected_teams:
+        team_name = team.get("team_name", "Unknown")
+        team_folder = output_dir / team_name
+        team_folder.mkdir(exist_ok=True)
+        team_folders[team_name] = team_folder
+        
+        console.print(f"📂 Created folder: {team_name}", style="green")
+    
+    # Create folders for special categories
+    multi_team_folder = output_dir / "MultiTeam"
+    multi_team_folder.mkdir(exist_ok=True)
+    
+    single_team_folder = output_dir / "SingleTeam"
+    single_team_folder.mkdir(exist_ok=True)
+    
+    no_team_folder = output_dir / "NoTeam"
+    no_team_folder.mkdir(exist_ok=True)
+    
+    # Organize photos
+    for decision in split_decisions:
+        photo_path = Path(decision.get("photo_path", ""))
+        if not photo_path.exists():
+            continue
+        
+        should_split = decision.get("should_split", False)
+        split_games = decision.get("split_games", [])
+        
+        if should_split and len(split_games) > 1:
+            # Multi-team photo
+            dest_path = multi_team_folder / photo_path.name
+            _copy_or_symlink_photo(photo_path, dest_path, copy_files)
+        elif len(split_games) == 1:
+            # Single team photo
+            team_name = split_games[0]
+            if team_name in team_folders:
+                dest_path = team_folders[team_name] / photo_path.name
+                _copy_or_symlink_photo(photo_path, dest_path, copy_files)
+        else:
+            # No clear team
+            dest_path = no_team_folder / photo_path.name
+            _copy_or_symlink_photo(photo_path, dest_path, copy_files)
+    
+    console.print(
+        f"✅ Created organized folders for jersey-based splitting", style="green"
+    )
+    return team_folders
+
+
+def _copy_or_symlink_photo(src_path: Path, dest_path: Path, copy_files: bool):
+    """Copy or symlink photo from source to destination."""
+    try:
+        import shutil
+        
+        if copy_files:
+            # Copy file
+            if dest_path.exists():
+                dest_path.unlink()
+            shutil.copy2(src_path, dest_path)
+        else:
+            # Create symlink
+            if dest_path.exists():
+                dest_path.unlink()
+            dest_path.symlink_to(src_path.resolve())
+    except Exception as e:
+        console = _get_console()
+        console.print(
+            f"⚠️  Warning: Could not copy/symlink {src_path}: {e}",
+            style="yellow",
+        )
