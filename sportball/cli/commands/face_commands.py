@@ -968,13 +968,18 @@ def display_face_detection_results(
         return
 
     get_console().print("\n✅ Face detection complete!", style="green")
-    get_console().print(f"📊 Processed {total_images} images")
+    
+    # Format timing information
+    hours = int(total_time // 3600)
+    minutes = int((total_time % 3600) // 60)
+    seconds = int(total_time % 60)
+    time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    
+    # Calculate images per second
+    images_per_second = total_images / total_time if total_time > 0 else 0
+    
+    get_console().print(f"📊 Processed {total_images} images in {time_str}, {images_per_second:.1f} images/sec")
     get_console().print(f"👥 Found {total_faces_found} faces")
-    get_console().print(f"⏱️  Total detection time: {total_time:.2f}s")
-    if total_images > 0:
-        get_console().print(
-            f"📈 Average time per image: {total_time / total_images:.2f}s"
-        )
 
     # Show skipped count
     if skipped_count > 0:

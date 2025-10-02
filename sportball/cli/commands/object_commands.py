@@ -164,14 +164,21 @@ def detect(
     # Perform detection - let tqdm handle progress display
     display_processing_start(len(files_to_process), workers)
     
+    # Track timing
+    import time
+    start_time = time.time()
+    
     if workers and workers > 1:
         results = core.detect_objects(files_to_process, max_workers=workers, **detection_kwargs)
     else:
         results = core.detect_objects(files_to_process, **detection_kwargs)
+    
+    end_time = time.time()
+    processing_time = end_time - start_time
 
     # Display results
     display_object_results(
-        results, extract_objects, output, core, files_to_process, not show_empty_results
+        results, extract_objects, output, core, files_to_process, not show_empty_results, processing_time
     )
 
 
@@ -182,6 +189,7 @@ def display_object_results(
     core,
     image_paths: List[Path],
     suppress_empty: bool = True,
+    processing_time: Optional[float] = None,
 ):
     """
     Display object detection results.
@@ -193,6 +201,7 @@ def display_object_results(
         core: Core instance
         image_paths: List of image paths processed
         suppress_empty: If True, suppress output when no objects are found (default: True)
+        processing_time: Total processing time in seconds (optional)
     """
 
     # Count total objects found first
@@ -249,9 +258,24 @@ def display_object_results(
             )
 
     get_console().print(table)
-    get_console().print(
-        f"\n📊 Summary: {successful_images}/{len(results)} images processed, {total_objects} objects detected"
-    )
+    
+    # Format timing information
+    if processing_time is not None:
+        hours = int(processing_time // 3600)
+        minutes = int((processing_time % 3600) // 60)
+        seconds = int(processing_time % 60)
+        time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        
+        # Calculate images per second
+        images_per_second = len(results) / processing_time if processing_time > 0 else 0
+        
+        get_console().print(
+            f"\n📊 Summary: {successful_images}/{len(results)} images processed in {time_str}, {images_per_second:.1f} images/sec, {total_objects} objects detected"
+        )
+    else:
+        get_console().print(
+            f"\n📊 Summary: {successful_images}/{len(results)} images processed, {total_objects} objects detected"
+        )
 
     # Display class statistics
     if class_counts:

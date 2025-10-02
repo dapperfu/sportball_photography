@@ -170,6 +170,9 @@ def split(
         _get_console().print(f"⚠️  Split file not found: {split_file}", style="yellow")
 
     # Perform game detection
+    import time
+    start_time = time.time()
+    
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -190,6 +193,9 @@ def split(
         )
 
         progress.update(task, completed=True, description="Game detection complete")
+    
+    end_time = time.time()
+    processing_time = end_time - start_time
 
     # Apply manual splits if provided
     if manual_splits and results.get("success", False):
@@ -208,11 +214,11 @@ def split(
             )
 
     # Display results
-    display_game_results(results, output_dir, copy, analyze_only)
+    display_game_results(results, output_dir, copy, analyze_only, processing_time)
 
 
 def display_game_results(
-    results: dict, output_dir: Path, copy_files: bool, analyze_only: bool = False
+    results: dict, output_dir: Path, copy_files: bool, analyze_only: bool = False, processing_time: Optional[float] = None
 ):
     """Display game detection results."""
 
@@ -261,9 +267,24 @@ def display_game_results(
         )
 
     _get_console().print(table)
-    _get_console().print(
-        f"\n📊 Summary: {len(games)} games detected, {total_photos} photos, {total_duration:.1f} minutes total"
-    )
+    
+    # Format timing information
+    if processing_time is not None:
+        hours = int(processing_time // 3600)
+        minutes = int((processing_time % 3600) // 60)
+        seconds = int(processing_time % 60)
+        time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        
+        # Calculate photos per second
+        photos_per_second = total_photos / processing_time if processing_time > 0 else 0
+        
+        _get_console().print(
+            f"\n📊 Summary: {len(games)} games detected in {time_str}, {photos_per_second:.1f} photos/sec, {total_photos} photos, {total_duration:.1f} minutes total"
+        )
+    else:
+        _get_console().print(
+            f"\n📊 Summary: {len(games)} games detected, {total_photos} photos, {total_duration:.1f} minutes total"
+        )
 
     # Create organized folders (unless analyze-only mode)
     if not analyze_only:
