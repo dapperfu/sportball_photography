@@ -48,12 +48,6 @@ def unified_group():
     help='Comma-separated list of object classes to detect (e.g., "person,sports ball")',
 )
 @click.option(
-    "--border-padding",
-    "-b",
-    default=0.25,
-    help="Border padding percentage for face detection (0.25 = 25%)",
-)
-@click.option(
     "--save-sidecar/--no-sidecar",
     default=True,
     help="Save results to sidecar files",
@@ -89,7 +83,6 @@ def detect(
     output: Optional[Path],
     confidence: float,
     class_names: Optional[str],
-    border_padding: float,
     save_sidecar: bool,
     force: bool,
     no_recursive: bool,
@@ -197,7 +190,6 @@ def detect(
         console.print(f"   Processing Configuration:")
         console.print(f"     Workers: {workers if workers else 'auto'}")
         console.print(f"     Confidence: {confidence}")
-        console.print(f"     Border Padding: {border_padding * 100:.0f}%")
         console.print(f"     Save Sidecar: {'Yes' if save_sidecar else 'No'}")
         console.print(f"     Force Reprocess: {'Yes' if force else 'No'}")
         
@@ -210,7 +202,6 @@ def detect(
     detection_kwargs = {
         "confidence": confidence,
         "classes": classes,
-        "border_padding": border_padding,
         "save_sidecar": save_sidecar,
         "force": force,
     }
@@ -338,21 +329,42 @@ def display_unified_results(results: Dict[str, Any], total_images: int, suppress
     """Display unified detection results."""
     console = _get_console()
     
-    # Count results
+    # Count results accurately
     face_results = results.get("faces", {})
     object_results = results.get("objects", {})
     
-    total_faces = sum(result.get("face_count", 0) for result in face_results.values())
-    total_objects = sum(result.get("objects_found", 0) for result in object_results.values())
+    # FR-004.1-004.2: Count actual results from detection
+    total_faces = 0
+    total_objects = 0
+    successful_images = 0
     
-    # Display summary
-    console.print(f"\n📊 Detection Summary:", style="bold blue")
-    console.print(f"   Images processed: {total_images}")
-    console.print(f"   Faces detected: {total_faces}")
-    console.print(f"   Objects detected: {total_objects}")
+    for image_path in face_results.keys():
+        face_result = face_results[image_path]
+        object_result = object_results.get(image_path, {})
+        
+        # Count faces from actual detection results
+        if face_result.get("success", False):
+            total_faces += face_result.get("face_count", 0)
+        
+        # Count objects from actual detection results  
+        if object_result.get("success", False):
+            total_objects += object_result.get("objects_found", 0)
+        
+        # Count successful images
+        if face_result.get("success", False) or object_result.get("success", False):
+            successful_images += 1
     
+    # FR-004.3: Display correct processing statistics
+    console.print(f"\n✅ Unified detection complete!", style="green")
+    console.print(f"📊 Processed {total_images} images")
+    console.print(f"👥 Faces detected: {total_faces}")
+    console.print(f"🎯 Objects detected: {total_objects}")
+    
+    if successful_images > 0:
+        console.print(f"✅ {successful_images} images processed successfully", style="green")
+    
+    # FR-004.4: Show detailed results per image when verbose mode is enabled
     if not suppress_empty:
-        # Show detailed results
         console.print(f"\n📋 Detailed Results:", style="bold blue")
         
         for image_path in sorted(face_results.keys()):

@@ -322,7 +322,6 @@ class SportballCore:
         max_workers: Optional[int] = None,
         confidence: float = 0.5,
         classes: Optional[List[str]] = None,
-        border_padding: float = 0.25,
         **kwargs,
     ) -> Dict[str, Any]:
         """
@@ -338,7 +337,6 @@ class SportballCore:
             max_workers: Maximum number of parallel workers (None for auto)
             confidence: Detection confidence threshold
             classes: List of object classes to detect
-            border_padding: Border padding for face detection
             **kwargs: Additional arguments
             
         Returns:
@@ -358,13 +356,13 @@ class SportballCore:
             # Sequential processing
             return self._detect_unified_sequential(
                 image_paths, face_detector, object_detector, 
-                save_sidecar, force, confidence, classes, border_padding, **kwargs
+                save_sidecar, force, confidence, classes, **kwargs
             )
         else:
             # Parallel processing
             return self._detect_unified_parallel(
                 image_paths, face_detector, object_detector, max_workers,
-                save_sidecar, force, confidence, classes, border_padding, **kwargs
+                save_sidecar, force, confidence, classes, **kwargs
             )
 
     def _detect_unified_sequential(
@@ -376,7 +374,6 @@ class SportballCore:
         force: bool,
         confidence: float,
         classes: Optional[List[str]],
-        border_padding: float,
         **kwargs,
     ) -> Dict[str, Any]:
         """Sequential unified detection."""
@@ -401,7 +398,7 @@ class SportballCore:
                 # Process single image with both detectors
                 face_result, object_result = self._process_single_image_unified(
                     image_path, face_detector, object_detector,
-                    save_sidecar, force, confidence, classes, border_padding, **kwargs
+                    save_sidecar, force, confidence, classes, **kwargs
                 )
                 
                 face_results[str(image_path)] = face_result
@@ -452,7 +449,6 @@ class SportballCore:
         force: bool,
         confidence: float,
         classes: Optional[List[str]],
-        border_padding: float,
         **kwargs,
     ) -> Dict[str, Any]:
         """Parallel unified detection."""
@@ -464,7 +460,7 @@ class SportballCore:
             try:
                 return self._process_single_image_unified(
                     image_path, face_detector, object_detector,
-                    save_sidecar, force, confidence, classes, border_padding, **kwargs
+                    save_sidecar, force, confidence, classes, **kwargs
                 )
             except Exception as e:
                 self.logger.error(f"Error processing {image_path}: {e}")
@@ -557,7 +553,6 @@ class SportballCore:
         force: bool,
         confidence: float,
         classes: Optional[List[str]],
-        border_padding: float,
         **kwargs,
     ) -> tuple:
         """Process a single image with both face and object detection."""
@@ -572,13 +567,15 @@ class SportballCore:
         except Exception as e:
             raise Exception(f"Failed to load image: {e}")
         
-        # Face detection
+        # Face detection - use identical parameters as individual face detection command
         try:
-            # Use detect_faces_batch for single image to ensure proper initialization
+            # Use detect_faces_batch for single image with identical parameters as face detection command
             face_results = face_detector.detect_faces_batch(
                 [image_path], 
                 confidence=confidence,
-                border_padding=border_padding,
+                min_faces=0,  # FR-001.1: Allow 0 faces - "no face" is a valid result
+                face_size=64,  # FR-001.2: Use identical face_size parameter
+                save_sidecar=False,  # We'll handle sidecar saving ourselves
                 **kwargs
             )
             face_result = face_results[str(image_path)]
@@ -601,27 +598,27 @@ class SportballCore:
                 "error": str(e)
             }
         
-        # Object detection
+        # Object detection - use identical method and parameters as individual object detection command
         try:
-            # Set target classes if specified
-            if classes:
-                object_detector.target_objects = set(classes)
-                # Recalculate target class IDs
-                target_objects_lower = {obj.lower() for obj in object_detector.target_objects}
-                object_detector.target_class_ids = set()
-                for class_name, class_id in object_detector.class_name_to_id.items():
-                    if class_name.lower() in target_objects_lower:
-                        object_detector.target_class_ids.add(class_id)
-            
-            object_result = object_detector.detect_objects_in_image(image_path, force)
+            # FR-002.1: Use detect_objects() batch method instead of detect_objects_in_image()
+            # FR-002.2-002.5: Pass confidence, classes, save_sidecar, force parameters
+            object_results = object_detector.detect_objects(
+                [image_path],
+                confidence=confidence,
+                classes=classes,
+                save_sidecar=False,  # We'll handle sidecar saving ourselves
+                force=force,
+                **kwargs
+            )
+            object_result = object_results[str(image_path)]
             
             # Convert to dict format
             object_dict = {
-                "success": object_result.error is None,
-                "objects_found": object_result.objects_found,
-                "detected_objects": [obj.to_dict() for obj in object_result.detected_objects],
-                "detection_time": object_result.detection_time,
-                "error": object_result.error if object_result.error else None
+                "success": object_result.get("success", False),
+                "objects_found": len(object_result.get("objects", [])),
+                "detected_objects": object_result.get("objects", []),
+                "detection_time": object_result.get("detection_time", 0.0),
+                "error": object_result.get("error", None)
             }
             
         except Exception as e:
@@ -633,33 +630,144 @@ class SportballCore:
                 "error": str(e)
             }
         
-        # Save sidecar files if requested
+        # Save sidecar files if requested - create combined sidecar file like individual commands
         if save_sidecar:
             try:
-                # Save face sidecar
+                # FR-003.1-003.5: Create sidecar file with both face_detection AND yolov8 data
+                # Use save_data_merge to properly merge with existing data
+                
+                # Add face detection data under face_detection key (FR-003.2)
                 if face_dict["success"]:
                     face_sidecar_data = {
                         "faces": face_dict["faces"],
                         "face_count": face_dict["face_count"],
                         "processing_time": face_dict["processing_time"],
-                        "detector": "unified"
+                        "success": face_dict["success"],
+                        "error": face_dict["error"]
                     }
-                    self.sidecar.save_sidecar(image_path, face_sidecar_data, "faces")
+                    self.sidecar.save_data_merge(
+                        image_path,
+                        "face_detection",
+                        face_sidecar_data,
+                        metadata={
+                            "confidence": confidence,
+                            "min_faces": 0,
+                            "face_size": 64,
+                            "detector": "unified"
+                        }
+                    )
                 
-                # Save object sidecar
+                # Add object detection data under yolov8 key (FR-003.3)
                 if object_dict["success"]:
                     object_sidecar_data = {
                         "objects": object_dict["detected_objects"],
                         "objects_found": object_dict["objects_found"],
                         "detection_time": object_dict["detection_time"],
-                        "detector": "unified"
+                        "success": object_dict["success"],
+                        "error": object_dict["error"]
                     }
-                    self.sidecar.save_sidecar(image_path, object_sidecar_data, "objects")
+                    self.sidecar.save_data_merge(
+                        image_path,
+                        "yolov8",
+                        object_sidecar_data,
+                        metadata={
+                            "confidence": confidence,
+                            "classes": classes,
+                            "force": force,
+                            "detector": "unified"
+                        }
+                    )
                     
             except Exception as e:
                 self.logger.warning(f"Failed to save sidecar for {image_path}: {e}")
         
         return face_dict, object_dict
+
+    @timing_decorator
+    def extract_unified(
+        self,
+        image_paths: Union[Path, List[Path]],
+        output_dir: Path,
+        face_padding: int = 20,
+        object_padding: int = 10,
+        object_types: Optional[List[str]] = None,
+        min_size: int = 32,
+        max_size: Optional[int] = None,
+        max_workers: Optional[int] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """
+        Extract both faces and objects from images using unified processing.
+        
+        This method extracts both faces and objects from images that have been
+        processed with unified detection, creating separate directories for
+        faces and objects.
+        
+        Args:
+            image_paths: Single image path or list of image paths
+            output_dir: Directory to save extracted faces and objects
+            face_padding: Padding around faces in pixels
+            object_padding: Padding around objects in pixels
+            object_types: Types of objects to extract (None for all)
+            min_size: Minimum object size in pixels
+            max_size: Maximum object size in pixels
+            max_workers: Maximum number of parallel workers
+            **kwargs: Additional arguments
+            
+        Returns:
+            Dictionary containing extraction results
+        """
+        if isinstance(image_paths, Path):
+            image_paths = [image_paths]
+
+        self.logger.info(f"Unified extraction from {len(image_paths)} images")
+
+        # Ensure output directory exists
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create subdirectories for faces and objects
+        faces_output_dir = output_dir / "faces"
+        objects_output_dir = output_dir / "objects"
+        
+        faces_output_dir.mkdir(parents=True, exist_ok=True)
+        objects_output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Extract faces using existing method
+        face_results = self.extract_faces(
+            image_paths, 
+            faces_output_dir, 
+            padding=face_padding, 
+            max_workers=max_workers
+        )
+        
+        # Extract objects using existing method
+        object_results = self.extract_objects(
+            image_paths,
+            objects_output_dir,
+            object_types=object_types,
+            min_size=min_size,
+            max_size=max_size,
+            **kwargs
+        )
+        
+        # Combine results
+        total_faces_extracted = sum(
+            result.get("faces_extracted", 0) for result in face_results.values()
+        )
+        total_objects_extracted = sum(
+            result.get("objects_extracted", 0) for result in object_results.values()
+        )
+        
+        return {
+            "faces_extracted": total_faces_extracted,
+            "objects_extracted": total_objects_extracted,
+            "face_results": face_results,
+            "object_results": object_results,
+            "output_directory": str(output_dir),
+            "faces_output_directory": str(faces_output_dir),
+            "objects_output_directory": str(objects_output_dir),
+            "success": True
+        }
 
     @timing_decorator
     def detect_games(
