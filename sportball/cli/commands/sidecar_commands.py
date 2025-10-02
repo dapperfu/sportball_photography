@@ -176,6 +176,8 @@ def collect_sidecar_statistics(
         "success_rates": {},
         "data_sizes": {},
         "object_type_counts": {},  # New: YOLOv8 object type statistics
+        "face_counts_per_image": [],  # New: histogram of faces per image
+        "face_detection_data": [],  # New: face detection data for clustering
         "filter_applied": operation_filter,
         "broken_symlink_details": [],
     }
@@ -280,6 +282,21 @@ def collect_sidecar_statistics(
                                         stats_data["object_type_counts"][class_name] = 0
                                     stats_data["object_type_counts"][class_name] += 1
 
+                        # Track face detection data for clustering and histogram
+                        if operation_key == "face_detection" and operation_data.get("success", False):
+                            faces = operation_data.get("faces", [])
+                            face_count = len(faces)
+                            stats_data["face_counts_per_image"].append(face_count)
+                            
+                            # Store face data for clustering analysis
+                            if faces:
+                                face_data = {
+                                    "image_path": str(sidecar_file.stem),
+                                    "faces": faces,
+                                    "face_count": face_count
+                                }
+                                stats_data["face_detection_data"].append(face_data)
+
             except Exception:
                 # Skip corrupted sidecar files
                 continue
@@ -344,6 +361,8 @@ def display_table_stats(stats_data: Dict[str, Any]):
     _get_console().print(main_table)
 
     # Operation breakdown table
+    # Success Rate: Percentage of photos where the operation completed successfully
+    # (e.g., 88% means 88% of photos had faces detected successfully)
     if stats_data["operation_counts"]:
         ops_table = Table(title="Operation Breakdown")
         ops_table.add_column("Operation", style="cyan")
@@ -351,7 +370,6 @@ def display_table_stats(stats_data: Dict[str, Any]):
         ops_table.add_column("Percentage", style="yellow", justify="right")
         ops_table.add_column("Avg Time (s)", style="blue", justify="right")
         ops_table.add_column("Success Rate", style="magenta", justify="right")
-        ops_table.add_column("Avg Data Size", style="red", justify="right")
 
         total_sidecars = stats_data["total_sidecars"]
 
@@ -359,7 +377,6 @@ def display_table_stats(stats_data: Dict[str, Any]):
             percentage = (count / total_sidecars * 100) if total_sidecars > 0 else 0
             avg_time = stats_data["avg_processing_times"].get(operation, 0)
             success_rate = stats_data["success_rate_percentages"].get(operation, 0)
-            avg_size = stats_data["avg_data_sizes"].get(operation, 0)
 
             ops_table.add_row(
                 operation.replace("_", " ").title(),
@@ -367,7 +384,6 @@ def display_table_stats(stats_data: Dict[str, Any]):
                 f"{percentage:.1f}%",
                 f"{avg_time:.3f}" if avg_time > 0 else "N/A",
                 f"{success_rate:.1f}%" if success_rate > 0 else "N/A",
-                f"{avg_size:.0f} chars" if avg_size > 0 else "N/A",
             )
 
         _get_console().print(ops_table)
@@ -397,6 +413,111 @@ def display_table_stats(stats_data: Dict[str, Any]):
             )
 
         _get_console().print(obj_table)
+
+    # Face Detection Breakdown
+    if stats_data["face_counts_per_image"]:
+        face_table = Table(title="Face Detection Breakdown")
+        face_table.add_column("Faces per Image", style="cyan")
+        face_table.add_column("Count", style="green", justify="right")
+        face_table.add_column("Percentage", style="yellow", justify="right")
+
+        # Create histogram of face counts
+        from collections import Counter
+        face_histogram = Counter(stats_data["face_counts_per_image"])
+        total_images_with_faces = len(stats_data["face_counts_per_image"])
+        
+        # Sort by face count
+        sorted_face_counts = sorted(face_histogram.items())
+        
+        for face_count, count in sorted_face_counts:
+            percentage = (count / total_images_with_faces * 100) if total_images_with_faces > 0 else 0
+            face_table.add_row(
+                str(face_count),
+                str(count),
+                f"{percentage:.1f}%"
+            )
+
+        _get_console().print(face_table)
+
+    # Face Clustering Analysis
+    if stats_data["face_detection_data"] and len(stats_data["face_detection_data"]) > 1:
+        try:
+            from ...detectors.face_clustering import FaceClustering
+            
+            # Initialize face clustering
+            face_clusterer = FaceClustering(
+                similarity_threshold=0.6,
+                min_cluster_size=2,
+                algorithm="dbscan",
+                verbose=False
+            )
+            
+            # Prepare face data for clustering
+            all_faces = []
+            face_to_image_map = {}
+            
+            for img_data in stats_data["face_detection_data"]:
+                image_path = img_data["image_path"]
+                for face in img_data["faces"]:
+                    if "encoding" in face:
+                        all_faces.append(face["encoding"])
+                        face_to_image_map[len(all_faces) - 1] = image_path
+            
+            if len(all_faces) > 1:
+                # Perform clustering
+                import numpy as np
+                face_encodings = np.array(all_faces)
+                
+                # Use the clustering algorithm
+                clusters = face_clusterer._cluster_encodings(face_encodings)
+                
+                # Analyze clusters
+                cluster_stats = {}
+                for cluster_id, face_indices in clusters.items():
+                    if cluster_id == -1:  # Skip noise/unclustered faces
+                        continue
+                    
+                    images_in_cluster = set()
+                    for face_idx in face_indices:
+                        images_in_cluster.add(face_to_image_map[face_idx])
+                    
+                    cluster_stats[cluster_id] = {
+                        "face_count": len(face_indices),
+                        "image_count": len(images_in_cluster),
+                        "images": list(images_in_cluster)
+                    }
+                
+                if cluster_stats:
+                    cluster_table = Table(title="Face Clustering Analysis")
+                    cluster_table.add_column("Person ID", style="cyan")
+                    cluster_table.add_column("Faces Found", style="green", justify="right")
+                    cluster_table.add_column("Images", style="yellow", justify="right")
+                    cluster_table.add_column("Avg Faces/Image", style="blue", justify="right")
+                    
+                    # Sort clusters by number of images (most frequent person first)
+                    sorted_clusters = sorted(
+                        cluster_stats.items(),
+                        key=lambda x: x[1]["image_count"],
+                        reverse=True
+                    )
+                    
+                    for person_id, stats in sorted_clusters:
+                        avg_faces = stats["face_count"] / stats["image_count"] if stats["image_count"] > 0 else 0
+                        cluster_table.add_row(
+                            f"Person {person_id}",
+                            str(stats["face_count"]),
+                            str(stats["image_count"]),
+                            f"{avg_faces:.1f}"
+                        )
+                    
+                    _get_console().print(cluster_table)
+                    
+        except ImportError:
+            # Face clustering not available
+            pass
+        except Exception as e:
+            # Clustering failed, skip silently
+            pass
 
     # Coverage analysis
     if stats_data.get("file_coverage"):
