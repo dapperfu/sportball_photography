@@ -25,6 +25,10 @@ try:
     import insightface
 
     INSIGHTFACE_AVAILABLE = True
+    # Suppress numpy FutureWarning for lstsq rcond parameter in InsightFace
+    import numpy as np
+    import warnings
+    warnings.filterwarnings("ignore", category=FutureWarning, message=".*rcond.*")
 except ImportError:
     INSIGHTFACE_AVAILABLE = False
     logger.warning("insightface not available - face detection will be limited")
