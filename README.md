@@ -40,14 +40,30 @@ pip install -e .[dev]
 
 ### High-Performance Rust Integration
 
-For maximum performance, build the Rust sidecar tool:
+For maximum performance, build the Rust sidecar tool (located in `/projects/image-sidecar-rust`):
 
 ```bash
+# Navigate to the Rust project
+cd /projects/image-sidecar-rust
+
 # Build the Rust sidecar tool (3-10x faster)
-make build-rust-sidecar
+cargo build --release
+
+# The binary will be at: target/release/image-sidecar-rust
+# Sportball will automatically detect and use it when available
 
 # Test the integration
+cd /projects/sportball_photography
 make test-integration
+```
+
+**Note**: The Rust tool is an **optional** dependency. If the binary is not found, Sportball will automatically fall back to Python implementations. The Rust tool provides 3-10x performance improvements for sidecar operations.
+
+**Python Wheel Alternative**: If you want the Rust functionality as a Python package (requires Rust toolchain):
+```bash
+cd /projects/image-sidecar-rust
+pip install maturin  # Install maturin for building Python wheels from Rust
+maturin develop --features python  # Build and install the Python package
 ```
 
 ## 🎯 Quick Start
