@@ -653,21 +653,26 @@ class ObjectDetector:
         for image_path in image_paths:
             # Check if we should skip this image
             if not force:
-                original_image_path = (
-                    image_path.resolve() if image_path.is_symlink() else image_path
-                )
-                json_path = (
-                    original_image_path.parent / f"{original_image_path.stem}.json"
-                )
-                if json_path.exists():
+                from ..sidecar import SidecarManager
+                sidecar_manager = SidecarManager()
+                
+                sidecar_info = sidecar_manager.find_sidecar_for_image(image_path)
+                if sidecar_info:
                     try:
-                        with open(json_path, "r") as f:
-                            json_data = json.load(f)
-                        if "yolov8" in json_data:
-                            logger.info(
-                                f"Skipping {image_path.name} - YOLOv8 data already exists"
-                            )
-                            continue
+                        sidecar_data = sidecar_info.load()
+                        if "yolov8" in sidecar_data:
+                            yolov8_data = sidecar_data["yolov8"]
+                            # Check if valid detection exists
+                            if isinstance(yolov8_data, dict):
+                                has_valid_data = (
+                                    yolov8_data.get("success", False) 
+                                    and "objects" in yolov8_data
+                                )
+                                if has_valid_data:
+                                    logger.info(
+                                        f"Skipping {image_path.name} - YOLOv8 data already exists"
+                                    )
+                                    continue
                     except Exception:
                         pass
 
@@ -860,32 +865,56 @@ class ObjectDetector:
             image_path.resolve() if image_path.is_symlink() else image_path
         )
 
-        # Check if JSON sidecar already exists and contains successful YOLOv8 data
-        json_path = original_image_path.parent / f"{original_image_path.stem}.json"
-        if json_path.exists() and not force:
-            try:
-                with open(json_path, "r") as f:
-                    json_data = json.load(f)
-                if (
-                    "yolov8" in json_data
-                    and json_data["yolov8"].get("success", False)
-                    and "objects" in json_data["yolov8"]
-                ):
-                    logger.info(
-                        f"Skipping {image_path.name} - YOLOv8 data already exists (use --force to override)"
-                    )
-                    return DetectionResult(
-                        image_path=str(image_path),
-                        image_width=0,
-                        image_height=0,
-                        objects_found=0,
-                        detection_time=0.0,
-                        detected_objects=[],
-                        error="Skipped - YOLOv8 data already exists",
-                    )
-            except Exception as e:
-                logger.debug(f"Could not read JSON sidecar {json_path}: {e}")
-                # Continue with detection if JSON is invalid
+        # Check if sidecar already exists and contains successful YOLOv8 data
+        if not force:
+            from ..sidecar import SidecarManager
+            sidecar_manager = SidecarManager()
+            
+            # Try to find sidecar in any format (.bin, .rkyv, .json)
+            sidecar_info = sidecar_manager.find_sidecar_for_image(image_path)
+            if sidecar_info:
+                try:
+                    sidecar_data = sidecar_info.load()
+                    # Check if yolov8 data exists (support both flat and nested structures)
+                    if "yolov8" in sidecar_data:
+                        yolov8_data = sidecar_data["yolov8"]
+                        
+                        # Handle nested backend structure: yolov8 -> backend -> data
+                        if isinstance(yolov8_data, dict) and "backend" in yolov8_data:
+                            # Check all backends for successful detection
+                            for backend, backend_data in yolov8_data.items():
+                                if backend != "backend" and isinstance(backend_data, dict):
+                                    if backend_data.get("success", False) and "objects" in backend_data:
+                                        logger.info(
+                                            f"Skipping {image_path.name} - YOLOv8 ({backend}) data already exists (use --force to override)"
+                                        )
+                                        return DetectionResult(
+                                            image_path=str(image_path),
+                                            image_width=0,
+                                            image_height=0,
+                                            objects_found=0,
+                                            detection_time=0.0,
+                                            detected_objects=[],
+                                            error=f"Skipped - YOLOv8 ({backend}) data already exists",
+                                        )
+                        # Handle flat structure: yolov8 -> data
+                        elif isinstance(yolov8_data, dict):
+                            if yolov8_data.get("success", False) and "objects" in yolov8_data:
+                                logger.info(
+                                    f"Skipping {image_path.name} - YOLOv8 data already exists (use --force to override)"
+                                )
+                                return DetectionResult(
+                                    image_path=str(image_path),
+                                    image_width=0,
+                                    image_height=0,
+                                    objects_found=0,
+                                    detection_time=0.0,
+                                    detected_objects=[],
+                                    error="Skipped - YOLOv8 data already exists",
+                                )
+                except Exception as e:
+                    logger.debug(f"Could not read sidecar data: {e}")
+                    # Continue with detection if sidecar is invalid
 
         logger.info(f"Detecting objects in {image_path.name}")
 
