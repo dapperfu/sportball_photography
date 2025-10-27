@@ -82,6 +82,9 @@ dependencies = [
     
     # Performance
     "psutil>=5.9.0",
+    
+    # High-performance sidecar operations (Rust implementation)
+    "image-sidecar-rust @ file:///projects/image-sidecar-rust",
 ]
 
 [project.optional-dependencies]

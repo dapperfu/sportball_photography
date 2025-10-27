@@ -16,6 +16,14 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from loguru import logger
 
+# Try to import the Python package (built via maturin)
+try:
+    import image_sidecar_rust
+    PYTHON_PACKAGE_AVAILABLE = True
+except ImportError:
+    PYTHON_PACKAGE_AVAILABLE = False
+    image_sidecar_rust = None
+
 
 
 @dataclass
@@ -51,11 +59,18 @@ class RustSidecarManager:
         self._check_rust_availability()
 
     def _check_rust_availability(self) -> None:
-        """Check if Rust binary is available."""
+        """Check if Rust Python package or binary is available."""
         if not self.config.enable_rust:
             self.rust_available = False
             return
 
+        # First, try to use the Python package (preferred)
+        if PYTHON_PACKAGE_AVAILABLE:
+            self.rust_available = True
+            self.logger.info("Rust Python package is available")
+            return
+
+        # Fall back to binary subprocess approach
         # Check for Rust binary
         if self.config.rust_binary_path and self.config.rust_binary_path.exists():
             self.rust_available = True
