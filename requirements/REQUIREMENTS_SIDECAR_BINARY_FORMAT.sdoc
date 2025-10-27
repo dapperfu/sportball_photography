@@ -703,3 +703,83 @@ RATIONALE: API documentation updates ensure developers understand binary format 
 PRIORITY: Medium
 STATUS: Pending
 
+[REQUIREMENT]
+UID: TR-007
+TITLE: No Python Fallback Code
+STATEMENT: The system SHALL NOT contain any Python fallback code for sidecar operations. All sidecar manipulation SHALL use the image-sidecar-rust module exclusively.
+RATIONALE: Eliminating fallback code simplifies the codebase, ensures consistent behavior, and enforces exclusive use of the Rust implementation for all sidecar operations.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: TR-007.1
+TITLE: Remove Fallback Configuration Option
+STATEMENT: The RustSidecarConfig shall not include a 'fallback_to_python' option. The system SHALL require Rust availability.
+RATIONALE: Removing the fallback configuration option enforces exclusive use of the Rust implementation and prevents fallback behavior.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: TR-007.2
+TITLE: Remove Python Fallback Methods
+STATEMENT: All _python_* methods in RustSidecarManager and related classes SHALL be removed. No Python fallback implementations SHALL exist.
+RATIONALE: Removing Python fallback methods ensures exclusive use of the Rust implementation and eliminates fallback code paths.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: TR-007.3
+TITLE: Remove Fallback Exception Handling
+STATEMENT: Sidecar operations SHALL raise RuntimeError when Rust is unavailable instead of falling back to Python implementations.
+RATIONALE: Exceptions when Rust is unavailable enforce exclusive use of the Rust implementation and provide clear error messages to users.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: TR-007.4
+TITLE: Remove _save_with_python Method
+STATEMENT: The _save_with_python method in Sidecar class SHALL be removed. All sidecar save operations SHALL use the image-sidecar-rust module exclusively.
+RATIONALE: Removing _save_with_python eliminates the Python fallback path and ensures consistent Rust-backed operations.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: TR-007.5
+TITLE: Remove Fallback Logic from save_data_merge
+STATEMENT: The save_data_merge method SHALL only use Rust backend and SHALL raise exceptions if Rust is unavailable.
+RATIONALE: Eliminating fallback logic ensures exclusive use of the Rust implementation and prevents Python fallback execution.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: TR-008
+TITLE: Exclusive image-sidecar-rust Module Usage
+STATEMENT: ALL sidecar manipulation operations SHALL use the image-sidecar-rust module. No direct file I/O or serialization SHALL occur outside of the Rust module.
+RATIONALE: Exclusive use of the image-sidecar-rust module ensures consistent binary format usage, high performance, and eliminates format inconsistencies.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: TR-008.1
+TITLE: No Direct JSON Serialization
+STATEMENT: The system SHALL NOT perform direct json.dump() or json.load() operations for sidecar data. All serialization SHALL be handled by the image-sidecar-rust module.
+RATIONALE: Eliminating direct JSON serialization ensures exclusive use of binary format through the Rust module and prevents format inconsistencies.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: TR-008.2
+TITLE: No Direct File I/O
+STATEMENT: The system SHALL NOT perform direct file I/O operations for sidecar files. All file operations SHALL be handled by the image-sidecar-rust module.
+RATIONALE: Delegating file operations to the Rust module ensures proper format handling and maintains consistency across all sidecar operations.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: TR-008.3
+TITLE: Exclusive Rust Module Delegation
+STATEMENT: All sidecar read, write, and management operations SHALL delegate exclusively to the image-sidecar-rust module methods.
+RATIONALE: Exclusive Rust delegation ensures consistent behavior, high performance, and eliminates Python fallback code paths.
+PRIORITY: Critical
+STATUS: Pending
+

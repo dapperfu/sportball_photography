@@ -2,6 +2,7 @@
 Rust Sidecar Integration
 
 Python wrapper for the high-performance Rust sidecar implementation.
+ALL sidecar operations require Rust and will raise RuntimeError if unavailable.
 
 Author: Claude Sonnet 4 (claude-3-5-sonnet-20241022)
 Generated via Cursor IDE (cursor.sh) with AI assistance
@@ -32,7 +33,6 @@ class RustSidecarConfig:
 
     enable_rust: bool = True
     rust_binary_path: Optional[Path] = None
-    fallback_to_python: bool = True
     max_workers: int = 16
     timeout: int = 300
 
@@ -41,7 +41,8 @@ class RustSidecarManager:
     """
     Python wrapper for the Rust sidecar implementation.
 
-    Provides high-performance sidecar operations with Python fallback.
+    Provides high-performance sidecar operations. Rust is REQUIRED.
+    Raises RuntimeError if Rust is unavailable.
     """
 
     def __init__(self, config: Optional[RustSidecarConfig] = None):
@@ -120,12 +121,11 @@ class RustSidecarManager:
 
         # Rust not available
         self.rust_available = False
-        if self.config.fallback_to_python:
-            self.logger.warning(
-                "Rust not available, falling back to Python implementations"
-            )
-        else:
-            self.logger.error("Rust not available and fallback disabled")
+        self.logger.error("Rust not available. Sidecar operations require Rust.")
+        raise RuntimeError(
+            "Rust implementation not available. Sidecar operations require "
+            "the image-sidecar-rust module. Please ensure Rust tools are installed."
+        )
 
     def validate_sidecars(
         self, directory: Path, operation_filter: Optional[str] = None
@@ -141,10 +141,7 @@ class RustSidecarManager:
             List of validation results
         """
         if not self.rust_available:
-            if self.config.fallback_to_python:
-                return self._python_validate_sidecars(directory, operation_filter)
-            else:
-                raise RuntimeError("Rust not available and fallback disabled")
+            raise RuntimeError("Rust not available. Sidecar operations require Rust.")
 
         try:
             # Create temporary file with directory path
@@ -185,10 +182,7 @@ class RustSidecarManager:
 
         except Exception as e:
             self.logger.error(f"Rust sidecar validation failed: {e}")
-            if self.config.fallback_to_python:
-                return self._python_validate_sidecars(directory, operation_filter)
-            else:
-                raise
+            raise
 
     def get_statistics(
         self, directory: Path, operation_filter: Optional[str] = None
@@ -204,10 +198,7 @@ class RustSidecarManager:
             Dictionary with statistics
         """
         if not self.rust_available:
-            if self.config.fallback_to_python:
-                return self._python_get_statistics(directory, operation_filter)
-            else:
-                raise RuntimeError("Rust not available and fallback disabled")
+            raise RuntimeError("Rust not available. Sidecar operations require Rust.")
 
         try:
             # Run Rust binary
@@ -233,10 +224,7 @@ class RustSidecarManager:
 
         except Exception as e:
             self.logger.error(f"Rust sidecar statistics failed: {e}")
-            if self.config.fallback_to_python:
-                return self._python_get_statistics(directory, operation_filter)
-            else:
-                raise
+            raise
 
     def cleanup_orphaned_sidecars(self, directory: Path, dry_run: bool = False) -> int:
         """
@@ -250,10 +238,7 @@ class RustSidecarManager:
             Number of orphaned files removed
         """
         if not self.rust_available:
-            if self.config.fallback_to_python:
-                return self._python_cleanup_orphaned(directory, dry_run)
-            else:
-                raise RuntimeError("Rust not available and fallback disabled")
+            raise RuntimeError("Rust not available. Sidecar operations require Rust.")
 
         try:
             # Run Rust binary
@@ -288,10 +273,7 @@ class RustSidecarManager:
 
         except Exception as e:
             self.logger.error(f"Rust sidecar cleanup failed: {e}")
-            if self.config.fallback_to_python:
-                return self._python_cleanup_orphaned(directory, dry_run)
-            else:
-                raise
+            raise
 
     def export_sidecar_data(
         self,
@@ -313,12 +295,7 @@ class RustSidecarManager:
             Number of sidecar files exported
         """
         if not self.rust_available:
-            if self.config.fallback_to_python:
-                return self._python_export_data(
-                    directory, output_path, operation_filter, format
-                )
-            else:
-                raise RuntimeError("Rust not available and fallback disabled")
+            raise RuntimeError("Rust not available. Sidecar operations require Rust.")
 
         try:
             # Run Rust binary
@@ -357,12 +334,7 @@ class RustSidecarManager:
 
         except Exception as e:
             self.logger.error(f"Rust sidecar export failed: {e}")
-            if self.config.fallback_to_python:
-                return self._python_export_data(
-                    directory, output_path, operation_filter, format
-                )
-            else:
-                raise
+            raise
 
     def get_performance_info(self) -> Dict[str, Any]:
         """
@@ -376,116 +348,9 @@ class RustSidecarManager:
             "rust_binary_path": str(self.config.rust_binary_path)
             if self.config.rust_binary_path
             else None,
-            "fallback_enabled": self.config.fallback_to_python,
             "max_workers": self.config.max_workers,
             "timeout": self.config.timeout,
         }
-
-    # Python fallback implementations
-
-    def _python_validate_sidecars(
-        self, directory: Path, operation_filter: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
-        """Python fallback for sidecar validation."""
-        from ..sidecar import Sidecar
-
-        sidecar_manager = Sidecar()
-        sidecars = sidecar_manager.find_all_sidecars(directory)
-
-        results = []
-        for sidecar_info in sidecars:
-            if operation_filter and sidecar_info.operation.value != operation_filter:
-                continue
-
-            result = {
-                "file_path": str(sidecar_info.sidecar_path),
-                "is_valid": sidecar_info.is_valid,
-                "error": None,
-                "processing_time": 0.0,
-                "file_size": sidecar_info.data_size,
-                "detection_count": 0,
-                "tool_name": None,
-                "operation_type": sidecar_info.operation.value,
-            }
-            results.append(result)
-
-        return results
-
-    def _python_get_statistics(
-        self, directory: Path, operation_filter: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """Python fallback for statistics."""
-        from ..sidecar import Sidecar, OperationType
-
-        sidecar_manager = Sidecar()
-        operation_type_filter = None
-        if operation_filter:
-            try:
-                operation_type_filter = OperationType(operation_filter)
-            except ValueError:
-                pass
-
-        stats = sidecar_manager.get_statistics(directory, operation_type_filter)
-        return stats
-
-    def _python_cleanup_orphaned(self, directory: Path, dry_run: bool = False) -> int:
-        """Python fallback for cleanup."""
-        from ..sidecar import Sidecar
-
-        sidecar_manager = Sidecar()
-        if dry_run:
-            # TODO: Implement dry run functionality
-            self.logger.warning("Dry run not implemented in Python fallback")
-            return 0
-
-        return sidecar_manager.cleanup_orphaned_sidecars(directory)
-
-    def _python_export_data(
-        self,
-        directory: Path,
-        output_path: Path,
-        operation_filter: Optional[str] = None,
-        format: str = "json",
-    ) -> int:
-        """Python fallback for export."""
-        from ..sidecar import Sidecar, OperationType
-
-        sidecar_manager = Sidecar()
-        operation_type_filter = None
-        if operation_filter:
-            try:
-                operation_type_filter = OperationType(operation_filter)
-            except ValueError:
-                pass
-
-        sidecars = sidecar_manager.find_all_sidecars(directory)
-
-        if operation_type_filter:
-            sidecars = [s for s in sidecars if s.operation == operation_type_filter]
-
-        export_data = {
-            "exported_at": json.dumps(
-                {"$date": {"$numberLong": str(int(__import__("time").time() * 1000))}}
-            ),
-            "source_directory": str(directory.resolve()),
-            "total_sidecars": len(sidecars),
-            "sidecars": [
-                {
-                    "image_path": str(s.image_path),
-                    "sidecar_path": str(s.sidecar_path),
-                    "operation": s.operation.value,
-                    "created_at": s.created_at.isoformat(),
-                    "data_size": s.data_size,
-                    "is_valid": s.is_valid,
-                }
-                for s in sidecars
-            ],
-        }
-
-        with open(output_path, "w") as f:
-            json.dump(export_data, f, indent=2)
-
-        return len(sidecars)
 
     def save_sidecar_data(
         self, 
@@ -503,10 +368,12 @@ class RustSidecarManager:
             
         Returns:
             True if successful, False otherwise
+            
+        Raises:
+            RuntimeError: If Rust is not available
         """
         if not self.rust_available:
-            self.logger.debug("Rust not available, save_sidecar_data will fail")
-            return False
+            raise RuntimeError("Rust not available. Sidecar operations require Rust.")
         
         try:
             # Create a temporary JSON file with the data

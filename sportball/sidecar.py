@@ -401,17 +401,21 @@ class Sidecar:
         Returns:
             Dictionary with comprehensive statistics
         """
-        # Try to use Rust implementation for better performance
-        if self.rust_manager and self.rust_manager.rust_available:
-            try:
-                operation_filter_str = (
-                    operation_filter.value if operation_filter else None
-                )
-                return self.rust_manager.get_statistics(directory, operation_filter_str)
-            except Exception as e:
-                logger.warning(f"Rust statistics failed, falling back to Python: {e}")
-
-        # Fall back to Python implementation
+        # Use Rust implementation (required, no fallback)
+        if not self.rust_manager or not self.rust_manager.rust_available:
+            raise RuntimeError("Rust sidecar manager not available. Sidecar operations require Rust.")
+        
+        try:
+            operation_filter_str = (
+                operation_filter.value if operation_filter else None
+            )
+            return self.rust_manager.get_statistics(directory, operation_filter_str)
+        except Exception as e:
+            logger.error(f"Rust statistics failed: {e}")
+            raise
+        
+        # This code is now dead due to the raise above - kept for backward compatibility
+        # TODO: Remove this Python implementation
         sidecars = self.find_all_sidecars(directory)
 
         # Apply filter if specified
@@ -656,19 +660,12 @@ class Sidecar:
                 "is_symlink": False,
             }
 
-        # Try Rust manager first (uses binary format)
-        if self.rust_manager and self.rust_manager.rust_available:
-            try:
-                return self._save_with_rust(
-                    actual_image_path, image_path, symlink_info, 
-                    operation, operation_type, data, metadata
-                )
-            except Exception as e:
-                logger.warning(f"Rust save failed, falling back to Python: {e}")
+        # Use Rust manager (required, no fallback)
+        if not self.rust_manager or not self.rust_manager.rust_available:
+            raise RuntimeError("Rust sidecar manager not available. Sidecar operations require Rust.")
         
-        # Fallback to Python with format detection
-        return self._save_with_python(
-            actual_image_path, image_path, symlink_info,
+        return self._save_with_rust(
+            actual_image_path, image_path, symlink_info, 
             operation, operation_type, data, metadata
         )
     
@@ -718,112 +715,16 @@ class Sidecar:
                 "symlink_info": symlink_info,
             }
         
-        # Try to save in binary format using Rust backend
-        try:
-            # Use .bin extension for binary format
-            sidecar_path = actual_image_path.with_suffix(".bin")
-            
-            # Call Rust manager to save in binary format
-            if self.rust_manager.save_sidecar_data(actual_image_path, operation_type, merged_data):
-                logger.debug(f"Saved sidecar in binary format: {sidecar_path}")
-                return True
-        except Exception as e:
-            logger.warning(f"Rust binary save failed: {e}, trying Python fallback")
+        # Save in binary format using Rust backend (no fallback)
+        # Use .bin extension for binary format
+        sidecar_path = actual_image_path.with_suffix(".bin")
         
-        # Fall back to Python JSON
-        return self._save_with_python(
-            actual_image_path, image_path, symlink_info,
-            operation, operation_type, data, metadata
-        )
-    
-    def _save_with_python(
-        self,
-        actual_image_path: Path,
-        image_path: Path,
-        symlink_info: Dict,
-        operation: OperationType,
-        operation_type: str,
-        data: Dict[str, Any],
-        metadata: Optional[Dict],
-    ) -> bool:
-        """Save sidecar using Python implementation with format detection."""
-        # Try to find existing sidecar in any format
-        existing_data = self._load_existing_data(actual_image_path)
-        existing_format = self._detect_existing_format(actual_image_path)
+        # Call Rust manager to save in binary format
+        if not self.rust_manager.save_sidecar_data(actual_image_path, operation_type, merged_data):
+            raise RuntimeError(f"Failed to save sidecar in binary format: {sidecar_path}")
         
-        # Determine output format (prefer existing format, default to binary if new, fallback to JSON)
-        if existing_format:
-            output_format = existing_format
-        else:
-            # Prefer binary, fallback to JSON
-            output_format = "bin" if True else "json"  # TODO: Make configurable
-        
-        # Merge data
-        merged_data = existing_data.copy()
-        
-        # Support nested backend storage within operation types
-        # e.g., face_detection -> { face_recognition: {...}, insightface: {...} }
-        if metadata and metadata.get("backend"):
-            backend = metadata["backend"]
-            # Create nested structure: operation_type -> backend -> data
-            if operation_type not in merged_data:
-                merged_data[operation_type] = {}
-            merged_data[operation_type][backend] = data
-        else:
-            # Default flat structure: operation_type -> data
-            merged_data[operation_type] = data
-        
-        # Update sidecar_info
-        if "sidecar_info" in existing_data:
-            merged_data["sidecar_info"].update({
-                "last_updated": datetime.now().isoformat(),
-                "last_operation": operation.value,
-            })
-        else:
-            merged_data["sidecar_info"] = {
-                "operation_type": operation.value,
-                "created_at": datetime.now().isoformat(),
-                "last_updated": datetime.now().isoformat(),
-                "last_operation": operation.value,
-                "image_path": str(actual_image_path),
-                "symlink_path": str(image_path),
-                "symlink_info": symlink_info,
-            }
-        
-        # Save in appropriate format
-        try:
-            sidecar_path = actual_image_path.with_suffix(f".{output_format}")
-            sidecar_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            if output_format == "bin":
-                # Use bincode for binary format
-                import bincode
-                serializable_data = self._make_serializable_standalone(merged_data)
-                # Serialize JSON string to binary
-                json_str = json.dumps(serializable_data)
-                binary_data = bincode.serialize(json_str)
-                with open(sidecar_path, "wb") as f:
-                    f.write(binary_data)
-            else:
-                # JSON format
-                serializable_data = self._make_serializable_standalone(merged_data)
-                with open(sidecar_path, "w") as f:
-                    json.dump(serializable_data, f, indent=2)
-            
-            logger.debug(f"Saved sidecar in {output_format} format: {sidecar_path}")
-            return True
-        except ImportError:
-            # bincode not available, fall back to JSON
-            logger.warning("bincode not available, using JSON format")
-            sidecar_path = actual_image_path.with_suffix(".json")
-            sidecar_path.parent.mkdir(parents=True, exist_ok=True)
-            serializable_data = self._make_serializable_standalone(merged_data)
-            with open(sidecar_path, "w") as f:
-                json.dump(serializable_data, f, indent=2)
-            return True
-        except Exception as e:
-            logger.error(f"Failed to save sidecar {sidecar_path}: {e}")
-            return False
+        logger.debug(f"Saved sidecar in binary format: {sidecar_path}")
+        return True
     
     def _load_existing_data(self, actual_image_path: Path) -> Dict[str, Any]:
         """Load existing sidecar data from any format."""
@@ -871,17 +772,17 @@ class Sidecar:
 
     def cleanup_orphaned_sidecars(self, directory: Path) -> int:
         """Clean up orphaned sidecar files for backward compatibility."""
-        # Try to use Rust implementation for better performance
-        if self.rust_manager and self.rust_manager.rust_available:
-            try:
-                return self.rust_manager.cleanup_orphaned_sidecars(
-                    directory, dry_run=False
-                )
-            except Exception as e:
-                logger.warning(f"Rust cleanup failed, falling back to Python: {e}")
-
-        # Fall back to Python implementation
-        return self._cleanup_orphaned_sidecars_impl(directory)
+        # Use Rust implementation (required, no fallback)
+        if not self.rust_manager or not self.rust_manager.rust_available:
+            raise RuntimeError("Rust sidecar manager not available. Sidecar operations require Rust.")
+        
+        try:
+            return self.rust_manager.cleanup_orphaned_sidecars(
+                directory, dry_run=False
+            )
+        except Exception as e:
+            logger.error(f"Rust cleanup failed: {e}")
+            raise
 
 
 # Backward compatibility alias
