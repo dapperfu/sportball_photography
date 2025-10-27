@@ -397,9 +397,12 @@ class ObjectDetector:
                 if save_sidecar:
                     self._save_sidecar(result)
 
-                # Update progress bar with current image name
+                # Update progress bar with detection results
                 if progress_bar:
-                    progress_bar.set_postfix(file=image_path.name)
+                    objects_found = result.objects_found if result.objects_found else 0
+                    status = "✓" if result.success else "✗"
+                    postfix = f"file={image_path.name} | {status} Objects: {objects_found}"
+                    progress_bar.set_postfix(postfix)
                     progress_bar.update(1)
 
             except Exception as e:
@@ -416,7 +419,8 @@ class ObjectDetector:
                 results.append(error_result)
                 # Update progress bar even on error
                 if progress_bar:
-                    progress_bar.set_postfix(file=image_path.name)
+                    postfix = f"file={image_path.name} | ✗ Error"
+                    progress_bar.set_postfix(postfix)
                     progress_bar.update(1)
 
         # Close progress bar
@@ -502,7 +506,10 @@ class ObjectDetector:
                     if progress_callback:
                         progress_callback(len(results), len(image_paths), str(image_path))
                     elif progress_bar:
-                        progress_bar.set_postfix(file=image_path.name)
+                        objects_found = result.objects_found if result.objects_found else 0
+                        status = "✓" if result.success else "✗"
+                        postfix = f"file={image_path.name} | {status} Objects: {objects_found}"
+                        progress_bar.set_postfix(postfix)
                         progress_bar.update(1)
                         
                 except Exception as e:
@@ -522,7 +529,8 @@ class ObjectDetector:
                     if progress_callback:
                         progress_callback(len(results), len(image_paths), str(image_path))
                     elif progress_bar:
-                        progress_bar.set_postfix(file=image_path.name)
+                        postfix = f"file={image_path.name} | ✗ Error"
+                        progress_bar.set_postfix(postfix)
                         progress_bar.update(1)
         
         # Close progress bar
@@ -572,7 +580,10 @@ class ObjectDetector:
                 if progress_callback:
                     progress_callback(i + 1, len(image_paths), str(image_path))
                 elif progress_bar:
-                    progress_bar.set_postfix(file=image_path.name)
+                    objects_found = result.objects_found if result.objects_found else 0
+                    status = "✓" if result.success else "✗"
+                    postfix = f"file={image_path.name} | {status} Objects: {objects_found}"
+                    progress_bar.set_postfix(postfix)
                     progress_bar.update(1)
 
             except Exception as e:
@@ -592,7 +603,8 @@ class ObjectDetector:
                 if progress_callback:
                     progress_callback(i + 1, len(image_paths), str(image_path))
                 elif progress_bar:
-                    progress_bar.set_postfix(file=image_path.name)
+                    postfix = f"file={image_path.name} | ✗ Error"
+                    progress_bar.set_postfix(postfix)
                     progress_bar.update(1)
 
         # Close progress bar
