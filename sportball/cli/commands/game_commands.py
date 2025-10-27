@@ -220,12 +220,14 @@ def split(
     import time
     start_time = time.time()
     
+    Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn = _get_progress()
+    
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
         TimeElapsedColumn(),
-        console=console,
+        console=_get_console(),
     ) as progress:
         task = progress.add_task("Processing photos...", total=None)
 
@@ -282,6 +284,7 @@ def display_game_results(
         return
 
     # Create results table
+    Table = _get_table()
     table = Table(title="Game Detection Results")
     table.add_column("Game ID", style="cyan", justify="right")
     table.add_column("Start Time", style="green")
@@ -696,7 +699,7 @@ def _create_jersey_organized_folders(
             _copy_or_symlink_photo(photo_path, dest_path, copy_files)
     
     console.print(
-        f"✅ Created organized folders for jersey-based splitting", style="green"
+        "✅ Created organized folders for jersey-based splitting", style="green"
     )
     return team_folders
 

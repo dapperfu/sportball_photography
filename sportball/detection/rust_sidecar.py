@@ -471,3 +471,72 @@ class RustSidecarManager:
             json.dump(export_data, f, indent=2)
 
         return len(sidecars)
+
+    def save_sidecar_data(
+        self, 
+        image_path: Path, 
+        operation_type: str, 
+        data: Dict[str, Any]
+    ) -> bool:
+        """
+        Save sidecar data using Rust binary format.
+        
+        Args:
+            image_path: Path to the image file
+            operation_type: Type of operation (e.g., "yolov8", "face_detection")
+            data: Data to save in the sidecar
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.rust_available:
+            self.logger.debug("Rust not available, save_sidecar_data will fail")
+            return False
+        
+        try:
+            # Create a temporary JSON file with the data
+            import tempfile
+            import os
+            
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp_file:
+                import json
+                json.dump(data, tmp_file, indent=2)
+                temp_path = tmp_file.name
+            
+            try:
+                # Get the target path
+                base_path = image_path.parent
+                
+                # Use Rust binary to convert JSON to binary format
+                cmd = [
+                    str(self.config.rust_binary_path),
+                    "write",
+                    "--input", temp_path,
+                    "--output", str(image_path.with_suffix(".bin")),
+                    "--operation", operation_type
+                ]
+                
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                
+                if result.returncode == 0:
+                    self.logger.debug(f"Saved sidecar using Rust backend: {image_path.with_suffix('.bin')}")
+                    return True
+                else:
+                    self.logger.warning(f"Rust backend failed: {result.stderr}")
+                    return False
+                    
+            finally:
+                # Clean up temporary file
+                try:
+                    os.unlink(temp_path)
+                except Exception as e:
+                    self.logger.warning(f"Failed to cleanup temp file {temp_path}: {e}")
+                    
+        except Exception as e:
+            self.logger.error(f"save_sidecar_data failed: {e}")
+            return False

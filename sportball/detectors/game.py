@@ -228,8 +228,13 @@ class GameDetector:
             # Calculate gap in minutes
             gap_minutes = (curr_time - prev_time).total_seconds() / 60
 
+            # Use adaptive gap threshold based on context
+            adaptive_gap_threshold = self._calculate_adaptive_gap_threshold(
+                photo_metadata, current_start, i, gap_minutes
+            )
+
             # If gap is large enough, end current game and start new one
-            if gap_minutes >= self.config.min_gap_minutes:
+            if gap_minutes >= adaptive_gap_threshold:
                 # Check if current game meets minimum duration
                 game_duration_minutes = (
                     prev_time - photo_metadata[current_start]["timestamp"]
@@ -258,6 +263,121 @@ class GameDetector:
                 boundaries.append((current_start, len(photo_metadata) - 1))
 
         return boundaries
+
+    def _calculate_adaptive_gap_threshold(
+        self, photo_metadata: List[Dict], current_start: int, current_index: int, gap_minutes: float
+    ) -> float:
+        """
+        Calculate an adaptive gap threshold based on context.
+        
+        This helps distinguish between:
+        - Small breaks within a game (halftime, timeouts) - should NOT split
+        - Actual game boundaries - should split
+        """
+        # Base threshold from config
+        base_threshold = self.config.min_gap_minutes
+        
+        # Calculate current segment stats
+        current_duration = (
+            photo_metadata[current_index - 1]["timestamp"] - 
+            photo_metadata[current_start]["timestamp"]
+        ).total_seconds() / 60
+        photo_count = current_index - current_start
+        
+        # If this would create a very short game segment, be more lenient
+        if photo_count < self.config.min_photos_per_game:
+            # Increase threshold to avoid splitting short segments
+            return max(base_threshold * 2, 30)  # At least 30 minutes
+        
+        # If the current potential game is already long enough, be more strict
+        if current_duration >= self.config.min_game_duration_minutes:
+            # Game is already long enough, use normal threshold
+            return base_threshold
+        
+        # If we're in the middle of what could be a game, be more lenient
+        # Look ahead to see if there's a much larger gap coming
+        look_ahead_distance = min(100, len(photo_metadata) - current_index)  # Increased look-ahead
+        max_future_gap = 0
+        
+        for j in range(current_index + 1, min(current_index + look_ahead_distance, len(photo_metadata))):
+            if j < len(photo_metadata):
+                future_gap = (
+                    photo_metadata[j]["timestamp"] - photo_metadata[j-1]["timestamp"]
+                ).total_seconds() / 60
+                max_future_gap = max(max_future_gap, future_gap)
+        
+        # If there's a much larger gap coming, this might be a small break within a game
+        if max_future_gap > gap_minutes * 2 and gap_minutes < 30:  # Reduced multiplier
+            self.logger.debug(f"Adaptive threshold: Found larger gap {max_future_gap:.1f} min ahead, increasing threshold from {base_threshold} to {max(base_threshold * 1.5, 25)}")
+            return max(base_threshold * 1.5, 25)  # Be more lenient
+        
+        # Special case: if we're early in the sequence and there's a big gap coming,
+        # be more lenient with small gaps
+        if current_start < 200 and max_future_gap > 50:  # More lenient conditions
+            self.logger.debug(f"Adaptive threshold: Early sequence with big gap ahead {max_future_gap:.1f} min, increasing threshold from {base_threshold} to {max(base_threshold * 2, 25)}")
+            return max(base_threshold * 2, 25)  # Be more lenient
+        
+        return base_threshold
+
+    def _merge_split_games(
+        self, photo_metadata: List[Dict], boundaries: List[Tuple[int, int]]
+    ) -> List[Tuple[int, int]]:
+        """
+        Merge games that were split by small gaps but should be considered one game.
+        
+        This handles cases where there are small breaks within a game (like halftime)
+        that shouldn't split the game into separate sessions.
+        """
+        if len(boundaries) <= 1:
+            return boundaries
+
+        merged_boundaries = []
+        i = 0
+        
+        while i < len(boundaries):
+            current_start, current_end = boundaries[i]
+            
+            # Check if we should merge with the next game
+            if i + 1 < len(boundaries):
+                next_start, next_end = boundaries[i + 1]
+                
+                # Calculate the gap between current and next game
+                current_end_time = photo_metadata[current_end]["timestamp"]
+                next_start_time = photo_metadata[next_start]["timestamp"]
+                gap_minutes = (next_start_time - current_end_time).total_seconds() / 60
+                
+                # Calculate total duration if merged
+                total_start_time = photo_metadata[current_start]["timestamp"]
+                total_end_time = photo_metadata[next_end]["timestamp"]
+                total_duration_minutes = (total_end_time - total_start_time).total_seconds() / 60
+                total_photos = next_end - current_start + 1
+                
+                # Merge if:
+                # 1. Gap is relatively small (less than 30 minutes)
+                # 2. Total duration would be reasonable (less than 4 hours)
+                # 3. Both games individually meet minimum requirements
+                current_duration = (current_end_time - total_start_time).total_seconds() / 60
+                next_duration = (total_end_time - next_start_time).total_seconds() / 60
+                
+                should_merge = (
+                    gap_minutes < 30 and  # Small gap
+                    total_duration_minutes < 240 and  # Less than 4 hours total
+                    current_duration >= self.config.min_game_duration_minutes and
+                    next_duration >= self.config.min_game_duration_minutes and
+                    total_photos >= self.config.min_photos_per_game
+                )
+                
+                if should_merge:
+                    # Merge the games
+                    merged_boundaries.append((current_start, next_end))
+                    i += 2  # Skip the next game since we merged it
+                    continue
+            
+            # Don't merge, keep current game
+            merged_boundaries.append((current_start, current_end))
+            i += 1
+        
+        return merged_boundaries
 
     def _create_game_sessions(
         self, photo_metadata: List[Dict], boundaries: List[Tuple[int, int]]

@@ -237,16 +237,17 @@ class Sidecar:
             }
 
         # Look for sidecar file next to the actual image
-        sidecar_path = actual_image_path.with_suffix(".json")
-
-        if sidecar_path.exists():
-            operation = self._detect_operation_type(sidecar_path)
-            return SidecarInfo(
-                image_path=image_path,
-                sidecar_path=sidecar_path,
-                operation=operation,
-                symlink_info=symlink_info,
-            )
+        # Try multiple formats: .bin, .rkyv, .json (in order of preference)
+        for ext in [".bin", ".rkyv", ".json"]:
+            sidecar_path = actual_image_path.with_suffix(ext)
+            if sidecar_path.exists():
+                operation = self._detect_operation_type(sidecar_path)
+                return SidecarInfo(
+                    image_path=image_path,
+                    sidecar_path=sidecar_path,
+                    operation=operation,
+                    symlink_info=symlink_info,
+                )
 
         return None
 
@@ -655,32 +656,46 @@ class Sidecar:
                 "is_symlink": False,
             }
 
-        # Create sidecar path next to actual image
-        sidecar_path = actual_image_path.with_suffix(".json")
-
-        # Load existing data if file exists
-        existing_data = {}
-        if sidecar_path.exists():
+        # Try Rust manager first (uses binary format)
+        if self.rust_manager and self.rust_manager.rust_available:
             try:
-                with open(sidecar_path, "r") as f:
-                    existing_data = json.load(f)
+                return self._save_with_rust(
+                    actual_image_path, image_path, symlink_info, 
+                    operation, operation_type, data, metadata
+                )
             except Exception as e:
-                logger.warning(f"Could not read existing sidecar {sidecar_path}: {e}")
-                existing_data = {}
-
+                logger.warning(f"Rust save failed, falling back to Python: {e}")
+        
+        # Fallback to Python with format detection
+        return self._save_with_python(
+            actual_image_path, image_path, symlink_info,
+            operation, operation_type, data, metadata
+        )
+    
+    def _save_with_rust(
+        self,
+        actual_image_path: Path,
+        image_path: Path,
+        symlink_info: Dict,
+        operation: OperationType,
+        operation_type: str,
+        data: Dict[str, Any],
+        metadata: Optional[Dict],
+    ) -> bool:
+        """Save sidecar using Rust backend for binary format."""
+        # Load existing data in any format
+        existing_data = self._load_existing_data(actual_image_path)
+        
         # Merge the new data with existing data
-        # The new data goes into the root level with the operation_type as key
         merged_data = existing_data.copy()
         merged_data[operation_type] = data
-
-        # Update sidecar_info if it exists, otherwise create new
+        
+        # Update sidecar_info
         if "sidecar_info" in existing_data:
-            merged_data["sidecar_info"].update(
-                {
-                    "last_updated": datetime.now().isoformat(),
-                    "last_operation": operation.value,
-                }
-            )
+            merged_data["sidecar_info"].update({
+                "last_updated": datetime.now().isoformat(),
+                "last_operation": operation.value,
+            })
         else:
             merged_data["sidecar_info"] = {
                 "operation_type": operation.value,
@@ -691,22 +706,138 @@ class Sidecar:
                 "symlink_path": str(image_path),
                 "symlink_info": symlink_info,
             }
-
-        # Save the merged data
+        
+        # Try to save in binary format using Rust backend
         try:
-            # Ensure directory exists
+            # Use .bin extension for binary format
+            sidecar_path = actual_image_path.with_suffix(".bin")
+            
+            # Call Rust manager to save in binary format
+            if self.rust_manager.save_sidecar_data(actual_image_path, operation_type, merged_data):
+                logger.debug(f"Saved sidecar in binary format: {sidecar_path}")
+                return True
+        except Exception as e:
+            logger.warning(f"Rust binary save failed: {e}, trying Python fallback")
+        
+        # Fall back to Python JSON
+        return self._save_with_python(
+            actual_image_path, image_path, symlink_info,
+            operation, operation_type, data, metadata
+        )
+    
+    def _save_with_python(
+        self,
+        actual_image_path: Path,
+        image_path: Path,
+        symlink_info: Dict,
+        operation: OperationType,
+        operation_type: str,
+        data: Dict[str, Any],
+        metadata: Optional[Dict],
+    ) -> bool:
+        """Save sidecar using Python implementation with format detection."""
+        # Try to find existing sidecar in any format
+        existing_data = self._load_existing_data(actual_image_path)
+        existing_format = self._detect_existing_format(actual_image_path)
+        
+        # Determine output format (prefer existing format, default to binary if new, fallback to JSON)
+        if existing_format:
+            output_format = existing_format
+        else:
+            # Prefer binary, fallback to JSON
+            output_format = "bin" if True else "json"  # TODO: Make configurable
+        
+        # Merge data
+        merged_data = existing_data.copy()
+        merged_data[operation_type] = data
+        
+        # Update sidecar_info
+        if "sidecar_info" in existing_data:
+            merged_data["sidecar_info"].update({
+                "last_updated": datetime.now().isoformat(),
+                "last_operation": operation.value,
+            })
+        else:
+            merged_data["sidecar_info"] = {
+                "operation_type": operation.value,
+                "created_at": datetime.now().isoformat(),
+                "last_updated": datetime.now().isoformat(),
+                "last_operation": operation.value,
+                "image_path": str(actual_image_path),
+                "symlink_path": str(image_path),
+                "symlink_info": symlink_info,
+            }
+        
+        # Save in appropriate format
+        try:
+            sidecar_path = actual_image_path.with_suffix(f".{output_format}")
             sidecar_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # Convert data to JSON-serializable format
+            
+            if output_format == "bin":
+                # Use bincode for binary format
+                import bincode
+                serializable_data = self._make_serializable_standalone(merged_data)
+                # Serialize JSON string to binary
+                json_str = json.dumps(serializable_data)
+                binary_data = bincode.serialize(json_str)
+                with open(sidecar_path, "wb") as f:
+                    f.write(binary_data)
+            else:
+                # JSON format
+                serializable_data = self._make_serializable_standalone(merged_data)
+                with open(sidecar_path, "w") as f:
+                    json.dump(serializable_data, f, indent=2)
+            
+            logger.debug(f"Saved sidecar in {output_format} format: {sidecar_path}")
+            return True
+        except ImportError:
+            # bincode not available, fall back to JSON
+            logger.warning("bincode not available, using JSON format")
+            sidecar_path = actual_image_path.with_suffix(".json")
+            sidecar_path.parent.mkdir(parents=True, exist_ok=True)
             serializable_data = self._make_serializable_standalone(merged_data)
-
             with open(sidecar_path, "w") as f:
                 json.dump(serializable_data, f, indent=2)
-
             return True
         except Exception as e:
-            logger.error(f"Failed to save merged sidecar {sidecar_path}: {e}")
+            logger.error(f"Failed to save sidecar {sidecar_path}: {e}")
             return False
+    
+    def _load_existing_data(self, actual_image_path: Path) -> Dict[str, Any]:
+        """Load existing sidecar data from any format."""
+        # Try multiple formats
+        for ext in [".bin", ".rkyv", ".json"]:
+            sidecar_path = actual_image_path.with_suffix(ext)
+            if sidecar_path.exists():
+                try:
+                    if ext == ".bin":
+                        import bincode
+                        with open(sidecar_path, "rb") as f:
+                            binary_data = f.read()
+                        json_str = bincode.deserialize(binary_data)
+                        return json.loads(json_str)
+                    elif ext == ".json":
+                        with open(sidecar_path, "r") as f:
+                            return json.load(f)
+                    else:
+                        # Rkyv format - use bincode for now
+                        import bincode
+                        with open(sidecar_path, "rb") as f:
+                            binary_data = f.read()
+                        json_str = bincode.deserialize(binary_data)
+                        return json.loads(json_str)
+                except Exception as e:
+                    logger.warning(f"Could not read sidecar {sidecar_path}: {e}")
+                    continue
+        return {}
+    
+    def _detect_existing_format(self, actual_image_path: Path) -> Optional[str]:
+        """Detect existing sidecar file format."""
+        for ext in [".bin", ".rkyv", ".json"]:
+            sidecar_path = actual_image_path.with_suffix(ext)
+            if sidecar_path.exists():
+                return ext.lstrip(".")
+        return None
 
     def get_operation_summary(self, directory: Path) -> Dict[str, Any]:
         """Get operation summary for backward compatibility."""

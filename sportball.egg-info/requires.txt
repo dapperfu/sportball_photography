@@ -1,8 +1,11 @@
 Pillow>=10.0.0
 numpy>=1.24.0
+fast-exif-rs-py@ git+https://github.com/dapperfu/fast-exif-rs-py.git#egg=fast-exif-rs-py
 torch>=2.0.0
 torchvision>=0.15.0
+mediapipe>=0.10.0
 scikit-learn>=1.3.0
+opencv-python>=4.8.0
 face-recognition>=1.3.0
 dlib>=19.24.0
 insightface>=0.7.3
