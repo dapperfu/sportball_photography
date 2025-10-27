@@ -690,6 +690,7 @@ class SportballCore:
                         "face_detection",
                         face_sidecar_data,
                         metadata={
+                            "backend": "unified",
                             "confidence": confidence,
                             "min_faces": 0,
                             "face_size": 64,

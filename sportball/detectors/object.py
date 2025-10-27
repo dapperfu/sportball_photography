@@ -1594,7 +1594,8 @@ class ObjectDetector:
             success = sidecar_manager.save_data_merge(
                 image_path,
                 "yolov8",
-                formatted_result
+                formatted_result,
+                metadata={"backend": "yolov8"}
             )
 
             if success:

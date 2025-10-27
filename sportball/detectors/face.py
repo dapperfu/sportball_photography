@@ -1830,12 +1830,13 @@ class InsightFaceDetector:
                             result, img_path, image_width, image_height
                         )
 
-                        # Save to sidecar file immediately
+                        # Save to sidecar file immediately with backend identifier
                         sidecar_manager.save_data_merge(
                             img_path,
                             "face_detection",
                             formatted_result,
                             metadata={
+                                "backend": "insightface",
                                 "confidence": confidence,
                                 "min_faces": min_faces,
                                 "face_size": face_size,

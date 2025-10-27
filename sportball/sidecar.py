@@ -688,7 +688,18 @@ class Sidecar:
         
         # Merge the new data with existing data
         merged_data = existing_data.copy()
-        merged_data[operation_type] = data
+        
+        # Support nested backend storage within operation types
+        # e.g., face_detection -> { face_recognition: {...}, insightface: {...} }
+        if metadata and metadata.get("backend"):
+            backend = metadata["backend"]
+            # Create nested structure: operation_type -> backend -> data
+            if operation_type not in merged_data:
+                merged_data[operation_type] = {}
+            merged_data[operation_type][backend] = data
+        else:
+            # Default flat structure: operation_type -> data
+            merged_data[operation_type] = data
         
         # Update sidecar_info
         if "sidecar_info" in existing_data:
@@ -749,7 +760,18 @@ class Sidecar:
         
         # Merge data
         merged_data = existing_data.copy()
-        merged_data[operation_type] = data
+        
+        # Support nested backend storage within operation types
+        # e.g., face_detection -> { face_recognition: {...}, insightface: {...} }
+        if metadata and metadata.get("backend"):
+            backend = metadata["backend"]
+            # Create nested structure: operation_type -> backend -> data
+            if operation_type not in merged_data:
+                merged_data[operation_type] = {}
+            merged_data[operation_type][backend] = data
+        else:
+            # Default flat structure: operation_type -> data
+            merged_data[operation_type] = data
         
         # Update sidecar_info
         if "sidecar_info" in existing_data:
