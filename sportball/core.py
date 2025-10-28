@@ -1135,26 +1135,48 @@ class SportballCore:
             "🔍 Scanning sidecar files for face detection data...", style="blue"
         )
 
-        # NO PYTHON FILE I/O ALLOWED - MUST USE RUST
-        # Python fallback is PROHIBITED per requirements TR-008.3
-        # 
-        # CRITICAL ISSUE: image-sidecar-rust has no read_data() method
-        # 
-        # SPORTBALL CANNOT WORK WITHOUT RUST READ CAPABILITY
-        # 
-        # This breaks ALL extraction workflows
-        raise RuntimeError(
-            "Image extraction requires Rust read capability which is MISSING."
-            "\n\nREQUIRED FOR IMAGE-SIDECAR-RUST:"
-            "\n  Add read_data(image_path: str) -> dict method"
-            "\n  See REQUIREMENTS_RUST_SIDECAR_IMPLEMENTATION.sdoc"
-            "\n\nPython fallback is PROHIBITED per TR-008.3"
-        )
+        # Step 1: Find all images in input directories
+        from sportball.detection.rust_sidecar import RustSidecarManager
+        rust_manager = RustSidecarManager()
+        
+        if not rust_manager.rust_available:
+            raise RuntimeError("Rust implementation not available")
+        
+        # Use Rust to find all sidecars
+        all_images = []
+        for image_path in image_paths:
+            if image_path.is_file():
+                all_images.append(image_path)
+            else:
+                all_images.extend(image_path.rglob("*.jpg"))
+                all_images.extend(image_path.rglob("*.jpeg"))
+                all_images.extend(image_path.rglob("*.png"))
 
-        # Filter sidecar files that contain face detection data
+        # Find sidecars using Rust
         qualifying_images = []
-
-        with tqdm(sidecar_files, desc="Scanning sidecar files", unit="files") as pbar:
+        for image_path in all_images:
+            try:
+                # Read sidecar data via Rust
+                sidecar_data = rust_manager.rust_impl.read_data(str(image_path)) or {}
+                
+                # Check if this sidecar contains face detection data
+                if "data" in sidecar_data:
+                    data = sidecar_data.get("data", {})
+                    if data.get("success", False):
+                        faces = data.get("faces", [])
+                        if len(faces) > 0:
+                            qualifying_images.append((image_path, faces))
+                else:
+                    # Check root level
+                    if sidecar_data.get("success", False):
+                        faces = sidecar_data.get("faces", [])
+                        if len(faces) > 0:
+                            qualifying_images.append((image_path, faces))
+                            
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to read sidecar for {image_path}: {e}"
+                )
             for sidecar_file in sidecar_files:
                 try:
                     with open(sidecar_file, "r") as f:

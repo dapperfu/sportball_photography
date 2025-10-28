@@ -51,26 +51,24 @@ class SidecarInfo:
         """Load sidecar data from file via Rust manager ONLY.
         
         Per requirements TR-008.3: ALL sidecar read operations SHALL use Rust exclusively.
-        Python is PROHIBITED from reading sidecar files directly.
-        
-        ISSUE: image-sidecar-rust Python bindings do NOT have read_data() method.
-        
-        REQUIRED: Rust module MUST implement read_data(image_path: str) -> dict
         """
-        # ALL sidecar read operations MUST use Rust - NO Python file I/O allowed
-        raise RuntimeError(
-            "Sidecar.load() requires Rust implementation. "
-            "ALL sidecar read operations MUST use image-sidecar-rust module exclusively per TR-008.3."
-            "\n\nCRITICAL: image-sidecar-rust Python bindings do NOT have read_data() method."
-            "\n\nREQUIRED FOR IMAGE-SIDECAR-RUST PROJECT:"
-            "\n1. Add read_data(image_path: str) -> dict method to Python bindings"
-            "\n2. Support reading both JSON (.json) and binary (.bin) files"
-            "\n3. Return all operations (face_detection, yolov8, etc.) in single dict"
-            "\n4. Handle symlink resolution automatically"
-            "\n5. Raise clear error if sidecar not found"
-            "\n\nSee REQUIREMENTS_RUST_SIDECAR_IMPLEMENTATION.sdoc for complete requirements."
-            "\n\nWorkaround: NOT POSSIBLE. Python fallback is PROHIBITED per requirements."
-        )
+        if not self._loaded:
+            # Use Rust read_data() method - NO Python file I/O allowed
+            try:
+                # Get Rust manager and read data using image_path
+                from sportball.detection.rust_sidecar import RustSidecarManager
+                rust_manager = RustSidecarManager()
+                
+                # Read via Rust
+                if rust_manager.rust_available:
+                    self.data = rust_manager.rust_impl.read_data(str(self.image_path)) or {}
+                    self._loaded = True
+                else:
+                    raise RuntimeError("Rust implementation not available")
+            except Exception as e:
+                logger.error(f"Failed to read sidecar via Rust: {e}")
+                self.data = {}
+        return self.data or {}
 
     def save(self, data: Dict[str, Any]) -> bool:
         """Save data to sidecar file via Rust manager ONLY."""
@@ -112,21 +110,30 @@ class SidecarInfo:
 
     def get_processing_time(self) -> Optional[float]:
         """Extract processing time from sidecar data."""
-        # This method calls load() which now requires Rust
-        # Per requirements TR-008, all sidecar operations MUST use Rust
-        raise RuntimeError("Sidecar operations require Rust implementation per TR-008")
+        data = self.load()
+        if "sidecar_info" in data:
+            sidecar_info = data["sidecar_info"]
+            if "processing_time" in sidecar_info:
+                return float(sidecar_info["processing_time"])
+        return None
 
     def get_success_status(self) -> bool:
         """Extract success status from sidecar data."""
-        # This method calls load() which now requires Rust
-        # Per requirements TR-008, all sidecar operations MUST use Rust
-        raise RuntimeError("Sidecar operations require Rust implementation per TR-008")
+        data = self.load()
+        if "sidecar_info" in data:
+            sidecar_info = data["sidecar_info"]
+            if "success" in sidecar_info:
+                return bool(sidecar_info["success"])
+        return False
 
     def get_data_size(self) -> int:
         """Get the size of the sidecar data."""
-        # This method calls load() which now requires Rust
-        # Per requirements TR-008, all sidecar operations MUST use Rust
-        raise RuntimeError("Sidecar operations require Rust implementation per TR-008")
+        data = self.load()
+        if "sidecar_info" in data:
+            sidecar_info = data["sidecar_info"]
+            if "data_size" in sidecar_info:
+                return int(sidecar_info["data_size"])
+        return 0
 
 
 class Sidecar:
