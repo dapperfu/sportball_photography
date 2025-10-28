@@ -709,25 +709,43 @@ class SportballCore:
         
         # Face detection - use identical parameters as individual face detection command
         try:
+            # Filter out kwargs that detect_faces_batch doesn't accept
+            face_kwargs = {k: v for k, v in kwargs.items() if k not in ['workers', 'max_workers']}
             # Use detect_faces_batch for single image with identical parameters as face detection command
             face_results = face_detector.detect_faces_batch(
                 [image_path], 
-                confidence=confidence,
+                confidence=confidence if confidence is not None else 0.5,
                 min_faces=0,  # FR-001.1: Allow 0 faces - "no face" is a valid result
                 face_size=64,  # FR-001.2: Use identical face_size parameter
                 save_sidecar=False,  # We'll handle sidecar saving ourselves
-                **kwargs
+                **face_kwargs
             )
-            face_result = face_results[str(image_path)]
+            # Try both Path and string representations of the path
+            face_result = None
+            for key in [str(image_path), image_path.as_posix()]:
+                if key in face_results:
+                    face_result = face_results[key]
+                    break
             
-            # Convert to dict format
-            face_dict = {
-                "success": face_result.success,
-                "face_count": face_result.face_count,
-                "faces": [face.to_dict() for face in face_result.faces],
-                "processing_time": face_result.processing_time,
-                "error": face_result.error if face_result.error else None
-            }
+            if face_result is None:
+                self.logger.error(f"Could not find face result for {image_path} in {list(face_results.keys())}")
+                face_dict = {
+                    "success": False,
+                    "face_count": 0,
+                    "faces": [],
+                    "processing_time": 0.0,
+                    "error": "Could not find face result in batch output"
+                }
+            else:
+                # Convert to dict format
+                # DetectedFace uses as_dict() not to_dict()
+                face_dict = {
+                    "success": face_result.success,
+                    "face_count": face_result.face_count,
+                    "faces": [face.as_dict() for face in face_result.faces],
+                    "processing_time": face_result.processing_time,
+                    "error": face_result.error if face_result.error else None
+                }
             
         except Exception as e:
             face_dict = {
