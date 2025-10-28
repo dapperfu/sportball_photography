@@ -72,7 +72,7 @@ setup(
         "face-recognition>=1.3.0",
         "dlib>=19.24.0",
         "insightface>=0.7.3",
-        "onnxruntime-gpu>=1.16.0",
+        "onnxruntime-gpu>=1.23.0",
         # Object Detection
         "ultralytics>=8.0.0",
         # CLI and UI
