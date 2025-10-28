@@ -57,7 +57,20 @@ class RustPerformanceModule:
             self.rust_available = False
             return
 
-        # Check for Rust binary
+        # Check for image-sidecar-rust Python bindings (primary method)
+        try:
+            import image_sidecar_rust
+            # Test that it works
+            test_sidecar = image_sidecar_rust.ImageSidecar()
+            self.rust_available = True
+            self.logger.info("Rust sidecar Python bindings (image-sidecar-rust) available")
+            return
+        except ImportError:
+            self.logger.debug("image-sidecar-rust not available")
+        except Exception as e:
+            self.logger.warning(f"Failed to initialize image-sidecar-rust: {e}")
+
+        # Check for Rust binary (fallback)
         if self.config.rust_binary_path and self.config.rust_binary_path.exists():
             self.rust_available = True
             self.logger.info(f"Rust binary found: {self.config.rust_binary_path}")
@@ -83,7 +96,7 @@ class RustPerformanceModule:
         self.logger.error("Rust not available. Rust performance operations require Rust.")
         raise RuntimeError(
             "Rust implementation not available. Rust performance operations require "
-            "Rust tools. Please ensure Rust tools are installed."
+            "image-sidecar-rust Python bindings or Rust tools. Please install image-sidecar-rust."
         )
 
     def parallel_json_validation(self, file_paths: List[Path]) -> List[Dict[str, Any]]:
