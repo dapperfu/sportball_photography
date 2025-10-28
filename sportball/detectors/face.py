@@ -1398,6 +1398,10 @@ class InsightFaceDetector:
         self.app = None
         self.device = "cpu"
         self.gpu_available = False
+        
+        # Thread lock for thread-safe access to InsightFace app (ONNX Runtime is not thread-safe)
+        import threading
+        self._app_lock = threading.Lock()
 
         if not INSIGHTFACE_AVAILABLE:
             self.logger.error(
@@ -1767,7 +1771,9 @@ class InsightFaceDetector:
                     )
                     continue
 
-                faces = self.app.get(image)
+                # Use thread lock for thread-safe access to ONNX Runtime
+                with self._app_lock:
+                    faces = self.app.get(image)
 
                 # Filter faces by confidence and size
                 detected_faces = []
