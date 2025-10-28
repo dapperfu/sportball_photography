@@ -48,29 +48,23 @@ class SidecarInfo:
         self._loaded = False
 
     def load(self) -> Dict[str, Any]:
-        """Load sidecar data from file.
-        
-        For existing JSON files, reads directly with Python (backward compatibility).
-        For new files, MUST use Rust via the sidecar manager.
-        """
-        if not self._loaded:
-            # For existing JSON files, allow direct read for backward compatibility
-            if self.sidecar_path.suffix == ".json" and self.sidecar_path.exists():
-                try:
-                    with open(self.sidecar_path, "r") as f:
-                        self.data = json.load(f)
-                    self._loaded = True
-                except Exception as e:
-                    logger.error(f"Failed to load JSON sidecar {self.sidecar_path}: {e}")
-                    self.data = {}
-            else:
-                # Binary files and new files MUST use Rust manager
-                raise RuntimeError(
-                    "Sidecar.load() for binary files requires Rust implementation. "
-                    "Use SidecarManager.load_data() method which delegates to Rust exclusively. "
-                    "JSON reading is only supported for existing .json files."
-                )
-        return self.data or {}
+        """Load sidecar data from file via Rust manager ONLY."""
+        # ALL sidecar read operations MUST use Rust - NO Python file I/O allowed
+        # Per requirements TR-008.3: "All sidecar read, write, and management operations 
+        # SHALL delegate exclusively to the image-sidecar-rust module methods."
+        # 
+        # ISSUE: image-sidecar-rust Python bindings currently do NOT have a read method.
+        # REQUIRED: The Rust module MUST add a read_data() or load_data() method that can
+        # read both JSON and binary sidecar files.
+        #
+        # Until this is implemented in Rust, this will fail.
+        raise RuntimeError(
+            "Sidecar.load() requires Rust implementation. "
+            "ALL sidecar read operations MUST use image-sidecar-rust module exclusively per TR-008.3. "
+            "\n\nISSUE: image-sidecar-rust Python bindings do not currently have a read method."
+            "\nREQUIRED: Rust module MUST add read_data() or load_data() method to read JSON/binary files."
+            "\nPlease add this functionality to image-sidecar-rust or update requirements."
+        )
 
     def save(self, data: Dict[str, Any]) -> bool:
         """Save data to sidecar file via Rust manager ONLY."""
