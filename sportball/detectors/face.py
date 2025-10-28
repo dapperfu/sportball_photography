@@ -8,49 +8,11 @@ Generated via Cursor IDE (cursor.sh) with AI assistance
 """
 
 import numpy as np
-import os
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict
 from PIL import Image, ImageDraw
 from loguru import logger
-
-# Auto-configure CUDA library path for ONNX Runtime
-def _setup_cuda_library_path():
-    """Automatically set up CUDA library path for ONNX Runtime compatibility."""
-    try:
-        import glob
-        
-        # Check if CUDA libraries are already in the library path
-        current_ld_path = os.environ.get("LD_LIBRARY_PATH", "")
-        
-        # Common CUDA installation paths
-        cuda_paths = [
-            "/usr/local/cuda-13.0/targets/x86_64-linux/lib",
-            "/usr/local/cuda-12.0/targets/x86_64-linux/lib",
-            "/usr/local/cuda-11.0/targets/x86_64-linux/lib",
-            "/usr/local/cuda/targets/x86_64-linux/lib",
-            "/usr/local/cuda/lib64",
-            "/usr/local/cuda/lib",
-        ]
-        
-        # Try to find a valid CUDA installation
-        for cuda_path in cuda_paths:
-            lib_path = os.path.join(cuda_path, "libcublasLt.so")
-            if os.path.exists(lib_path) or glob.glob(f"{cuda_path}/libcublasLt.so.*"):
-                if cuda_path not in current_ld_path:
-                    # Add to library path
-                    new_path = cuda_path
-                    if current_ld_path:
-                        new_path = f"{cuda_path}:{current_ld_path}"
-                    os.environ["LD_LIBRARY_PATH"] = new_path
-                    logger.debug(f"Auto-configured CUDA library path: {cuda_path}")
-                    break
-    except Exception as e:
-        logger.debug(f"Could not auto-configure CUDA library path: {e}")
-
-# Set up CUDA library path on module import
-_setup_cuda_library_path()
 
 try:
     import face_recognition
