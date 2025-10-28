@@ -1159,22 +1159,12 @@ class SportballCore:
                 # Read sidecar data via Rust
                 sidecar_data = rust_manager.read_data(str(image_path)) or {}
                 
-                # Debug: Print first result to see structure
-                if len(qualifying_images) == 0 and sidecar_data:
-                    print(f"DEBUG: First sidecar data structure for {image_path}:")
-                    print(f"Keys: {list(sidecar_data.keys())}")
-                
-                # Check if this sidecar contains face detection data
-                if "data" in sidecar_data:
-                    data = sidecar_data.get("data", {})
-                    if data.get("success", False):
-                        faces = data.get("faces", [])
-                        if len(faces) > 0:
-                            qualifying_images.append((image_path, faces))
-                else:
-                    # Check root level
-                    if sidecar_data.get("success", False):
-                        faces = sidecar_data.get("faces", [])
+                # Rust returns: {'face_detection': {...}, 'yolov8': {...}, 'sidecar_info': {...}}
+                # Check face_detection directly
+                if "face_detection" in sidecar_data:
+                    face_data = sidecar_data.get("face_detection", {})
+                    if face_data.get("success", False):
+                        faces = face_data.get("faces", [])
                         if len(faces) > 0:
                             qualifying_images.append((image_path, faces))
                             
