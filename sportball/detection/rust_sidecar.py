@@ -58,12 +58,22 @@ class RustSidecarManager:
         self._check_rust_availability()
 
     def _check_rust_availability(self) -> None:
-        """Check if Rust binary is available."""
+        """Check if Rust sidecar is available (Python bindings or binary)."""
         if not self.config.enable_rust:
             self.rust_available = False
             return
 
-        # Check for Rust binary
+        # Check if Python bindings are available (preferred method)
+        if RUST_SIDECAR_AVAILABLE:
+            try:
+                self.sidecar = image_sidecar_rust.ImageSidecar()
+                self.rust_available = True
+                self.logger.info("Rust sidecar Python bindings available")
+                return
+            except Exception as e:
+                self.logger.warning(f"Failed to create Rust sidecar instance: {e}")
+
+        # Fallback: Check for standalone binary
         if self.config.rust_binary_path and self.config.rust_binary_path.exists():
             self.rust_available = True
             self.logger.info(f"Rust binary found: {self.config.rust_binary_path}")
@@ -86,29 +96,6 @@ class RustSidecarManager:
                 return
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
-
-        # Try to find binary in parent directory
-        parent_dir = Path(__file__).parent.parent.parent.parent.parent
-        rust_binary = (
-            parent_dir
-            / "image-sidecar-rust"
-            / "target"
-            / "release"
-            / "sportball-sidecar-rust"
-        )
-
-        # Also try relative path from current working directory
-        if not rust_binary.exists():
-            rust_binary = Path(
-                "../image-sidecar-rust/target/release/sportball-sidecar-rust"
-            )
-        if rust_binary.exists():
-            self.config.rust_binary_path = rust_binary
-            self.rust_available = True
-            self.logger.info(
-                f"Rust binary found in parent directory: {self.config.rust_binary_path}"
-            )
-            return
 
         # Rust not available
         self.rust_available = False

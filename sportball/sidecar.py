@@ -656,19 +656,13 @@ class Sidecar:
                 "is_symlink": False,
             }
 
-        # Try Rust manager first (uses binary format)
-        if self.rust_manager and self.rust_manager.rust_available:
-            try:
-                return self._save_with_rust(
-                    actual_image_path, image_path, symlink_info, 
-                    operation, operation_type, data, metadata
-                )
-            except Exception as e:
-                logger.warning(f"Rust save failed, falling back to Python: {e}")
+        # Use Rust manager exclusively (binary format only, no fallback)
+        if not self.rust_manager or not self.rust_manager.rust_available:
+            logger.error("Rust sidecar manager not available - sidecar operations require Rust")
+            raise RuntimeError("Sidecar operations require Rust sidecar manager")
         
-        # Fallback to Python with format detection
-        return self._save_with_python(
-            actual_image_path, image_path, symlink_info,
+        return self._save_with_rust(
+            actual_image_path, image_path, symlink_info, 
             operation, operation_type, data, metadata
         )
     
@@ -718,23 +712,16 @@ class Sidecar:
                 "symlink_info": symlink_info,
             }
         
-        # Try to save in binary format using Rust backend
-        try:
-            # Use .bin extension for binary format
-            sidecar_path = actual_image_path.with_suffix(".bin")
-            
-            # Call Rust manager to save in binary format
-            if self.rust_manager.save_sidecar_data(actual_image_path, operation_type, merged_data):
-                logger.debug(f"Saved sidecar in binary format: {sidecar_path}")
-                return True
-        except Exception as e:
-            logger.warning(f"Rust binary save failed: {e}, trying Python fallback")
+        # Save in binary format using Rust backend (NO FALLBACK)
+        # Use .bin extension for binary format
+        sidecar_path = actual_image_path.with_suffix(".bin")
         
-        # Fall back to Python JSON
-        return self._save_with_python(
-            actual_image_path, image_path, symlink_info,
-            operation, operation_type, data, metadata
-        )
+        # Call Rust manager to save in binary format
+        if not self.rust_manager.save_sidecar_data(actual_image_path, operation_type, merged_data):
+            raise RuntimeError(f"Failed to save sidecar in binary format: {sidecar_path}")
+        
+        logger.debug(f"Saved sidecar in binary format: {sidecar_path}")
+        return True
     
     def _save_with_python(
         self,
