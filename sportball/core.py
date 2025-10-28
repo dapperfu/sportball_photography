@@ -1177,28 +1177,6 @@ class SportballCore:
                 self.logger.warning(
                     f"Failed to read sidecar for {image_path}: {e}"
                 )
-                try:
-                    with open(sidecar_file, "r") as f:
-                        data = json.load(f)
-
-                    # Check if this sidecar contains face detection data
-                    if "data" in data and data["data"].get("success", False):
-                        faces = data["data"].get("faces", [])
-                        if len(faces) > 0:
-                            # Find the corresponding image file
-                            image_name = sidecar_file.stem
-                            for ext in [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]:
-                                image_path = sidecar_file.parent / f"{image_name}{ext}"
-                                if image_path.exists():
-                                    qualifying_images.append((image_path, faces))
-                                    break
-
-                except Exception as e:
-                    self.logger.warning(
-                        f"Failed to read sidecar file {sidecar_file}: {e}"
-                    )
-
-                pbar.update(1)
 
         if not qualifying_images:
             _get_console().print("❌ No images with detected faces found", style="red")
