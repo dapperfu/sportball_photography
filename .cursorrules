@@ -1,0 +1,73 @@
+# Cursor Rules for Sportball Photography Project
+
+## Git Workflow
+
+### ALWAYS pull before committing
+Before making any git commit, you MUST run:
+1. `git pull` (or `git pull --rebase` if preferred)
+2. Resolve any merge conflicts
+3. Then proceed with commit
+
+This ensures the latest remote changes are always incorporated and prevents branch divergence issues.
+
+### Git Commit Workflow
+
+```bash
+# BEFORE any commit:
+git pull origin main
+
+# If merge conflicts occur:
+# - Resolve conflicts
+# - git add <resolved-files>
+# - Continue with commit
+
+# THEN commit:
+git add -A
+git commit -m "Commit message"
+
+# THEN push (per project rules):
+git push
+```
+
+## Project Rules
+
+### Requirements
+- Requirements SHALL be in StrictDoc format
+- ALL noteboks must be generated programatically from a .py script
+- StrictDoc (.sdoc) documents SHALL not have C-style comments at the top of the file
+
+### Python
+- All python language scripts SHALL use full mypy typing
+- All python language scripts SHALL be documented to meet numpy style guidelines
+- The Python virtual environment SHALL be called `venv`
+- All Makefile references to pip and python installed tools like pytest SHALL use the full path to the venv bin directory, eg `venv/bin/pytest`, `venv/bin/pip`
+- Do NOT attempt to use the system pip
+- Do NOT attempt to install Python packages to the system
+- All Python related matters SHALL use a virtual environment
+
+### Git Commits
+- All git commits SHALL be followed by a git push if and only if a remote exists
+- You shall change the git user to "<user> | Cursor.sh | <model>" before committing
+- This way any git commit changed by you will be known as automated
+
+### Makefiles
+- Makefiles SHALL use full escape for all variables: ${VAR} not $VAR to avoid confusion
+- All makefiles SHALL use an actual file/folder where possible as a target
+
+### Security
+- Never under any circumstances run rm -rf on ~/
+- Under no circumstances should you run sudo
+- All commands SHALL be done in userspace
+
+## Rust Requirements (CRITICAL)
+
+### Rust is MANDATORY
+- Rust is NOT optional - it MUST be required
+- If Rust is unavailable, operations SHALL raise RuntimeError
+- Per requirements TR-007: "Exceptions when Rust is unavailable enforce exclusive use of the Rust implementation"
+- ALL sidecar operations SHALL use image-sidecar-rust module exclusively
+- NO Python fallback code SHALL exist for sidecar operations
+
+### Rust Availability Check
+When Rust is not available, the system MUST fail with a clear error message instructing the user to install Rust tools.
+
