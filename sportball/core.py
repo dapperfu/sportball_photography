@@ -1177,7 +1177,6 @@ class SportballCore:
                 self.logger.warning(
                     f"Failed to read sidecar for {image_path}: {e}"
                 )
-            for sidecar_file in sidecar_files:
                 try:
                     with open(sidecar_file, "r") as f:
                         data = json.load(f)
