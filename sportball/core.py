@@ -1157,7 +1157,12 @@ class SportballCore:
         for image_path in all_images:
             try:
                 # Read sidecar data via Rust
-                sidecar_data = rust_manager.rust_impl.read_data(str(image_path)) or {}
+                sidecar_data = rust_manager.read_data(str(image_path)) or {}
+                
+                # Debug: Print first result to see structure
+                if len(qualifying_images) == 0 and sidecar_data:
+                    print(f"DEBUG: First sidecar data structure for {image_path}:")
+                    print(f"Keys: {list(sidecar_data.keys())}")
                 
                 # Check if this sidecar contains face detection data
                 if "data" in sidecar_data:
