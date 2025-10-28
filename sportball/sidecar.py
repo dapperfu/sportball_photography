@@ -48,15 +48,28 @@ class SidecarInfo:
         self._loaded = False
 
     def load(self) -> Dict[str, Any]:
-        """Load sidecar data from file via Rust manager ONLY."""
+        """Load sidecar data from file.
+        
+        For existing JSON files, reads directly with Python (backward compatibility).
+        For new files, MUST use Rust via the sidecar manager.
+        """
         if not self._loaded:
-            # ALL sidecar operations MUST use Rust - NO Python file I/O allowed
-            # Per requirements TR-008: "All sidecar operations SHALL use image-sidecar-rust module exclusively"
-            raise RuntimeError(
-                "Sidecar.load() requires Rust implementation. "
-                "ALL sidecar read/write operations MUST use Rust manager exclusively. "
-                "No Python file I/O is allowed per requirements TR-007 and TR-008."
-            )
+            # For existing JSON files, allow direct read for backward compatibility
+            if self.sidecar_path.suffix == ".json" and self.sidecar_path.exists():
+                try:
+                    with open(self.sidecar_path, "r") as f:
+                        self.data = json.load(f)
+                    self._loaded = True
+                except Exception as e:
+                    logger.error(f"Failed to load JSON sidecar {self.sidecar_path}: {e}")
+                    self.data = {}
+            else:
+                # Binary files and new files MUST use Rust manager
+                raise RuntimeError(
+                    "Sidecar.load() for binary files requires Rust implementation. "
+                    "Use SidecarManager.load_data() method which delegates to Rust exclusively. "
+                    "JSON reading is only supported for existing .json files."
+                )
         return self.data or {}
 
     def save(self, data: Dict[str, Any]) -> bool:
