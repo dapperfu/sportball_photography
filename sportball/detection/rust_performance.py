@@ -52,12 +52,13 @@ class RustPerformanceModule:
         self._check_rust_availability()
 
     def _check_rust_availability(self) -> None:
-        """Check if Rust binary is available."""
+        """Check if image-sidecar-rust Python bindings are available."""
         if not self.config.enable_rust:
             self.rust_available = False
             return
 
-        # Check for image-sidecar-rust Python bindings (primary method)
+        # Check for image-sidecar-rust Python bindings - THIS IS THE ONLY METHOD
+        # Per TR-007 and TR-008: NO fallback to binary or any other method
         try:
             import image_sidecar_rust
             # Test that it works
@@ -66,37 +67,26 @@ class RustPerformanceModule:
             self.logger.info("Rust sidecar Python bindings (image-sidecar-rust) available")
             return
         except ImportError:
-            self.logger.debug("image-sidecar-rust not available")
-        except Exception as e:
-            self.logger.warning(f"Failed to initialize image-sidecar-rust: {e}")
-
-        # Check for Rust binary (fallback)
-        if self.config.rust_binary_path and self.config.rust_binary_path.exists():
-            self.rust_available = True
-            self.logger.info(f"Rust binary found: {self.config.rust_binary_path}")
-            return
-
-        # Try to find Rust binary in PATH
-        try:
-            result = subprocess.run(
-                ["which", "sportball-rust"], capture_output=True, text=True, timeout=5
+            self.rust_available = False
+            self.logger.error("image-sidecar-rust Python bindings not available")
+            raise RuntimeError(
+                "image-sidecar-rust Python bindings are required but not installed. "
+                "Install with: pip install image-sidecar-rust or "
+                "install from source at https://github.com/dapperfu/image-sidecar-rust.git"
             )
-            if result.returncode == 0:
-                self.config.rust_binary_path = Path(result.stdout.strip())
-                self.rust_available = True
-                self.logger.info(
-                    f"Rust binary found in PATH: {self.config.rust_binary_path}"
-                )
-                return
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
+        except Exception as e:
+            self.rust_available = False
+            self.logger.error(f"Failed to initialize image-sidecar-rust: {e}")
+            raise RuntimeError(
+                f"Failed to initialize image-sidecar-rust Python bindings: {e}. "
+                "Please ensure image-sidecar-rust is properly installed."
+            )
 
-        # Rust not available
+        # Rust not available (should never reach here due to exceptions above)
         self.rust_available = False
-        self.logger.error("Rust not available. Rust performance operations require Rust.")
         raise RuntimeError(
-            "Rust implementation not available. Rust performance operations require "
-            "image-sidecar-rust Python bindings or Rust tools. Please install image-sidecar-rust."
+            "Rust implementation not available. "
+            "image-sidecar-rust Python bindings are REQUIRED per TR-007 and TR-008."
         )
 
     def parallel_json_validation(self, file_paths: List[Path]) -> List[Dict[str, Any]]:
