@@ -352,6 +352,81 @@ class SportballCore:
 
         return results
 
+    def _filter_images_needing_processing(
+        self, 
+        image_paths: List[Path], 
+        save_sidecar: bool, 
+        force: bool
+    ) -> List[Path]:
+        """
+        Pre-check sidecar files to determine which images actually need processing.
+        
+        Args:
+            image_paths: List of image paths to check
+            save_sidecar: Whether to save sidecar files
+            force: Whether to force reprocessing
+            
+        Returns:
+            List of image paths that need processing
+        """
+        if force:
+            # Force mode: process all images
+            return image_paths
+        
+        if not save_sidecar:
+            # Not saving sidecars: process all images
+            return image_paths
+            
+        # Check each image for existing sidecar with complete data
+        images_to_process = []
+        sidecar_extensions = [".json", ".bin", ".rkyv"]
+        
+        self.logger.debug(f"Scanning {len(image_paths)} images for sidecar status...")
+        
+        for image_path in image_paths:
+            # Check for existing sidecar in any format
+            has_complete_sidecar = False
+            for ext in sidecar_extensions:
+                sidecar_path = image_path.with_suffix(ext)
+                if sidecar_path.exists():
+                    try:
+                        # Load and check sidecar content
+                        from .sidecar import Sidecar
+                        sidecar = Sidecar()
+                        data = sidecar.load_data(image_path, "face_detection")
+                        
+                        # Check if both face_detection and yolov8 data exist
+                        # Also try loading with different operation types
+                        try:
+                            import json
+                            with open(sidecar_path, 'r') as f:
+                                sidecar_data = json.load(f)
+                            
+                            # Check for both face_detection and yolov8 data
+                            if "face_detection" in sidecar_data and "yolov8" in sidecar_data:
+                                # Verify the data is complete
+                                face_data = sidecar_data.get("face_detection", {})
+                                yolov8_data = sidecar_data.get("yolov8", {})
+                                
+                                # Check if data exists (even if empty)
+                                if isinstance(face_data, dict) and isinstance(yolov8_data, dict):
+                                    has_complete_sidecar = True
+                                    break
+                        except Exception as e:
+                            self.logger.debug(f"Could not read/parse sidecar {sidecar_path}: {e}")
+                            continue
+                    except Exception as e:
+                        self.logger.debug(f"Error checking sidecar for {image_path}: {e}")
+                        continue
+            
+            if not has_complete_sidecar:
+                images_to_process.append(image_path)
+                self.logger.debug(f"Needs processing: {image_path.name}")
+            else:
+                self.logger.debug(f"Skipping (has sidecar): {image_path.name}")
+        
+        return images_to_process
+
     @timing_decorator
     @gpu_accelerated(fallback_cpu=True)
     def detect_unified(
@@ -387,6 +462,17 @@ class SportballCore:
 
         self.logger.info(f"Unified detection in {len(image_paths)} images")
 
+        # Pre-check: filter images that actually need processing
+        images_to_process = self._filter_images_needing_processing(
+            image_paths, save_sidecar, force
+        )
+        
+        self.logger.info(f"Filtered: {len(images_to_process)} of {len(image_paths)} images need processing")
+
+        if not images_to_process:
+            self.logger.info("All images already processed - nothing to do")
+            return {"faces": {}, "objects": {}}
+
         # Get detectors
         face_detector = self.face_detector
         object_detector = self.get_object_detector()
@@ -395,13 +481,13 @@ class SportballCore:
         if max_workers is None or max_workers <= 1:
             # Sequential processing
             return self._detect_unified_sequential(
-                image_paths, face_detector, object_detector, 
+                images_to_process, face_detector, object_detector, 
                 save_sidecar, force, confidence, classes, **kwargs
             )
         else:
             # Parallel processing
             return self._detect_unified_parallel(
-                image_paths, face_detector, object_detector, max_workers,
+                images_to_process, face_detector, object_detector, max_workers,
                 save_sidecar, force, confidence, classes, **kwargs
             )
 
