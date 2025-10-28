@@ -31,7 +31,7 @@ class RustSidecarConfig:
 
     enable_rust: bool = True
     rust_binary_path: Optional[Path] = None
-    fallback_to_python: bool = True
+    fallback_to_python: bool = False  # NO FALLBACK PER TR-007
     max_workers: int = 16
     timeout: int = 300
 
@@ -97,14 +97,12 @@ class RustSidecarManager:
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
 
-        # Rust not available
+        # Rust not available - NO FALLBACK PER TR-007
         self.rust_available = False
-        if self.config.fallback_to_python:
-            self.logger.warning(
-                "Rust not available, falling back to Python implementations"
-            )
-        else:
-            self.logger.error("Rust not available and fallback disabled")
+        self.logger.error(
+            "Rust not available. ALL sidecar operations REQUIRE Rust per TR-007 and TR-008. "
+            "NO Python fallback is allowed."
+        )
 
     def validate_sidecars(
         self, directory: Path, operation_filter: Optional[str] = None
