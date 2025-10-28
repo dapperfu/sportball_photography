@@ -32,7 +32,7 @@ ELEMENTS:
     REQUIRED: False
 
 [REQUIREMENT]
-UID: FR-000
+UID: JERSEY-FR-000
 TITLE: Compiled Tool Priority Policy
 STATEMENT: If a Rust or other compiled tool (C, Go, etc.) is available for any operation, the Python interface to that compiled tool SHALL ALWAYS be used over any "Python fallback" implementation. This applies to ALL operations including pose detection, color analysis, and file management. If a compiled tool is inadequate, the compiled tool project SHALL be fixed - do NOT create a lesser quality and slower Python implementation.
 RATIONALE: Compiled tools provide superior performance, reliability, and maintainability. Python fallbacks create inferior solutions and technical debt. All operations MUST prefer compiled tools to maintain quality standards.
