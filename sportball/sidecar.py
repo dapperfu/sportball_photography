@@ -48,28 +48,29 @@ class SidecarInfo:
         self._loaded = False
 
     def load(self) -> Dict[str, Any]:
-        """Load sidecar data from file.
+        """Load sidecar data from file via Rust manager ONLY.
         
-        CRITICAL ISSUE: image-sidecar-rust Python bindings do NOT have a read method.
-        This is a WORKAROUND until Rust read capability is added.
+        Per requirements TR-008.3: ALL sidecar read operations SHALL use Rust exclusively.
+        Python is PROHIBITED from reading sidecar files directly.
         
-        WORKAROUND: Directly read JSON files since Rust can't read yet.
-        TODO: Rust module MUST add read_data() or load_data() method.
+        ISSUE: image-sidecar-rust Python bindings do NOT have read_data() method.
+        
+        REQUIRED: Rust module MUST implement read_data(image_path: str) -> dict
         """
-        if not self._loaded:
-            # WORKAROUND: Read JSON directly since Rust has no read method
-            # TODO: Replace with Rust read once image-sidecar-rust adds read capability
-            if self.sidecar_path.exists():
-                try:
-                    with open(self.sidecar_path, "r") as f:
-                        self.data = json.load(f)
-                    self._loaded = True
-                except Exception as e:
-                    logger.error(f"Failed to load sidecar {self.sidecar_path}: {e}")
-                    self.data = {}
-            else:
-                self.data = {}
-        return self.data or {}
+        # ALL sidecar read operations MUST use Rust - NO Python file I/O allowed
+        raise RuntimeError(
+            "Sidecar.load() requires Rust implementation. "
+            "ALL sidecar read operations MUST use image-sidecar-rust module exclusively per TR-008.3."
+            "\n\nCRITICAL: image-sidecar-rust Python bindings do NOT have read_data() method."
+            "\n\nREQUIRED FOR IMAGE-SIDECAR-RUST PROJECT:"
+            "\n1. Add read_data(image_path: str) -> dict method to Python bindings"
+            "\n2. Support reading both JSON (.json) and binary (.bin) files"
+            "\n3. Return all operations (face_detection, yolov8, etc.) in single dict"
+            "\n4. Handle symlink resolution automatically"
+            "\n5. Raise clear error if sidecar not found"
+            "\n\nSee REQUIREMENTS_RUST_SIDECAR_IMPLEMENTATION.sdoc for complete requirements."
+            "\n\nWorkaround: NOT POSSIBLE. Python fallback is PROHIBITED per requirements."
+        )
 
     def save(self, data: Dict[str, Any]) -> bool:
         """Save data to sidecar file via Rust manager ONLY."""

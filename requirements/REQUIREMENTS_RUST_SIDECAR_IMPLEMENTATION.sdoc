@@ -41,10 +41,17 @@ STATUS: Pending
 [REQUIREMENT]
 UID: RUST-019
 TITLE: Python Bindings Read Method
-STATEMENT: The ImageSidecar Python bindings SHALL expose a read_data() method that accepts (image_path: str) and returns Optional[Dict[str, Any]] containing the sidecar data. This method SHALL support reading both JSON (.json) and binary (.bin) sidecar file formats automatically based on file extension.
-RATIONALE: Sportball requires reading existing sidecar files to extract detected faces/objects. Currently image-sidecar-rust has no read capability, causing broken extraction workflows. Read operations MUST use Rust exclusively per TR-008.3.
-PRIORITY: Critical
-STATUS: Pending
+STATEMENT: The ImageSidecar Python bindings SHALL expose a read_data(image_path: str) -> dict method that reads and returns the full sidecar data. The method SHALL:
+1. Accept image_path as string (e.g., "/path/to/image.jpg")
+2. Automatically detect and read sidecar in any format (.json, .bin, .rkyv) by checking all extensions
+3. Return all operation types (face_detection, yolov8, etc.) in a single nested dict structure
+4. Handle symlink resolution automatically (resolve image symlink, find sidecar next to actual image)
+5. Return empty dict {} if no sidecar exists (NOT raise error)
+6. Deserialize binary/.bin files back to Python dict structure
+7. Deserialize JSON/.json files back to Python dict structure
+RATIONALE: Sportball extracts faces/objects from existing sidecars. Current Rust bindings have NO read capability, breaking ALL extraction workflows. Python fallback is PROHIBITED per TR-008.3. This is BLOCKING sportball functionality.
+PRIORITY: Critical - BLOCKING
+STATUS: Missing
 
 [REQUIREMENT]
 UID: RUST-020

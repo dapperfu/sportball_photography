@@ -1135,17 +1135,21 @@ class SportballCore:
             "🔍 Scanning sidecar files for face detection data...", style="blue"
         )
 
-        # Find all sidecar files in the input directories
-        sidecar_files = []
-        for image_path in image_paths:
-            if image_path.is_file():
-                # Single file - look for sidecar in same directory
-                sidecar_path = image_path.with_suffix(".json")
-                if sidecar_path.exists():
-                    sidecar_files.append(sidecar_path)
-            else:
-                # Directory - find all JSON files
-                sidecar_files.extend(image_path.rglob("*.json"))
+        # NO PYTHON FILE I/O ALLOWED - MUST USE RUST
+        # Python fallback is PROHIBITED per requirements TR-008.3
+        # 
+        # CRITICAL ISSUE: image-sidecar-rust has no read_data() method
+        # 
+        # SPORTBALL CANNOT WORK WITHOUT RUST READ CAPABILITY
+        # 
+        # This breaks ALL extraction workflows
+        raise RuntimeError(
+            "Image extraction requires Rust read capability which is MISSING."
+            "\n\nREQUIRED FOR IMAGE-SIDECAR-RUST:"
+            "\n  Add read_data(image_path: str) -> dict method"
+            "\n  See REQUIREMENTS_RUST_SIDECAR_IMPLEMENTATION.sdoc"
+            "\n\nPython fallback is PROHIBITED per TR-008.3"
+        )
 
         # Filter sidecar files that contain face detection data
         qualifying_images = []
