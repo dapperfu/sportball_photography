@@ -450,8 +450,9 @@ class SportballCore:
                     objects_count = object_result.get("objects_found", 0)
                     faces_status = "✓" if face_result.get("success", False) else "✗"
                     objects_status = "✓" if object_result.get("success", False) else "✗"
-                    postfix = f"file={image_path.name} | Faces: {faces_count} {faces_status}, Objects: {objects_count} {objects_status}"
-                    progress_bar.set_postfix(postfix)
+                    # Use str() to avoid tqdm unpacking issue with template strings
+                    postfix_str = f"file={image_path.name} | Faces: {faces_count} {faces_status}, Objects: {objects_count} {objects_status}"
+                    progress_bar.set_postfix_str(postfix_str)
                     progress_bar.update(1)
                     
             except Exception as e:
@@ -472,8 +473,8 @@ class SportballCore:
                 
                 # Update progress even on error
                 if progress_bar:
-                    postfix = f"file={image_path.name} | ✗ Error"
-                    progress_bar.set_postfix(postfix)
+                    postfix_str = f"file={image_path.name} | ✗ Error"
+                    progress_bar.set_postfix_str(postfix_str)
                     progress_bar.update(1)
 
         # Close progress bar
@@ -561,8 +562,9 @@ class SportballCore:
                         objects_count = object_result.get("objects_found", 0)
                         faces_status = "✓" if face_result.get("success", False) else "✗"
                         objects_status = "✓" if object_result.get("success", False) else "✗"
-                        postfix = f"file={image_path.name} | Faces: {faces_count} {faces_status}, Objects: {objects_count} {objects_status}"
-                        progress_bar.set_postfix(postfix)
+                        # Use str() to avoid tqdm unpacking issue with template strings
+                        postfix_str = f"file={image_path.name} | Faces: {faces_count} {faces_status}, Objects: {objects_count} {objects_status}"
+                        progress_bar.set_postfix_str(postfix_str)
                         progress_bar.update(1)
                         
                 except Exception as e:
@@ -583,8 +585,8 @@ class SportballCore:
                     
                     # Update progress even on error
                     if progress_bar:
-                        postfix = f"file={image_path.name} | ✗ Error"
-                        progress_bar.set_postfix(postfix)
+                        postfix_str = f"file={image_path.name} | ✗ Error"
+                        progress_bar.set_postfix_str(postfix_str)
                         progress_bar.update(1)
 
         # Close progress bar
