@@ -1206,10 +1206,9 @@ class SportballCore:
             image_path, faces_data = image_data
 
             try:
-                # Load the image
-                pil_image = Image.open(image_path)
-                if pil_image.mode != "RGB":
-                    pil_image = pil_image.convert("RGB")
+                # Load the image with EXIF rotation applied
+                from ..utils import load_image_with_exif_rotation
+                pil_image = load_image_with_exif_rotation(image_path)
                 image = np.array(pil_image)
 
                 # Create image-specific output directory

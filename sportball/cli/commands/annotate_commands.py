@@ -310,11 +310,10 @@ def _annotate_single_image(
 
     # If we reach here, we have at least one type of annotation to process
     # Load the original image only if we're going to process it
+    # Apply EXIF rotation to ensure correct orientation
     try:
-        image = Image.open(image_path)
-        # Convert to RGB if necessary (handles RGBA, P, etc.)
-        if image.mode != "RGB":
-            image = image.convert("RGB")
+        from ..utils import load_image_with_exif_rotation
+        image = load_image_with_exif_rotation(image_path)
     except Exception as e:
         return {"success": False, "error": f"Could not load image: {e}"}
 
