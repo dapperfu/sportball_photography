@@ -61,7 +61,7 @@ class SidecarInfo:
                 
                 # Read via Rust
                 if rust_manager.rust_available:
-                    self.data = rust_manager.rust_impl.read_data(str(self.image_path)) or {}
+                    self.data = rust_manager.read_data(str(self.image_path)) or {}
                     self._loaded = True
                 else:
                     raise RuntimeError("Rust implementation not available")
