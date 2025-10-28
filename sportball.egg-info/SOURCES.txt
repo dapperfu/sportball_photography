@@ -73,4 +73,5 @@ sportball/detectors/object.py
 sportball/detectors/pose.py
 sportball/detectors/quality.py
 tests/test_jersey_splitting.py
+tests/test_sidecar.py
 tests/test_sportball.py
