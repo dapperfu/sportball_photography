@@ -82,6 +82,9 @@ dependencies = [
     
     # Performance
     "psutil>=5.9.0",
+    
+    # Binary sidecar format support
+    "bincode>=0.1.0",
 ]
 
 [project.optional-dependencies]

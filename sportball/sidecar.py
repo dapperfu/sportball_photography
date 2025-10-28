@@ -755,8 +755,12 @@ class Sidecar:
         if existing_format:
             output_format = existing_format
         else:
-            # Prefer binary, fallback to JSON
-            output_format = "bin" if True else "json"  # TODO: Make configurable
+            # Check if bincode is available for binary format
+            try:
+                import bincode
+                output_format = "bin"  # Use binary format if available
+            except ImportError:
+                output_format = "json"  # Fallback to JSON
         
         # Merge data
         merged_data = existing_data.copy()
