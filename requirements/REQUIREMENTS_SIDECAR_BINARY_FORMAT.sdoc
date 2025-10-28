@@ -32,18 +32,26 @@ ELEMENTS:
     REQUIRED: False
 
 [REQUIREMENT]
+UID: FR-000
+TITLE: Compiled Tool Priority Policy
+STATEMENT: If a Rust or other compiled tool (C, Go, etc.) is available for any operation, the Python interface to that compiled tool SHALL ALWAYS be used over any "Python fallback" implementation. Sidecar files SHALL only be managed with the sidecar manager (image-sidecar-rust). There SHALL be NO manipulation, editing, appending, etc. within Python code. All sidecar operations SHALL be done in Rust. If Rust is inadequate, the Rust project SHALL be fixed - do NOT create a lesser quality and slower Python implementation.
+RATIONALE: Compiled tools provide superior performance, reliability, and maintainability. Python fallbacks create inferior solutions and technical debt. All sidecar operations MUST go through the compiled Rust tool to maintain quality standards.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
 UID: FR-001
 TITLE: Binary Sidecar Format Support
-STATEMENT: The system shall support binary sidecar file formats (.bin and .rkyv) in addition to JSON format, providing superior performance and storage efficiency.
-RATIONALE: Binary formats provide 50-70% size reduction and 3-10x faster read/write performance compared to JSON, addressing performance bottlenecks in large photo collections.
+STATEMENT: The system shall support binary sidecar file formats (.bin and .rkyv) in addition to JSON format, providing superior performance and storage efficiency. ALL sidecar file operations SHALL be managed by the Rust sidecar manager (image-sidecar-rust). Python code SHALL NOT manipulate sidecar files directly.
+RATIONALE: Binary formats provide 50-70% size reduction and 3-10x faster read/write performance compared to JSON, addressing performance bottlenecks in large photo collections. All operations must go through the compiled Rust tool to maintain performance benefits and consistency.
 PRIORITY: Critical
 STATUS: Pending
 
 [REQUIREMENT]
 UID: FR-001.1
 TITLE: Multi-Format Sidecar Storage
-STATEMENT: The SidecarManager shall support storing sidecar data in JSON (.json), Binary (.bin), and Rkyv (.rkyv) formats with automatic format detection and fallback.
-RATIONALE: Multi-format support enables gradual migration from JSON to binary formats while maintaining backward compatibility.
+STATEMENT: The SidecarManager shall support storing sidecar data in JSON (.json), Binary (.bin), and Rkyv (.rkyv) formats with automatic format detection. ALL format operations SHALL be delegated to the Rust sidecar manager (image-sidecar-rust). NO Python code shall directly handle sidecar file operations.
+RATIONALE: Multi-format support enables gradual migration from JSON to binary formats while maintaining backward compatibility. All operations go through the compiled Rust tool for performance and consistency.
 PRIORITY: Critical
 STATUS: Pending
 
@@ -58,8 +66,8 @@ STATUS: Pending
 [REQUIREMENT]
 UID: FR-001.3
 TITLE: Rust Integration for Binary Formats
-STATEMENT: The SidecarManager shall delegate binary format operations to the Rust sidecar utility when available, falling back to Python implementations when Rust is unavailable.
-RATIONALE: Rust integration provides high-performance binary serialization while maintaining compatibility for systems without Rust tooling.
+STATEMENT: The SidecarManager SHALL delegate ALL binary format operations EXCLUSIVELY to the Rust sidecar utility (image-sidecar-rust). Python SHALL NOT be used as a fallback. If the Rust tool is inadequate, the Rust project SHALL be fixed rather than implementing a Python alternative.
+RATIONALE: Using compiled tools (Rust, C, Go, etc.) provides superior performance and is the required approach. Python fallbacks create slower, lower-quality implementations and shall not be tolerated. If issues arise with the Rust implementation, the Rust codebase shall be enhanced to meet requirements.
 PRIORITY: Critical
 STATUS: Pending
 
@@ -74,9 +82,9 @@ STATUS: Pending
 [REQUIREMENT]
 UID: FR-001.5
 TITLE: Format Preference Configuration
-STATEMENT: The system shall use binary format (.bin) as the default format for new sidecar files, with JSON format as fallback when binary support is unavailable.
-RATIONALE: Binary format preference optimizes performance and storage while maintaining JSON fallback for compatibility.
-PRIORITY: High
+STATEMENT: The system shall use binary format (.bin) as the default format for new sidecar files. ALL sidecar file operations SHALL be managed exclusively by the Rust sidecar manager (image-sidecar-rust). NO Python code shall directly manipulate, edit, append, or create sidecar files.
+RATIONALE: Binary format preference optimizes performance and storage. All sidecar operations SHALL go through the compiled Rust tool, ensuring consistency and performance. If the Rust tool lacks functionality, it SHALL be added to the Rust project, not implemented in Python.
+PRIORITY: Critical
 STATUS: Pending
 
 [REQUIREMENT]
@@ -106,16 +114,16 @@ STATUS: Pending
 [REQUIREMENT]
 UID: FR-002.3
 TITLE: Add Rust Save Method
-STATEMENT: The SidecarManager shall implement _save_with_rust() method that delegates binary format serialization to the Rust sidecar manager.
-RATIONALE: Rust save method provides high-performance binary serialization when Rust backend is available.
+STATEMENT: The SidecarManager shall implement _save_with_rust() method that delegates binary format serialization to the Rust sidecar manager. This is the ONLY save method that shall exist - NO Python fallback methods shall be created.
+RATIONALE: Rust save method provides high-performance binary serialization. Python implementations are strictly prohibited - all operations SHALL go through the compiled Rust tool.
 PRIORITY: Critical
 STATUS: Pending
 
 [REQUIREMENT]
 UID: FR-002.4
-TITLE: Add Python Fallback Method
-STATEMENT: The SidecarManager shall implement _save_with_python() method as fallback for when Rust backend is unavailable.
-RATIONALE: Python fallback ensures system continues to function when Rust tools are not available.
+TITLE: Rust Tool Enhancement Requirement
+STATEMENT: The SidecarManager SHALL NOT implement any Python fallback methods. ALL sidecar operations SHALL go through the Rust sidecar manager (image-sidecar-rust). If the Rust tool lacks required functionality, the Rust project SHALL be enhanced to add that functionality.
+RATIONALE: Python fallbacks are prohibited. All sidecar file management SHALL be handled by the compiled Rust tool. If inadequacies exist in the Rust implementation, they SHALL be fixed in the Rust codebase, not worked around in Python.
 PRIORITY: Critical
 STATUS: Pending
 
@@ -209,10 +217,10 @@ STATUS: Pending
 
 [REQUIREMENT]
 UID: FR-004.3
-TITLE: Python Fallback for Rust Save
-STATEMENT: The save_sidecar_data() method shall fall back to Python serialization if Rust backend fails or is unavailable.
-RATIONALE: Python fallback ensures system continues to function when Rust tools are not available or encounter errors.
-PRIORITY: High
+TITLE: Rust Tool Failure Requirements
+STATEMENT: The save_sidecar_data() method SHALL NOT fall back to Python serialization under ANY circumstances. If Rust backend fails, the Rust code SHALL be debugged and fixed. If unavailable, installation SHALL be made available. NO Python fallback implementations are permitted.
+RATIONALE: Python fallbacks create inferior, slower implementations and are explicitly prohibited. Rust inadequacies SHALL be fixed in the Rust project, not worked around with Python code.
+PRIORITY: Critical
 STATUS: Pending
 
 [REQUIREMENT]
@@ -377,9 +385,9 @@ STATUS: Pending
 
 [REQUIREMENT]
 UID: NFR-002.2
-TITLE: Automatic Format Fallback
-STATEMENT: The system shall automatically fall back to JSON format when binary formats are unavailable.
-RATIONALE: Automatic fallback ensures system continues to function in environments without Rust tooling.
+TITLE: Rust Tool Availability
+STATEMENT: The Rust tool (image-sidecar-rust) SHALL be available and installed in all environments. If binary formats are "unavailable", the root cause SHALL be fixed (installation/deployment issue), not worked around with format fallbacks.
+RATIONALE: Rust tool availability is a deployment requirement, not an optional feature. Python fallbacks are strictly prohibited.
 PRIORITY: Critical
 STATUS: Pending
 
