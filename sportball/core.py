@@ -1160,10 +1160,18 @@ class SportballCore:
                 sidecar_data = rust_manager.read_data(str(image_path)) or {}
                 
                 # Rust returns: {'face_detection': {...}, 'yolov8': {...}, 'sidecar_info': {...}}
-                # Check face_detection directly
+                # Structure: {'face_detection': {'unified': {'faces': [...], 'success': bool}}}
                 if "face_detection" in sidecar_data:
                     face_data = sidecar_data.get("face_detection", {})
-                    if face_data.get("success", False):
+                    
+                    # Check nested 'unified' structure
+                    if "unified" in face_data:
+                        unified = face_data.get("unified", {})
+                        faces = unified.get("faces", [])
+                        if len(faces) > 0:
+                            qualifying_images.append((image_path, faces))
+                    # Check flat structure
+                    elif face_data.get("success", False):
                         faces = face_data.get("faces", [])
                         if len(faces) > 0:
                             qualifying_images.append((image_path, faces))
