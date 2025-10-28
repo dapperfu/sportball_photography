@@ -1224,15 +1224,24 @@ class SportballCore:
                     if not bbox:
                         continue
 
+                    # Handle both list format [x, y, width, height] and dict format
+                    if isinstance(bbox, list) and len(bbox) >= 4:
+                        # List format: [x, y, width, height]
+                        x, y, width, height = bbox[0], bbox[1], bbox[2], bbox[3]
+                    elif isinstance(bbox, dict):
+                        # Dict format: {'x': x, 'y': y, 'width': w, 'height': h}
+                        x = int(bbox.get("x", 0))
+                        y = int(bbox.get("y", 0))
+                        width = int(bbox.get("width", 0))
+                        height = int(bbox.get("height", 0))
+                    else:
+                        continue
+
                     # Calculate face coordinates with padding
-                    x = max(0, int(bbox.get("x", 0)) - padding)
-                    y = max(0, int(bbox.get("y", 0)) - padding)
-                    width = min(
-                        image.shape[1] - x, int(bbox.get("width", 0)) + 2 * padding
-                    )
-                    height = min(
-                        image.shape[0] - y, int(bbox.get("height", 0)) + 2 * padding
-                    )
+                    x = max(0, int(x) - padding)
+                    y = max(0, int(y) - padding)
+                    width = min(image.shape[1] - x, int(width) + 2 * padding)
+                    height = min(image.shape[0] - y, int(height) + 2 * padding)
 
                     # Extract face region
                     face_region = image[y : y + height, x : x + width]
