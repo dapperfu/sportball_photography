@@ -1,0 +1,138 @@
+[DOCUMENT]
+TITLE: Rust Sidecar Implementation Requirements - image-sidecar-rust Project
+UID: DOC-RUST-SIDECAR-001
+VERSION: 1.0
+DATE: 2025-10-28
+CLASSIFICATION: Internal
+PROJECT: image-sidecar-rust
+
+[GRAMMAR]
+ELEMENTS:
+- TAG: REQUIREMENT
+  FIELDS:
+  - TITLE: UID
+    TYPE: String
+    REQUIRED: True
+  - TITLE: TITLE
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
+  - TITLE: RATIONALE
+    TYPE: String
+    REQUIRED: False
+  - TITLE: COMMENT
+    TYPE: String
+    REQUIRED: False
+  - TITLE: PRIORITY
+    TYPE: String
+    REQUIRED: False
+  - TITLE: STATUS
+    TYPE: String
+    REQUIRED: False
+
+[REQUIREMENT]
+UID: RUST-001
+TITLE: Python Bindings Save Method
+STATEMENT: The ImageSidecar Python bindings SHALL expose a save_data() method that accepts (image_path: str, operation_type: Union[str, OperationType], data: Dict[str, Any]) and returns bool indicating success.
+RATIONALE: The sportball Python code expects this API. Current implementation has create_sidecar() but sportball expects save_data() signature.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: RUST-002
+TITLE: Binary Format as Default
+STATEMENT: ALL sidecar file operations SHALL default to binary format (.bin) using bincode serialization. JSON format SHALL NOT be the default or used as fallback. If Python code requests sidecar operations, they SHALL be stored in binary format exclusively.
+RATIONALE: Binary format provides 50-70% size reduction and 3-10x faster performance. JSON fallbacks create inferior solutions and are prohibited per requirements.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: RUST-003
+TITLE: No Python Fallback Logic
+STATEMENT: The Rust sidecar implementation SHALL NOT support or allow any "fallback" to Python serialization. If Rust is unavailable or fails, the error SHALL be raised to Python layer - NOT silently handled or worked around. Python is prohibited from manipulating sidecar files directly.
+RATIONALE: Requirements explicitly state "There SHALL be NO manipulation, editing, appending, etc. within Python code" and "If Rust is inadequate, the Rust project SHALL be fixed".
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: RUST-004
+TITLE: Sidecar File Extension
+STATEMENT: Sidecar files SHALL use .bin extension. The ImageSidecar binding SHALL save to image_path.bin, not image_path.json.
+RATIONALE: Binary format requires .bin extension. Current behavior may be creating .json files.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: RUST-005
+TITLE: Data Merge Functionality
+STATEMENT: The save_data() method SHALL support merging new data with existing sidecar data if a sidecar already exists for the image. The merged data SHALL preserve all operation types (e.g., face_detection, yolov8) in a single sidecar file.
+RATIONALE: Sportball saves both face detection and object detection results to the same sidecar file. The Rust implementation must support this multi-operation storage pattern.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: RUST-006
+TITLE: Operation Type Enum Support
+STATEMENT: The Python bindings SHALL expose OperationType enum with values for FACE_DETECTION, OBJECT_DETECTION, YOLOV8, BALL_DETECTION, QUALITY_ASSESSMENT, GAME_DETECTION, and UNIFIED.
+RATIONALE: Sportball uses these operation types to categorize detection results within sidecar files.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: RUST-007
+TITLE: Python API Compatibility
+STATEMENT: The Python bindings create_sidecar() method SHALL be compatible with the expected usage pattern from sportball/sidecar.py where sidecar data is provided as a nested dictionary structure with operation_type keys (e.g., {"face_detection": {...}, "yolov8": {...}}).
+RATIONALE: Sportball saves unified detection results with multiple operation types in a single sidecar file.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: RUST-008
+TITLE: Read Existing Sidecar Format Detection
+STATEMENT: The Rust implementation SHALL automatically detect and read existing sidecar files in any format (.bin, .rkyv, or .json) when loading sidecar data for merging.
+RATIONALE: Existing sidecars may be in JSON format from prior runs. The system must seamlessly handle mixed formats during migration period.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: RUST-009
+TITLE: Sidecar Metadata Preservation
+STATEMENT: The sidecar SHALL preserve and update metadata fields including sidecar_info with created_at, last_updated, last_operation, image_path, symlink_path, and symlink_info structures.
+RATIONALE: Sportball relies on this metadata structure for sidecar management and symlink resolution.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: RUST-010
+TITLE: Performance Requirements
+STATEMENT: Binary format serialization SHALL achieve at least 50% size reduction compared to equivalent JSON and 3-10x performance improvement in read/write operations.
+RATIONALE: Binary format adoption is justified by these performance improvements over JSON format.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: RUST-011
+TITLE: Error Handling
+STATEMENT: ALL errors during sidecar operations SHALL be properly propagated to Python layer with descriptive error messages. Rust panics SHALL be caught and converted to Python exceptions.
+RATIONALE: Proper error handling enables Python code to handle failures gracefully and provide user feedback.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: RUST-012
+TITLE: Thread Safety
+STATEMENT: The Rust implementation SHALL be thread-safe for concurrent sidecar operations from multiple Python threads.
+RATIONALE: Sportball performs parallel detection operations that may attempt concurrent sidecar writes.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: RUST-013
+TITLE: Python Bindings Integration Test
+STATEMENT: The implementation SHALL include Python integration tests that verify save_data() or create_sidecar() properly creates .bin files, that data can be read back correctly, and that merging preserves all operation types.
+RATIONALE: Integration tests ensure the Python bindings work as expected by the sportball application.
+PRIORITY: High
+STATUS: Pending
+
