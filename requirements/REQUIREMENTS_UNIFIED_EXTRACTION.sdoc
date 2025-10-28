@@ -40,7 +40,7 @@ PRIORITY: Critical
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-001
+UID: UNIFIED-FR-001
 TITLE: Unified Extraction Command
 STATEMENT: The system shall provide a single 'sb extract' command that replaces both 'sb face extract' and 'sb object extract' commands.
 RATIONALE: Simplifies the command-line interface by consolidating extraction commands into a single, intuitive command.
@@ -48,7 +48,7 @@ PRIORITY: Critical
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-001.1
+UID: UNIFIED-FR-001.1
 TITLE: Primary Extraction Command
 STATEMENT: The 'sb extract' command shall be the primary extraction command for all face and object extraction operations.
 RATIONALE: Establishes a single entry point for all extraction functionality.
@@ -56,7 +56,7 @@ PRIORITY: Critical
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-001.2
+UID: UNIFIED-FR-001.2
 TITLE: Command Arguments
 STATEMENT: The 'sb extract' command shall accept both input path and output directory as required arguments.
 RATIONALE: Ensures users explicitly specify both source and destination for extraction operations.
@@ -64,7 +64,7 @@ PRIORITY: Critical
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-001.3
+UID: UNIFIED-FR-001.3
 TITLE: Extraction Type Support
 STATEMENT: The 'sb extract' command shall support extraction of faces, objects, or both types simultaneously.
 RATIONALE: Provides flexibility for users to choose what they want to extract from images.
@@ -72,7 +72,7 @@ PRIORITY: Critical
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-001.4
+UID: UNIFIED-FR-001.4
 TITLE: Feature Parity
 STATEMENT: The 'sb extract' command shall maintain all existing functionality from individual face and object extraction commands.
 RATIONALE: Ensures no functionality is lost when consolidating commands.
@@ -80,7 +80,7 @@ PRIORITY: Critical
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-001.5
+UID: UNIFIED-FR-001.5
 TITLE: Help Documentation
 STATEMENT: The 'sb extract' command shall provide clear help text and usage examples.
 RATIONALE: Enables users to understand and effectively use the unified command.
@@ -88,7 +88,7 @@ PRIORITY: Critical
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-002
+UID: UNIFIED-FR-002
 TITLE: Extraction Type Flags
 STATEMENT: The system shall use flags to indicate what should be extracted from images.
 RATIONALE: Provides a clear and intuitive way for users to specify extraction types.
@@ -96,7 +96,7 @@ PRIORITY: Critical
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-002.1
+UID: UNIFIED-FR-002.1
 TITLE: Face Extraction Flag
 STATEMENT: The '--faces' flag shall extract only faces from images.
 RATIONALE: Allows users to perform face-only extraction operations.
@@ -104,7 +104,7 @@ PRIORITY: Critical
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-002.2
+UID: UNIFIED-FR-002.2
 TITLE: Object Extraction Flag
 STATEMENT: The '--objects' flag shall extract only objects from images.
 RATIONALE: Allows users to perform object-only extraction operations.
@@ -112,7 +112,7 @@ PRIORITY: Critical
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-002.3
+UID: UNIFIED-FR-002.3
 TITLE: Combined Extraction Flag
 STATEMENT: The '--both' flag shall extract both faces and objects from images.
 RATIONALE: Allows users to perform combined extraction operations in a single command.
@@ -120,7 +120,7 @@ PRIORITY: Critical
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-002.4
+UID: UNIFIED-FR-002.4
 TITLE: Default Behavior
 STATEMENT: The default behavior shall be '--both' when no extraction flag is specified.
 RATIONALE: Provides sensible default behavior for users who don't specify extraction type.
@@ -128,7 +128,7 @@ PRIORITY: Critical
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-002.5
+UID: UNIFIED-FR-002.5
 TITLE: Flag Mutual Exclusivity
 STATEMENT: The extraction flags shall be mutually exclusive (only one can be specified at a time).
 RATIONALE: Prevents conflicting extraction instructions and ensures clear command behavior.
@@ -136,7 +136,7 @@ PRIORITY: Critical
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-002.6
+UID: UNIFIED-FR-002.6
 TITLE: Invalid Flag Error Handling
 STATEMENT: The system shall show clear error messages for invalid flag combinations.
 RATIONALE: Helps users understand and correct command usage errors.
@@ -144,7 +144,7 @@ PRIORITY: Critical
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-003
+UID: UNIFIED-FR-003
 TITLE: Parameter Consolidation
 STATEMENT: The system shall consolidate parameters from both extraction commands into the unified command.
 RATIONALE: Reduces complexity by providing a single set of parameters for all extraction operations.
@@ -152,7 +152,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-003.1
+UID: UNIFIED-FR-003.1
 TITLE: Required Output Directory
 STATEMENT: The unified command shall accept 'output_dir' as a required argument.
 RATIONALE: Ensures users explicitly specify where extracted content should be saved.
@@ -160,7 +160,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-003.2
+UID: UNIFIED-FR-003.2
 TITLE: Face Padding Parameter
 STATEMENT: The unified command shall support '--face-padding' for face extraction (default: 20px).
 RATIONALE: Allows users to control padding around extracted faces.
@@ -168,7 +168,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-003.3
+UID: UNIFIED-FR-003.3
 TITLE: Object Padding Parameter
 STATEMENT: The unified command shall support '--object-padding' for object extraction (default: 10px).
 RATIONALE: Allows users to control padding around extracted objects.
@@ -176,7 +176,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-003.4
+UID: UNIFIED-FR-003.4
 TITLE: Object Type Filtering
 STATEMENT: The unified command shall support '--object-types' for object filtering.
 RATIONALE: Allows users to specify which types of objects to extract.
@@ -184,7 +184,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-003.5
+UID: UNIFIED-FR-003.5
 TITLE: Object Size Filtering
 STATEMENT: The unified command shall support '--min-size' and '--max-size' for object size filtering.
 RATIONALE: Allows users to filter objects based on their size.
@@ -192,7 +192,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-003.6
+UID: UNIFIED-FR-003.6
 TITLE: Common Parameters
 STATEMENT: The unified command shall support '--workers', '--no-recursive', '--verbose', and '--show-empty-results'.
 RATIONALE: Provides consistent parameter support across all extraction operations.
@@ -200,7 +200,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-003.7
+UID: UNIFIED-FR-003.7
 TITLE: Parameter Clarity
 STATEMENT: Parameter names shall be clear and unambiguous.
 RATIONALE: Reduces user confusion and improves command usability.
@@ -208,7 +208,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-004
+UID: UNIFIED-FR-004
 TITLE: Output Directory Structure
 STATEMENT: The system shall define a clear output directory structure for unified extraction.
 RATIONALE: Ensures consistent and predictable organization of extracted content.
@@ -216,7 +216,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-004.1
+UID: UNIFIED-FR-004.1
 TITLE: Face Output Directory
 STATEMENT: When '--faces' is specified, faces shall be saved to '<output_dir>/faces/'.
 RATIONALE: Provides clear organization for face extraction results.
@@ -224,7 +224,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-004.2
+UID: UNIFIED-FR-004.2
 TITLE: Object Output Directory
 STATEMENT: When '--objects' is specified, objects shall be saved to '<output_dir>/objects/'.
 RATIONALE: Provides clear organization for object extraction results.
@@ -232,7 +232,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-004.3
+UID: UNIFIED-FR-004.3
 TITLE: Combined Output Directories
 STATEMENT: When '--both' is specified, faces shall be saved to '<output_dir>/faces/' and objects to '<output_dir>/objects/'.
 RATIONALE: Provides clear organization for combined extraction results.
@@ -240,7 +240,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-004.4
+UID: UNIFIED-FR-004.4
 TITLE: Automatic Directory Creation
 STATEMENT: The directory structure shall be created automatically.
 RATIONALE: Reduces user burden by handling directory creation automatically.
@@ -248,7 +248,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-004.5
+UID: UNIFIED-FR-004.5
 TITLE: File Conflict Resolution
 STATEMENT: Existing files shall not be overwritten without explicit confirmation.
 RATIONALE: Prevents accidental data loss during extraction operations.
@@ -256,7 +256,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-004.6
+UID: UNIFIED-FR-004.6
 TITLE: Directory Structure Documentation
 STATEMENT: The directory structure shall be documented in help text.
 RATIONALE: Helps users understand where extracted content will be saved.
@@ -264,7 +264,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-005
+UID: UNIFIED-FR-005
 TITLE: Backward Compatibility
 STATEMENT: The system shall maintain backward compatibility with existing extraction commands.
 RATIONALE: Ensures existing scripts and workflows continue to function without modification.
@@ -272,7 +272,7 @@ PRIORITY: Medium
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-005.1
+UID: UNIFIED-FR-005.1
 TITLE: Face Command Compatibility
 STATEMENT: The 'sb face extract' command shall continue to work unchanged.
 RATIONALE: Maintains compatibility with existing face extraction workflows.
@@ -280,7 +280,7 @@ PRIORITY: Medium
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-005.2
+UID: UNIFIED-FR-005.2
 TITLE: Object Command Compatibility
 STATEMENT: The 'sb object extract' command shall continue to work unchanged.
 RATIONALE: Maintains compatibility with existing object extraction workflows.
@@ -288,7 +288,7 @@ PRIORITY: Medium
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-005.3
+UID: UNIFIED-FR-005.3
 TITLE: Script Compatibility
 STATEMENT: Existing scripts and workflows shall not break.
 RATIONALE: Ensures smooth transition to unified command without disrupting existing automation.
@@ -296,7 +296,7 @@ PRIORITY: Medium
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-005.4
+UID: UNIFIED-FR-005.4
 TITLE: Deprecation Notices
 STATEMENT: Individual commands shall be marked as deprecated in help text.
 RATIONALE: Guides users toward the new unified command while maintaining compatibility.
@@ -304,7 +304,7 @@ PRIORITY: Medium
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-005.5
+UID: UNIFIED-FR-005.5
 TITLE: Migration Guide
 STATEMENT: A migration guide shall be provided for users transitioning to the unified command.
 RATIONALE: Helps users understand how to update their workflows to use the new command.
@@ -312,7 +312,7 @@ PRIORITY: Medium
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-006
+UID: UNIFIED-FR-006
 TITLE: Error Handling and Validation
 STATEMENT: The system shall provide clear error handling and parameter validation.
 RATIONALE: Improves user experience by providing helpful feedback when errors occur.
@@ -320,7 +320,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-006.1
+UID: UNIFIED-FR-006.1
 TITLE: Extraction Type Validation
 STATEMENT: The command shall validate that at least one extraction type is specified.
 RATIONALE: Prevents users from running extraction commands without specifying what to extract.
@@ -328,7 +328,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-006.2
+UID: UNIFIED-FR-006.2
 TITLE: Input Path Validation
 STATEMENT: The command shall validate that input path exists and contains images.
 RATIONALE: Prevents errors by ensuring valid input before processing begins.
@@ -336,7 +336,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-006.3
+UID: UNIFIED-FR-006.3
 TITLE: Output Directory Validation
 STATEMENT: The command shall validate that output directory is writable.
 RATIONALE: Prevents errors by ensuring the system can write extracted content.
@@ -344,7 +344,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-006.4
+UID: UNIFIED-FR-006.4
 TITLE: Parameter Error Messages
 STATEMENT: The command shall provide clear error messages for invalid parameters.
 RATIONALE: Helps users understand and correct parameter usage errors.
@@ -352,7 +352,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-006.5
+UID: UNIFIED-FR-006.5
 TITLE: Missing Sidecar Handling
 STATEMENT: The command shall handle missing sidecar files gracefully.
 RATIONALE: Provides helpful guidance when detection data is not available for extraction.
@@ -360,7 +360,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: FR-006.6
+UID: UNIFIED-FR-006.6
 TITLE: Error Suggestions
 STATEMENT: The command shall provide helpful suggestions when errors occur.
 RATIONALE: Improves user experience by guiding users toward solutions.
@@ -368,7 +368,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: NFR-001
+UID: UNIFIED-NFR-001
 TITLE: Performance Consistency
 STATEMENT: Unified extraction shall maintain performance characteristics of individual commands.
 RATIONALE: Ensures users do not experience performance degradation when using the unified command.
@@ -376,7 +376,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: NFR-001.1
+UID: UNIFIED-NFR-001.1
 TITLE: Face Extraction Performance
 STATEMENT: Face extraction performance shall be identical to 'sb face extract'.
 RATIONALE: Maintains performance expectations for face extraction operations.
@@ -384,7 +384,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: NFR-001.2
+UID: UNIFIED-NFR-001.2
 TITLE: Object Extraction Performance
 STATEMENT: Object extraction performance shall be identical to 'sb object extract'.
 RATIONALE: Maintains performance expectations for object extraction operations.
@@ -392,7 +392,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: NFR-001.3
+UID: UNIFIED-NFR-001.3
 TITLE: Combined Extraction Performance
 STATEMENT: Combined extraction shall be efficient and not significantly slower than individual commands.
 RATIONALE: Ensures combined operations provide good performance for users.
@@ -400,7 +400,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: NFR-001.4
+UID: UNIFIED-NFR-001.4
 TITLE: Memory Usage Consistency
 STATEMENT: Memory usage shall be similar to individual commands.
 RATIONALE: Prevents memory issues when using the unified command.
@@ -408,7 +408,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: NFR-001.5
+UID: UNIFIED-NFR-001.5
 TITLE: GPU Utilization
 STATEMENT: GPU utilization shall be identical to individual commands.
 RATIONALE: Maintains hardware acceleration benefits for extraction operations.
@@ -416,7 +416,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: NFR-002
+UID: UNIFIED-NFR-002
 TITLE: User Experience
 STATEMENT: The unified command shall provide excellent user experience.
 RATIONALE: Ensures the unified command is intuitive and easy to use for all users.
@@ -424,7 +424,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: NFR-002.1
+UID: UNIFIED-NFR-002.1
 TITLE: Command Intuitiveness
 STATEMENT: The command shall be intuitive for new users.
 RATIONALE: Reduces learning curve and improves adoption of the unified command.
@@ -432,7 +432,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: NFR-002.2
+UID: UNIFIED-NFR-002.2
 TITLE: Comprehensive Help Text
 STATEMENT: Help text shall be comprehensive and clear.
 RATIONALE: Enables users to understand command usage without external documentation.
@@ -440,7 +440,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: NFR-002.3
+UID: UNIFIED-NFR-002.3
 TITLE: Usage Examples
 STATEMENT: Examples shall be provided for common use cases.
 RATIONALE: Helps users quickly understand how to use the command for their needs.
@@ -448,7 +448,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: NFR-002.4
+UID: UNIFIED-NFR-002.4
 TITLE: Progress Indicators
 STATEMENT: Progress indicators shall be clear and informative.
 RATIONALE: Keeps users informed about extraction progress and status.
@@ -456,7 +456,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: NFR-002.5
+UID: UNIFIED-NFR-002.5
 TITLE: Output Formatting
 STATEMENT: Output shall be well-formatted and easy to understand.
 RATIONALE: Improves readability of command results and status information.
@@ -464,7 +464,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: NFR-003
+UID: UNIFIED-NFR-003
 TITLE: Maintainability
 STATEMENT: The code shall be maintainable and follow DRY principles.
 RATIONALE: Ensures the unified command can be easily maintained and extended.
@@ -472,7 +472,7 @@ PRIORITY: Medium
 STATUS: Pending
 
 [REQUIREMENT]
-UID: NFR-003.1
+UID: UNIFIED-NFR-003.1
 TITLE: Code Reuse
 STATEMENT: Unified extraction shall reuse existing extraction logic.
 RATIONALE: Reduces code duplication and maintains consistency with existing functionality.
@@ -480,7 +480,7 @@ PRIORITY: Medium
 STATUS: Pending
 
 [REQUIREMENT]
-UID: NFR-003.2
+UID: UNIFIED-NFR-003.2
 TITLE: No Code Duplication
 STATEMENT: There shall be no code duplication between unified and individual commands.
 RATIONALE: Maintains single source of truth for extraction logic.
@@ -488,7 +488,7 @@ PRIORITY: Medium
 STATUS: Pending
 
 [REQUIREMENT]
-UID: NFR-003.3
+UID: UNIFIED-NFR-003.3
 TITLE: Single Source of Truth
 STATEMENT: There shall be a single source of truth for extraction logic.
 RATIONALE: Ensures consistency and reduces maintenance burden.
@@ -496,7 +496,7 @@ PRIORITY: Medium
 STATUS: Pending
 
 [REQUIREMENT]
-UID: NFR-003.4
+UID: UNIFIED-NFR-003.4
 TITLE: Code Documentation
 STATEMENT: Code shall be well-documented and tested.
 RATIONALE: Ensures code quality and maintainability for future development.
@@ -504,7 +504,7 @@ PRIORITY: Medium
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-001
+UID: UNIFIED-TR-001
 TITLE: Command Implementation
 STATEMENT: The unified extraction command shall be implemented in the CLI.
 RATIONALE: Provides the user interface for the unified extraction functionality.
@@ -512,7 +512,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-001.1
+UID: UNIFIED-TR-001.1
 TITLE: CLI Implementation Location
 STATEMENT: The command shall be implemented in 'sportball/cli/commands/unified_commands.py'.
 RATIONALE: Maintains consistent organization of unified commands in the codebase.
@@ -520,7 +520,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-001.2
+UID: UNIFIED-TR-001.2
 TITLE: Click Framework Integration
 STATEMENT: The command shall use Click framework for argument parsing.
 RATIONALE: Maintains consistency with existing CLI commands and provides robust argument handling.
@@ -528,7 +528,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-001.3
+UID: UNIFIED-TR-001.3
 TITLE: Core Integration
 STATEMENT: The command shall integrate with existing core extraction methods.
 RATIONALE: Ensures the command leverages existing, tested extraction functionality.
@@ -536,7 +536,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-001.4
+UID: UNIFIED-TR-001.4
 TITLE: Global Options Support
 STATEMENT: The command shall support all existing global options.
 RATIONALE: Maintains consistency with other commands in the application.
@@ -544,7 +544,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-001.5
+UID: UNIFIED-TR-001.5
 TITLE: Comprehensive Help Text
 STATEMENT: The command shall provide comprehensive help text.
 RATIONALE: Enables users to understand command usage and available options.
@@ -552,7 +552,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-002
+UID: UNIFIED-TR-002
 TITLE: Core Integration
 STATEMENT: The unified extraction shall integrate with existing core methods.
 RATIONALE: Ensures the unified command leverages existing, tested extraction functionality.
@@ -560,7 +560,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-002.1
+UID: UNIFIED-TR-002.1
 TITLE: Face Extraction Integration
 STATEMENT: The unified command shall use 'core.extract_faces()' for face extraction.
 RATIONALE: Maintains consistency with existing face extraction functionality.
@@ -568,7 +568,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-002.2
+UID: UNIFIED-TR-002.2
 TITLE: Object Extraction Integration
 STATEMENT: The unified command shall use 'core.extract_objects()' for object extraction.
 RATIONALE: Maintains consistency with existing object extraction functionality.
@@ -576,7 +576,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-002.3
+UID: UNIFIED-TR-002.3
 TITLE: Unified Extraction Integration
 STATEMENT: The unified command shall use 'core.extract_unified()' for combined extraction.
 RATIONALE: Leverages existing unified extraction functionality for combined operations.
@@ -584,7 +584,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-002.4
+UID: UNIFIED-TR-002.4
 TITLE: Core Method Preservation
 STATEMENT: All existing core methods shall remain unchanged.
 RATIONALE: Ensures backward compatibility and maintains existing functionality.
@@ -592,7 +592,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-002.5
+UID: UNIFIED-TR-002.5
 TITLE: Unified Workflow Support
 STATEMENT: Core methods shall support the unified extraction workflow.
 RATIONALE: Ensures core methods work seamlessly with the unified command interface.
@@ -600,7 +600,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-003
+UID: UNIFIED-TR-003
 TITLE: Parameter Handling
 STATEMENT: The system shall implement proper parameter handling and validation.
 RATIONALE: Ensures robust command behavior and prevents user errors.
@@ -608,7 +608,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-003.1
+UID: UNIFIED-TR-003.1
 TITLE: Parameter Validation
 STATEMENT: Parameter validation shall be implemented in the command.
 RATIONALE: Prevents invalid parameters from causing command failures.
@@ -616,7 +616,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-003.2
+UID: UNIFIED-TR-003.2
 TITLE: Default Value Consistency
 STATEMENT: Default values shall match individual commands.
 RATIONALE: Maintains consistent behavior across all extraction commands.
@@ -624,7 +624,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-003.3
+UID: UNIFIED-TR-003.3
 TITLE: Parameter Precedence
 STATEMENT: Parameter precedence shall be clearly defined.
 RATIONALE: Ensures predictable behavior when multiple parameters are specified.
@@ -632,7 +632,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-003.4
+UID: UNIFIED-TR-003.4
 TITLE: Invalid Parameter Detection
 STATEMENT: Invalid parameter combinations shall be caught and reported.
 RATIONALE: Prevents command failures due to invalid parameter usage.
@@ -640,7 +640,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-004
+UID: UNIFIED-TR-004
 TITLE: Output Management
 STATEMENT: The system shall implement proper output directory management.
 RATIONALE: Ensures extracted content is organized and accessible to users.
@@ -648,7 +648,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-004.1
+UID: UNIFIED-TR-004.1
 TITLE: Automatic Directory Creation
 STATEMENT: Output directories shall be created automatically.
 RATIONALE: Reduces user burden by handling directory creation automatically.
@@ -656,7 +656,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-004.2
+UID: UNIFIED-TR-004.2
 TITLE: Consistent Directory Structure
 STATEMENT: Directory structure shall be consistent.
 RATIONALE: Provides predictable organization for extracted content.
@@ -664,7 +664,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-004.3
+UID: UNIFIED-TR-004.3
 TITLE: Consistent File Naming
 STATEMENT: File naming shall be consistent with individual commands.
 RATIONALE: Maintains consistency with existing extraction behavior.
@@ -672,7 +672,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-004.4
+UID: UNIFIED-TR-004.4
 TITLE: Progress Tracking
 STATEMENT: Progress tracking shall work across all extraction types.
 RATIONALE: Provides consistent user feedback for all extraction operations.
@@ -680,7 +680,7 @@ PRIORITY: High
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-005
+UID: UNIFIED-TR-005
 TITLE: Help and Documentation
 STATEMENT: The system shall provide comprehensive help and documentation.
 RATIONALE: Enables users to effectively use the unified extraction command.
@@ -688,7 +688,7 @@ PRIORITY: Medium
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-005.1
+UID: UNIFIED-TR-005.1
 TITLE: Comprehensive Help Text
 STATEMENT: Comprehensive help text shall be written for the command.
 RATIONALE: Provides users with complete information about command usage.
@@ -696,7 +696,7 @@ PRIORITY: Medium
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-005.2
+UID: UNIFIED-TR-005.2
 TITLE: Usage Examples
 STATEMENT: Examples shall be provided for common use cases.
 RATIONALE: Helps users quickly understand how to use the command.
@@ -704,7 +704,7 @@ PRIORITY: Medium
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-005.3
+UID: UNIFIED-TR-005.3
 TITLE: Parameter Documentation
 STATEMENT: Parameter relationships and constraints shall be documented.
 RATIONALE: Helps users understand how parameters interact with each other.
@@ -712,7 +712,7 @@ PRIORITY: Medium
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-005.4
+UID: UNIFIED-TR-005.4
 TITLE: Deprecation Notices
 STATEMENT: Deprecation notices shall be added to individual commands.
 RATIONALE: Guides users toward the new unified command.
@@ -720,7 +720,7 @@ PRIORITY: Medium
 STATUS: Pending
 
 [REQUIREMENT]
-UID: TR-005.5
+UID: UNIFIED-TR-005.5
 TITLE: Migration Guide
 STATEMENT: A migration guide shall be created for existing users.
 RATIONALE: Helps users transition from individual commands to the unified command.
