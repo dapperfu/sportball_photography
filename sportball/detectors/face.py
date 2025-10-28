@@ -1760,6 +1760,21 @@ class InsightFaceDetector:
                     )
                     continue
 
+                # Resize image to 1080p for optimal detection performance
+                original_height, original_width = image.shape[:2]
+                target_width = 1920
+                target_height = 1080
+                scale_factor = min(target_width / original_width, target_height / original_height)
+                
+                if scale_factor < 1.0:
+                    new_width = int(original_width * scale_factor)
+                    new_height = int(original_height * scale_factor)
+                    pil_image = pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                    image = np.array(pil_image)
+                    self.logger.debug(f"Resized image from {original_width}x{original_height} to {new_width}x{new_height}")
+                else:
+                    scale_factor = 1.0
+
                 # Process with InsightFace
                 if self.app is None:
                     results[str(img_path)] = FaceDetectionResult(
@@ -1775,7 +1790,7 @@ class InsightFaceDetector:
                 with self._app_lock:
                     faces = self.app.get(image)
 
-                # Filter faces by confidence and size
+                # Filter faces by confidence and size and scale coordinates back to original
                 detected_faces = []
                 for j, face in enumerate(faces):
                     # Get bounding box
@@ -1783,7 +1798,13 @@ class InsightFaceDetector:
                     x, y, x2, y2 = bbox
                     w, h = x2 - x, y2 - y
 
-                    # Check minimum face size
+                    # Scale coordinates back to original image size
+                    x = int(x / scale_factor)
+                    y = int(y / scale_factor)
+                    w = int(w / scale_factor)
+                    h = int(h / scale_factor)
+
+                    # Check minimum face size (after scaling)
                     if w >= face_size and h >= face_size:
                         # Get confidence score
                         face_confidence = float(face.det_score)
