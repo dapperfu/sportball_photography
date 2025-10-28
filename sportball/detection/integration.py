@@ -56,10 +56,14 @@ class DetectionIntegration:
         # Initialize Rust performance module
         self.rust_module = None
         if enable_rust:
-            rust_config = RustPerformanceConfig(
-                enable_rust=True, max_workers=max_workers or 16
-            )
-            self.rust_module = RustPerformanceModule(rust_config)
+            try:
+                rust_config = RustPerformanceConfig(
+                    enable_rust=True, max_workers=max_workers or 16
+                )
+                self.rust_module = RustPerformanceModule(rust_config)
+            except RuntimeError:
+                # Rust not available, continue without it
+                self.rust_module = None
 
         # Register default tools
         self._register_default_tools()
