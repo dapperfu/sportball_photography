@@ -40,15 +40,31 @@ pip install -e .[dev]
 
 ### High-Performance Rust Integration
 
-For maximum performance, build the Rust sidecar tool:
+The Rust sidecar tool is automatically included as a Git dependency from [https://github.com/dapperfu/image-sidecar-rust.git](https://github.com/dapperfu/image-sidecar-rust.git).
+
+**Installation Requirements** (choose one):
+
+#### Option 1: Automatic (Rust Python Package)
+If you have Rust installed, the Python package will be built automatically during install:
 
 ```bash
-# Build the Rust sidecar tool (3-10x faster)
-make build-rust-sidecar
-
-# Test the integration
-make test-integration
+# Install sportball (will automatically build Rust package if Rust is available)
+pip install -e .  # or pip install sportball
 ```
+
+#### Option 2: Binary CLI Approach
+If you prefer using the pre-built binary:
+
+```bash
+# Build the Rust binary separately
+cd /path/to/image-sidecar-rust
+cargo build --release
+
+# Make it available in PATH
+export PATH=$PATH:/path/to/image-sidecar-rust/target/release
+```
+
+**Note**: The Rust tool is an **optional** dependency. If neither the Python package nor the binary is available, Sportball will automatically fall back to Python implementations. The Rust tool provides 3-10x performance improvements for sidecar operations.
 
 ## 🎯 Quick Start
 

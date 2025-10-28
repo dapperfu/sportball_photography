@@ -2,6 +2,7 @@
 Rust Performance Module
 
 High-performance Rust-based implementations for detection operations.
+ALL operations require Rust and will raise RuntimeError if unavailable.
 
 Author: Claude Sonnet 4 (claude-3-5-sonnet-20241022)
 Generated via Cursor IDE (cursor.sh) with AI assistance
@@ -23,7 +24,6 @@ class RustPerformanceConfig:
 
     enable_rust: bool = True
     rust_binary_path: Optional[Path] = None
-    fallback_to_python: bool = True
     max_workers: int = 16
     chunk_size: int = 1000
 
@@ -33,7 +33,8 @@ class RustPerformanceModule:
     Rust-based performance module for detection operations.
 
     This module provides high-performance implementations of common
-    detection operations using Rust, with Python fallbacks.
+    detection operations using Rust. Rust is REQUIRED.
+    Raises RuntimeError if Rust is unavailable.
     """
 
     def __init__(self, config: Optional[RustPerformanceConfig] = None):
@@ -79,12 +80,11 @@ class RustPerformanceModule:
 
         # Rust not available
         self.rust_available = False
-        if self.config.fallback_to_python:
-            self.logger.warning(
-                "Rust not available, falling back to Python implementations"
-            )
-        else:
-            self.logger.error("Rust not available and fallback disabled")
+        self.logger.error("Rust not available. Rust performance operations require Rust.")
+        raise RuntimeError(
+            "Rust implementation not available. Rust performance operations require "
+            "Rust tools. Please ensure Rust tools are installed."
+        )
 
     def parallel_json_validation(self, file_paths: List[Path]) -> List[Dict[str, Any]]:
         """
@@ -97,10 +97,7 @@ class RustPerformanceModule:
             List of validation results
         """
         if not self.rust_available:
-            if self.config.fallback_to_python:
-                return self._python_json_validation(file_paths)
-            else:
-                raise RuntimeError("Rust not available and fallback disabled")
+            raise RuntimeError("Rust not available. Operations require Rust.")
 
         try:
             # Create temporary file with file paths
@@ -150,10 +147,7 @@ class RustPerformanceModule:
 
         except Exception as e:
             self.logger.error(f"Rust JSON validation failed: {e}")
-            if self.config.fallback_to_python:
-                return self._python_json_validation(file_paths)
-            else:
-                raise
+            raise
 
     def parallel_file_processing(
         self, file_paths: List[Path], operation: str, **kwargs
@@ -170,10 +164,7 @@ class RustPerformanceModule:
             List of processing results
         """
         if not self.rust_available:
-            if self.config.fallback_to_python:
-                return self._python_file_processing(file_paths, operation, **kwargs)
-            else:
-                raise RuntimeError("Rust not available and fallback disabled")
+            raise RuntimeError("Rust not available. Operations require Rust.")
 
         try:
             # Create temporary file with file paths
@@ -227,10 +218,7 @@ class RustPerformanceModule:
 
         except Exception as e:
             self.logger.error(f"Rust file processing failed: {e}")
-            if self.config.fallback_to_python:
-                return self._python_file_processing(file_paths, operation, **kwargs)
-            else:
-                raise
+            raise
 
     def batch_image_analysis(
         self, image_paths: List[Path], analysis_type: str, **kwargs
@@ -247,10 +235,7 @@ class RustPerformanceModule:
             List of analysis results
         """
         if not self.rust_available:
-            if self.config.fallback_to_python:
-                return self._python_image_analysis(image_paths, analysis_type, **kwargs)
-            else:
-                raise RuntimeError("Rust not available and fallback disabled")
+            raise RuntimeError("Rust not available. Operations require Rust.")
 
         try:
             # Create temporary file with image paths
@@ -306,39 +291,7 @@ class RustPerformanceModule:
 
         except Exception as e:
             self.logger.error(f"Rust image analysis failed: {e}")
-            if self.config.fallback_to_python:
-                return self._python_image_analysis(image_paths, analysis_type, **kwargs)
-            else:
-                raise
-
-    def _python_json_validation(self, file_paths: List[Path]) -> List[Dict[str, Any]]:
-        """Python fallback for JSON validation."""
-        from .parallel_validator import ParallelJSONValidator
-
-        validator = ParallelJSONValidator(max_workers=self.config.max_workers)
-        results = validator.validate_json_files_parallel(
-            file_paths, show_progress=False
-        )
-
-        return [result.as_dict() for result in results]
-
-    def _python_file_processing(
-        self, file_paths: List[Path], operation: str, **kwargs
-    ) -> List[Dict[str, Any]]:
-        """Python fallback for file processing."""
-        # This would implement Python-based file processing
-        # For now, return empty results
-        self.logger.warning(f"Python fallback for {operation} not implemented")
-        return []
-
-    def _python_image_analysis(
-        self, image_paths: List[Path], analysis_type: str, **kwargs
-    ) -> List[Dict[str, Any]]:
-        """Python fallback for image analysis."""
-        # This would implement Python-based image analysis
-        # For now, return empty results
-        self.logger.warning(f"Python fallback for {analysis_type} not implemented")
-        return []
+            raise
 
     def get_performance_info(self) -> Dict[str, Any]:
         """
@@ -352,7 +305,6 @@ class RustPerformanceModule:
             "rust_binary_path": str(self.config.rust_binary_path)
             if self.config.rust_binary_path
             else None,
-            "fallback_enabled": self.config.fallback_to_python,
             "max_workers": self.config.max_workers,
             "chunk_size": self.config.chunk_size,
         }
@@ -361,7 +313,7 @@ class RustPerformanceModule:
         self, test_files: List[Path], iterations: int = 3
     ) -> Dict[str, Any]:
         """
-        Benchmark performance of Rust vs Python implementations.
+        Benchmark performance of Rust implementation.
 
         Args:
             test_files: List of test files to use
@@ -377,51 +329,30 @@ class RustPerformanceModule:
             "test_files_count": len(test_files),
             "iterations": iterations,
             "rust_times": [],
-            "python_times": [],
             "rust_avg": 0.0,
-            "python_avg": 0.0,
-            "speedup": 0.0,
         }
 
         if not test_files:
             return results
 
-        # Benchmark Rust implementation
-        if self.rust_available:
-            for i in range(iterations):
-                start_time = time.time()
-                try:
-                    self.parallel_json_validation(test_files)
-                    rust_time = time.time() - start_time
-                    results["rust_times"].append(rust_time)
-                except Exception as e:
-                    self.logger.error(f"Rust benchmark iteration {i} failed: {e}")
-                    results["rust_times"].append(float("inf"))
+        if not self.rust_available:
+            raise RuntimeError("Rust not available. Benchmarking requires Rust.")
 
-        # Benchmark Python implementation
+        # Benchmark Rust implementation
         for i in range(iterations):
             start_time = time.time()
             try:
-                self._python_json_validation(test_files)
-                python_time = time.time() - start_time
-                results["python_times"].append(python_time)
+                self.parallel_json_validation(test_files)
+                rust_time = time.time() - start_time
+                results["rust_times"].append(rust_time)
             except Exception as e:
-                self.logger.error(f"Python benchmark iteration {i} failed: {e}")
-                results["python_times"].append(float("inf"))
+                self.logger.error(f"Rust benchmark iteration {i} failed: {e}")
+                results["rust_times"].append(float("inf"))
 
         # Calculate averages
         if results["rust_times"]:
             results["rust_avg"] = sum(
                 t for t in results["rust_times"] if t != float("inf")
             ) / len(results["rust_times"])
-
-        if results["python_times"]:
-            results["python_avg"] = sum(
-                t for t in results["python_times"] if t != float("inf")
-            ) / len(results["python_times"])
-
-        # Calculate speedup
-        if results["rust_avg"] > 0 and results["python_avg"] > 0:
-            results["speedup"] = results["python_avg"] / results["rust_avg"]
 
         return results
