@@ -167,6 +167,29 @@ class RustSidecarManager:
             else:
                 raise
 
+    def read_data(self, image_path: str) -> Dict[str, Any]:
+        """
+        Read data from a sidecar file via Rust.
+
+        Args:
+            image_path: Path to the image file
+
+        Returns:
+            Dictionary containing the sidecar data, or empty dict if not found
+        """
+        if not self.rust_available:
+            raise RuntimeError("Rust implementation not available")
+
+        # Use Python bindings
+        if hasattr(self, 'sidecar'):
+            try:
+                return self.sidecar.read_data(image_path) or {}
+            except Exception as e:
+                self.logger.warning(f"Failed to read sidecar for {image_path}: {e}")
+                return {}
+        else:
+            raise RuntimeError("Rust sidecar instance not initialized")
+
     def get_statistics(
         self, directory: Path, operation_filter: Optional[str] = None
     ) -> Dict[str, Any]:
