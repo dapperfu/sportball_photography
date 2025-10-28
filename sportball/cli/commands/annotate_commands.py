@@ -495,15 +495,19 @@ def _draw_annotation(
     annotated_image = image.copy()
     draw = ImageDraw.Draw(annotated_image)
 
-    # Calculate font size based on font_scale
+    # Calculate font size based on image dimensions and font_scale
+    # Font size scales with the smaller dimension to maintain readability at any resolution
+    image_width, image_height = image.size
+    base_font_size = min(image_width, image_height) // 40  # Scales with image size
+    font_size = max(16, int(base_font_size * font_scale * 2.5))  # 2.5x larger, minimum 16px
+    
     try:
-        # Try to load a default font
-        font_size = max(12, int(12 * font_scale))
+        # Try to load a default font with scaled size
         font = ImageFont.truetype(
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size
         )
     except (OSError, IOError):
-        # Fallback to default font
+        # Fallback to default font (will be small but will work)
         font = ImageFont.load_default()
 
     # Draw rectangle
