@@ -48,35 +48,26 @@ class SidecarInfo:
         self._loaded = False
 
     def load(self) -> Dict[str, Any]:
-        """Load sidecar data from file."""
+        """Load sidecar data from file via Rust manager ONLY."""
         if not self._loaded:
-            try:
-                with open(self.sidecar_path, "r") as f:
-                    self.data = json.load(f)
-                self._loaded = True
-            except Exception as e:
-                logger.error(f"Failed to load sidecar {self.sidecar_path}: {e}")
-                self.data = {}
+            # ALL sidecar operations MUST use Rust - NO Python file I/O allowed
+            # Per requirements TR-008: "All sidecar operations SHALL use image-sidecar-rust module exclusively"
+            raise RuntimeError(
+                "Sidecar.load() requires Rust implementation. "
+                "ALL sidecar read/write operations MUST use Rust manager exclusively. "
+                "No Python file I/O is allowed per requirements TR-007 and TR-008."
+            )
         return self.data or {}
 
     def save(self, data: Dict[str, Any]) -> bool:
-        """Save data to sidecar file."""
-        try:
-            # Ensure directory exists
-            self.sidecar_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # Convert data to JSON-serializable format
-            serializable_data = self._make_serializable(data)
-
-            with open(self.sidecar_path, "w") as f:
-                json.dump(serializable_data, f, indent=2)
-
-            self.data = serializable_data
-            self._loaded = True
-            return True
-        except Exception as e:
-            logger.error(f"Failed to save sidecar {self.sidecar_path}: {e}")
-            return False
+        """Save data to sidecar file via Rust manager ONLY."""
+        # ALL sidecar operations MUST use Rust - NO Python file I/O allowed
+        # Per requirements TR-008: "All sidecar operations SHALL use image-sidecar-rust module exclusively"
+        raise RuntimeError(
+            "Sidecar.save() requires Rust implementation. "
+            "ALL sidecar read/write operations MUST use Rust manager exclusively. "
+            "No Python file I/O is allowed per requirements TR-007 and TR-008."
+        )
 
     def _make_serializable(self, obj):
         """Convert object to JSON-serializable format."""
@@ -108,52 +99,21 @@ class SidecarInfo:
 
     def get_processing_time(self) -> Optional[float]:
         """Extract processing time from sidecar data."""
-        data = self.load()
-
-        # Check various possible locations for processing time
-        if "data" in data and "processing_time" in data["data"]:
-            return data["data"]["processing_time"]
-
-        # Check metadata sections
-        for key in data:
-            if isinstance(data[key], dict) and "metadata" in data[key]:
-                metadata = data[key]["metadata"]
-                if "processing_time" in metadata:
-                    return metadata["processing_time"]
-                if "extraction_timestamp" in metadata:
-                    # Calculate processing time from timestamp if available
-                    try:
-                        timestamp = datetime.fromisoformat(
-                            metadata["extraction_timestamp"]
-                        )
-                        return (datetime.now() - timestamp).total_seconds()
-                    except Exception:
-                        pass
-
-        return None
+        # This method calls load() which now requires Rust
+        # Per requirements TR-008, all sidecar operations MUST use Rust
+        raise RuntimeError("Sidecar operations require Rust implementation per TR-008")
 
     def get_success_status(self) -> bool:
         """Extract success status from sidecar data."""
-        data = self.load()
-
-        # Check various possible locations for success status
-        if "data" in data and "success" in data["data"]:
-            return data["data"]["success"]
-
-        # Check metadata sections
-        for key in data:
-            if isinstance(data[key], dict) and "metadata" in data[key]:
-                metadata = data[key]["metadata"]
-                if "success" in metadata:
-                    return metadata["success"]
-
-        # Default to True if no explicit success/failure indicator
-        return True
+        # This method calls load() which now requires Rust
+        # Per requirements TR-008, all sidecar operations MUST use Rust
+        raise RuntimeError("Sidecar operations require Rust implementation per TR-008")
 
     def get_data_size(self) -> int:
         """Get the size of the sidecar data."""
-        data = self.load()
-        return len(json.dumps(data))
+        # This method calls load() which now requires Rust
+        # Per requirements TR-008, all sidecar operations MUST use Rust
+        raise RuntimeError("Sidecar operations require Rust implementation per TR-008")
 
 
 class Sidecar:
@@ -401,17 +361,22 @@ class Sidecar:
         Returns:
             Dictionary with comprehensive statistics
         """
-        # Try to use Rust implementation for better performance
-        if self.rust_manager and self.rust_manager.rust_available:
-            try:
-                operation_filter_str = (
-                    operation_filter.value if operation_filter else None
-                )
-                return self.rust_manager.get_statistics(directory, operation_filter_str)
-            except Exception as e:
-                logger.warning(f"Rust statistics failed, falling back to Python: {e}")
+        # MUST use Rust - NO Python fallback allowed per TR-007
+        if not self.rust_manager or not self.rust_manager.rust_available:
+            raise RuntimeError(
+                "Rust is required for all sidecar operations per requirements TR-007. "
+                "No Python fallback is allowed."
+            )
+        
+        try:
+            operation_filter_str = (
+                operation_filter.value if operation_filter else None
+            )
+            return self.rust_manager.get_statistics(directory, operation_filter_str)
+        except Exception as e:
+            raise RuntimeError(f"Rust statistics failed: {e}. Rust is mandatory per TR-007.")
 
-        # Fall back to Python implementation
+        # NO Python implementation allowed - removed per TR-007
         sidecars = self.find_all_sidecars(directory)
 
         # Apply filter if specified
