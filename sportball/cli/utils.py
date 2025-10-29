@@ -106,42 +106,71 @@ def check_sidecar_file_parallel(
     Returns:
         Tuple of (image_file, should_skip)
     """
+    if force:
+        return (image_file, False)  # Force processing, don't skip
+    
     try:
-        # Resolve symlink if needed
-        original_image_path = (
-            image_file.resolve() if image_file.is_symlink() else image_file
-        )
-        json_path = original_image_path.parent / f"{original_image_path.stem}.json"
-
-        if json_path.exists() and not force:
-            # Check if JSON contains detection data for the specific operation
+        # Use Sidecar class to find and read sidecar files (handles .bin, .rkyv, .json)
+        from ..sidecar import Sidecar
+        
+        sidecar_manager = Sidecar()
+        sidecar_info = sidecar_manager.find_sidecar_for_image(image_file)
+        
+        if sidecar_info:
             try:
-                with open(json_path, "r") as f:
-                    data = json.load(f)
-
+                # Load sidecar data (will use Rust for binary files)
+                data = sidecar_info.load()
+                
                 # Check for face detection data
                 if operation_type == "face_detection":
-                    if (
-                        "face_detection" in data
-                        and data["face_detection"].get("success", False)
-                        and "faces" in data["face_detection"]
-                    ):
-                        return (image_file, True)  # Should skip (already processed)
+                    # Check various possible structures
+                    face_data = None
+                    if "face_detection" in data:
+                        face_data = data["face_detection"]
+                    elif "data" in data and "face_detection" in data["data"]:
+                        face_data = data["data"]["face_detection"]
+                    
+                    if face_data:
+                        # Check if data indicates successful detection
+                        success = face_data.get("success", False)
+                        # Check for unified structure
+                        if "unified" in face_data:
+                            unified = face_data["unified"]
+                            faces = unified.get("faces", [])
+                            if success or len(faces) > 0:
+                                return (image_file, True)  # Should skip (already processed)
+                        # Check for direct faces
+                        elif "faces" in face_data:
+                            faces = face_data["faces"]
+                            if success or len(faces) > 0:
+                                return (image_file, True)  # Should skip (already processed)
 
                 # Check for object detection data (YOLOv8)
                 elif operation_type == "object_detection":
-                    if (
-                        "yolov8" in data
-                        and data["yolov8"].get("success", False)
-                        and "objects" in data["yolov8"]
-                    ):
-                        return (image_file, True)  # Should skip (already processed)
+                    yolov8_data = None
+                    if "yolov8" in data:
+                        yolov8_data = data["yolov8"]
+                    elif "data" in data and "yolov8" in data["data"]:
+                        yolov8_data = data["data"]["yolov8"]
+                    
+                    if yolov8_data:
+                        success = yolov8_data.get("success", False)
+                        objects = yolov8_data.get("objects", [])
+                        if success or len(objects) > 0:
+                            return (image_file, True)  # Should skip (already processed)
 
                 # Check for other operation types
                 elif operation_type in data:
-                    return (image_file, True)  # Should skip (already processed)
+                    op_data = data[operation_type]
+                    if isinstance(op_data, dict) and op_data.get("success", False):
+                        return (image_file, True)  # Should skip (already processed)
+                elif "data" in data and operation_type in data["data"]:
+                    op_data = data["data"][operation_type]
+                    if isinstance(op_data, dict) and op_data.get("success", False):
+                        return (image_file, True)  # Should skip (already processed)
 
-            except (json.JSONDecodeError, KeyError, TypeError):
+            except Exception as e:
+                # If we can't read the sidecar, assume we should process
                 pass
 
         return (image_file, False)  # Should process
