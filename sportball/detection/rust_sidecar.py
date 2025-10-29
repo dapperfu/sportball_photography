@@ -183,7 +183,28 @@ class RustSidecarManager:
         # Use Python bindings
         if hasattr(self, 'sidecar'):
             try:
-                return self.sidecar.read_data(image_path) or {}
+                # Check if read_data method exists (it may not be implemented yet per RUST-019)
+                if hasattr(self.sidecar, 'read_data'):
+                    return self.sidecar.read_data(image_path) or {}
+                else:
+                    # read_data() is not yet implemented in image-sidecar-rust per RUST-019
+                    # This is a blocking requirement that needs to be added to the Rust library
+                    self.logger.error(
+                        "read_data() method not available in image-sidecar-rust. "
+                        "This method must be implemented per requirement RUST-019. "
+                        "See IMAGE_SIDECAR_RUST_REQUIREMENTS.md for details."
+                    )
+                    raise RuntimeError(
+                        "read_data() method not implemented in image-sidecar-rust. "
+                        "This is a blocking requirement (RUST-019) that must be added to the Rust library. "
+                        "The method should accept an image_path and return a dict with all sidecar data."
+                    )
+            except AttributeError:
+                # Method doesn't exist - this should be caught above but handle gracefully
+                raise RuntimeError(
+                    "read_data() method not implemented in image-sidecar-rust. "
+                    "See requirements/REQUIREMENTS_RUST_SIDECAR_IMPLEMENTATION.sdoc RUST-019"
+                )
             except Exception as e:
                 self.logger.warning(f"Failed to read sidecar for {image_path}: {e}")
                 return {}
