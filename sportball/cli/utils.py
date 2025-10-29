@@ -56,7 +56,12 @@ def find_image_files(input_path: Path, recursive: bool = True) -> List[Path]:
     image_extensions = {".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp"}
 
     if input_path.is_file():
-        return [input_path]
+        # Validate that the file has an image extension
+        if input_path.suffix.lower() in image_extensions:
+            return [input_path]
+        else:
+            # Not an image file, return empty list
+            return []
 
     if not input_path.is_dir():
         raise click.BadParameter(f"Path does not exist: {input_path}")

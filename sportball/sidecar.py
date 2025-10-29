@@ -511,6 +511,15 @@ class Sidecar:
         Returns:
             OperationType enum value
         """
+        # Check if this is a binary format that requires Rust to read
+        file_ext = sidecar_path.suffix.lower()
+        if file_ext in [".bin", ".rkyv"]:
+            # Binary formats cannot be read as text
+            # Return UNKNOWN - operation type will be determined when sidecar is actually read via Rust
+            # This avoids UTF-8 decoding errors
+            return OperationType.UNKNOWN
+        
+        # For JSON files, read as text
         try:
             with open(sidecar_path, "r") as f:
                 data = json.load(f)
