@@ -110,68 +110,53 @@ def check_sidecar_file_parallel(
         return (image_file, False)  # Force processing, don't skip
     
     try:
-        # Use Sidecar class to find and read sidecar files (handles .bin, .rkyv, .json)
-        from ..sidecar import Sidecar
+        # Use Rust sidecar manager directly - it handles all format detection (.bin, .rkyv, .json)
+        from ..detection.rust_sidecar import RustSidecarManager
         
-        sidecar_manager = Sidecar()
-        sidecar_info = sidecar_manager.find_sidecar_for_image(image_file)
+        rust_manager = RustSidecarManager()
+        if not rust_manager.rust_available:
+            # If Rust is not available, process the file (can't check sidecar)
+            return (image_file, False)
         
-        if sidecar_info:
-            try:
-                # Load sidecar data (will use Rust for binary files)
-                data = sidecar_info.load()
-                
-                # Check for face detection data
-                if operation_type == "face_detection":
-                    # Check various possible structures
-                    face_data = None
-                    if "face_detection" in data:
-                        face_data = data["face_detection"]
-                    elif "data" in data and "face_detection" in data["data"]:
-                        face_data = data["data"]["face_detection"]
-                    
-                    if face_data:
-                        # Check if data indicates successful detection
-                        success = face_data.get("success", False)
-                        # Check for unified structure
-                        if "unified" in face_data:
-                            unified = face_data["unified"]
-                            faces = unified.get("faces", [])
-                            if success or len(faces) > 0:
-                                return (image_file, True)  # Should skip (already processed)
-                        # Check for direct faces
-                        elif "faces" in face_data:
-                            faces = face_data["faces"]
-                            if success or len(faces) > 0:
-                                return (image_file, True)  # Should skip (already processed)
-
-                # Check for object detection data (YOLOv8)
-                elif operation_type == "object_detection":
-                    yolov8_data = None
-                    if "yolov8" in data:
-                        yolov8_data = data["yolov8"]
-                    elif "data" in data and "yolov8" in data["data"]:
-                        yolov8_data = data["data"]["yolov8"]
-                    
-                    if yolov8_data:
-                        success = yolov8_data.get("success", False)
-                        objects = yolov8_data.get("objects", [])
-                        if success or len(objects) > 0:
-                            return (image_file, True)  # Should skip (already processed)
-
-                # Check for other operation types
-                elif operation_type in data:
-                    op_data = data[operation_type]
-                    if isinstance(op_data, dict) and op_data.get("success", False):
+        # Rust handles finding and reading sidecar files in any format
+        data = rust_manager.read_data(str(image_file))
+        
+        if not data:
+            return (image_file, False)  # No sidecar data found, should process
+        
+        # Check for face detection data
+        if operation_type == "face_detection":
+            face_data = data.get("face_detection")
+            if face_data:
+                # Check for unified structure
+                if "unified" in face_data:
+                    unified = face_data["unified"]
+                    faces = unified.get("faces", [])
+                    if len(faces) > 0:
                         return (image_file, True)  # Should skip (already processed)
-                elif "data" in data and operation_type in data["data"]:
-                    op_data = data["data"][operation_type]
-                    if isinstance(op_data, dict) and op_data.get("success", False):
+                # Check for direct faces
+                elif "faces" in face_data:
+                    faces = face_data["faces"]
+                    if len(faces) > 0:
                         return (image_file, True)  # Should skip (already processed)
+                # Check success flag
+                elif face_data.get("success", False):
+                    return (image_file, True)  # Should skip (already processed)
 
-            except Exception as e:
-                # If we can't read the sidecar, assume we should process
-                pass
+        # Check for object detection data (YOLOv8)
+        elif operation_type == "object_detection":
+            yolov8_data = data.get("yolov8")
+            if yolov8_data:
+                success = yolov8_data.get("success", False)
+                objects = yolov8_data.get("objects", [])
+                if success or len(objects) > 0:
+                    return (image_file, True)  # Should skip (already processed)
+
+        # Check for other operation types
+        elif operation_type in data:
+            op_data = data[operation_type]
+            if isinstance(op_data, dict) and op_data.get("success", False):
+                return (image_file, True)  # Should skip (already processed)
 
         return (image_file, False)  # Should process
 
