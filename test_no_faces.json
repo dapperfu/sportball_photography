@@ -1,0 +1,47 @@
+{
+  "face_detection": {
+    "success": true,
+    "faces": [],
+    "metadata": {
+      "image_path": "test_no_faces.jpg",
+      "image_width": 200,
+      "image_height": 200,
+      "faces_found": 0,
+      "processing_time": 0.09838628768920898,
+      "extraction_timestamp": "2025-10-01T15:50:14.846973",
+      "detector": "insightface",
+      "model_name": "buffalo_l",
+      "face_size_threshold": 64,
+      "confidence_threshold": 0.5
+    }
+  },
+  "sidecar_info": {
+    "operation_type": "face_detection",
+    "created_at": "2025-10-01T12:40:11.886386",
+    "last_updated": "2025-10-01T15:51:02.205516",
+    "last_operation": "yolov8",
+    "image_path": "test_no_faces.jpg",
+    "symlink_path": "test_no_faces.jpg",
+    "symlink_info": {
+      "symlink_path": "test_no_faces.jpg",
+      "target_path": "test_no_faces.jpg",
+      "is_symlink": false
+    }
+  },
+  "yolov8": {
+    "success": true,
+    "objects": [],
+    "metadata": {
+      "image_path": "test_no_faces.jpg",
+      "image_width": 200,
+      "image_height": 200,
+      "objects_found": 0,
+      "detection_time": 0.2952775190351531,
+      "model_path": "yolov8n.pt",
+      "border_padding_percentage": 25.0,
+      "confidence_threshold": 0.5,
+      "gpu_enabled": true,
+      "target_objects": "all"
+    }
+  }
+}

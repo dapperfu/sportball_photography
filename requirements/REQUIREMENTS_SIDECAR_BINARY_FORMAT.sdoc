@@ -1,0 +1,793 @@
+[DOCUMENT]
+TITLE: Sidecar Binary Format Support Requirements
+UID: DOC-SIDECAR-BINARY-001
+VERSION: 1.0
+DATE: 2025-01-27
+CLASSIFICATION: Internal
+
+[GRAMMAR]
+ELEMENTS:
+- TAG: REQUIREMENT
+  FIELDS:
+  - TITLE: UID
+    TYPE: String
+    REQUIRED: True
+  - TITLE: TITLE
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
+  - TITLE: RATIONALE
+    TYPE: String
+    REQUIRED: False
+  - TITLE: COMMENT
+    TYPE: String
+    REQUIRED: False
+  - TITLE: PRIORITY
+    TYPE: String
+    REQUIRED: False
+  - TITLE: STATUS
+    TYPE: String
+    REQUIRED: False
+
+[REQUIREMENT]
+UID: BINARY-FR-000
+TITLE: Compiled Tool Priority Policy
+STATEMENT: If a Rust or other compiled tool (C, Go, etc.) is available for any operation, the Python interface to that compiled tool SHALL ALWAYS be used over any "Python fallback" implementation. Sidecar files SHALL only be managed with the sidecar manager (image-sidecar-rust). There SHALL be NO manipulation, editing, appending, etc. within Python code. All sidecar operations SHALL be done in Rust. If Rust is inadequate, the Rust project SHALL be fixed - do NOT create a lesser quality and slower Python implementation.
+RATIONALE: Compiled tools provide superior performance, reliability, and maintainability. Python fallbacks create inferior solutions and technical debt. All sidecar operations MUST go through the compiled Rust tool to maintain quality standards.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-001
+TITLE: Binary Sidecar Format Support
+STATEMENT: The system shall support binary sidecar file formats (.bin and .rkyv) in addition to JSON format, providing superior performance and storage efficiency. ALL sidecar file operations SHALL be managed by the Rust sidecar manager (image-sidecar-rust). Python code SHALL NOT manipulate sidecar files directly.
+RATIONALE: Binary formats provide 50-70% size reduction and 3-10x faster read/write performance compared to JSON, addressing performance bottlenecks in large photo collections. All operations must go through the compiled Rust tool to maintain performance benefits and consistency.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-001.1
+TITLE: Multi-Format Sidecar Storage
+STATEMENT: The SidecarManager shall support storing sidecar data in JSON (.json), Binary (.bin), and Rkyv (.rkyv) formats with automatic format detection. ALL format operations SHALL be delegated to the Rust sidecar manager (image-sidecar-rust). NO Python code shall directly handle sidecar file operations.
+RATIONALE: Multi-format support enables gradual migration from JSON to binary formats while maintaining backward compatibility. All operations go through the compiled Rust tool for performance and consistency.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-001.2
+TITLE: Format Abstraction Layer
+STATEMENT: All detector modules shall use the SidecarManager abstraction layer for sidecar operations, eliminating hardcoded JSON serialization calls.
+RATIONALE: Abstraction layer ensures consistent sidecar handling regardless of format and enables seamless format migration.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-001.3
+TITLE: Rust Integration for Binary Formats
+STATEMENT: The SidecarManager SHALL delegate ALL binary format operations EXCLUSIVELY to the Rust sidecar utility (image-sidecar-rust). Python SHALL NOT be used as a fallback. If the Rust tool is inadequate, the Rust project SHALL be fixed rather than implementing a Python alternative.
+RATIONALE: Using compiled tools (Rust, C, Go, etc.) provides superior performance and is the required approach. Python fallbacks create slower, lower-quality implementations and shall not be tolerated. If issues arise with the Rust implementation, the Rust codebase shall be enhanced to meet requirements.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-001.4
+TITLE: Automatic Format Detection
+STATEMENT: The system shall automatically detect sidecar file format by attempting multiple file extensions (.bin, .rkyv, .json) and content-based format detection.
+RATIONALE: Automatic format detection enables seamless reading of sidecars regardless of format and eliminates manual format specification.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-001.5
+TITLE: Format Preference Configuration
+STATEMENT: The system shall use binary format (.bin) as the default format for new sidecar files. ALL sidecar file operations SHALL be managed exclusively by the Rust sidecar manager (image-sidecar-rust). NO Python code shall directly manipulate, edit, append, or create sidecar files.
+RATIONALE: Binary format preference optimizes performance and storage. All sidecar operations SHALL go through the compiled Rust tool, ensuring consistency and performance. If the Rust tool lacks functionality, it SHALL be added to the Rust project, not implemented in Python.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-002
+TITLE: SidecarManager Implementation Updates
+STATEMENT: The SidecarManager class shall be updated to remove hardcoded JSON serialization and implement proper format abstraction.
+RATIONALE: Implementation updates ensure the abstraction layer works as designed and all formats are properly supported.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-002.1
+TITLE: Remove Hardcoded .json Extension
+STATEMENT: The SidecarManager.save_data_merge() method shall support multiple file extensions (.bin, .rkyv, .json) instead of hardcoding .json extension.
+RATIONALE: Multi-extension support enables proper binary format usage and format selection based on availability and preference.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-002.2
+TITLE: Remove Direct json.dump() Calls
+STATEMENT: The SidecarManager shall remove direct json.dump() calls and delegate serialization to format-specific implementations.
+RATIONALE: Removing direct JSON calls enables format abstraction and proper delegation to Rust or other serialization backends.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-002.3
+TITLE: Add Rust Save Method
+STATEMENT: The SidecarManager shall implement _save_with_rust() method that delegates binary format serialization to the Rust sidecar manager. This is the ONLY save method that shall exist - NO Python fallback methods shall be created.
+RATIONALE: Rust save method provides high-performance binary serialization. Python implementations are strictly prohibited - all operations SHALL go through the compiled Rust tool.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-002.4
+TITLE: Rust Tool Enhancement Requirement
+STATEMENT: The SidecarManager SHALL NOT implement any Python fallback methods. ALL sidecar operations SHALL go through the Rust sidecar manager (image-sidecar-rust). If the Rust tool lacks required functionality, the Rust project SHALL be enhanced to add that functionality.
+RATIONALE: Python fallbacks are prohibited. All sidecar file management SHALL be handled by the compiled Rust tool. If inadequacies exist in the Rust implementation, they SHALL be fixed in the Rust codebase, not worked around in Python.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-002.5
+TITLE: Add Format Detection Method
+STATEMENT: The SidecarManager shall implement _detect_format() method to determine existing sidecar file format.
+RATIONALE: Format detection enables proper reading of sidecars in any format and correct handling of format transitions.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-002.6
+TITLE: Add Multi-Extension Path Resolution
+STATEMENT: The SidecarManager shall implement _get_sidecar_path() method that tries multiple extensions (.bin, .rkyv, .json) to find existing sidecar files.
+RATIONALE: Multi-extension path resolution enables proper format detection and seamless reading of sidecars in any format.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-003
+TITLE: Detector Module Updates
+STATEMENT: All detector modules shall be updated to use SidecarManager instead of direct JSON serialization, removing all json.dump() calls.
+RATIONALE: Detector updates ensure consistent sidecar handling and enable proper format abstraction across all detection modules.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-003.1
+TITLE: Update Object Detector
+STATEMENT: The object.py detector shall remove direct json.dump() calls and use SidecarManager.save_data_merge() for sidecar operations.
+RATIONALE: Object detector updates ensure proper sidecar format abstraction for YOLOv8 detection results.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-003.2
+TITLE: Update Game Detector
+STATEMENT: The game.py detector shall remove direct json.dump() calls and use SidecarManager.save_data_merge() for sidecar operations.
+RATIONALE: Game detector updates ensure proper sidecar format abstraction for game boundary detection results.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-003.3
+TITLE: Update Face Clustering Detector
+STATEMENT: The face_clustering.py detector shall remove direct json.dump() calls and use SidecarManager.save_data_merge() for sidecar operations.
+RATIONALE: Face clustering updates ensure proper sidecar format abstraction for face clustering results.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-003.4
+TITLE: Update Face Benchmark Detector
+STATEMENT: The face_benchmark.py detector shall remove direct json.dump() calls and use SidecarManager.save_data_merge() for sidecar operations.
+RATIONALE: Face benchmark updates ensure proper sidecar format abstraction for benchmark results.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-003.5
+TITLE: Detector Consistency Review
+STATEMENT: All detector modules shall be reviewed to ensure no remaining hardcoded JSON serialization or direct file I/O operations.
+RATIONALE: Consistency review ensures all modules properly use the abstraction layer and no direct serialization bypasses remain.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-004
+TITLE: Rust Sidecar Manager Enhancement
+STATEMENT: The RustSidecarManager class shall be enhanced to support direct sidecar data saving in binary format.
+RATIONALE: Rust manager enhancement enables proper binary format support through the abstraction layer.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-004.1
+TITLE: Add save_sidecar_data() Method
+STATEMENT: The RustSidecarManager shall implement save_sidecar_data() method that saves sidecar data in binary format using the Rust backend.
+RATIONALE: Save method provides programmatic API for saving sidecars in binary format through Rust backend.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-004.2
+TITLE: Rust Binary Integration
+STATEMENT: The save_sidecar_data() method shall call the Rust binary tool for bincode serialization of sidecar data.
+RATIONALE: Rust binary integration provides high-performance binary serialization and deserialization capabilities.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-004.3
+TITLE: Rust Tool Failure Requirements
+STATEMENT: The save_sidecar_data() method SHALL NOT fall back to Python serialization under ANY circumstances. If Rust backend fails, the Rust code SHALL be debugged and fixed. If unavailable, installation SHALL be made available. NO Python fallback implementations are permitted.
+RATIONALE: Python fallbacks create inferior, slower implementations and are explicitly prohibited. Rust inadequacies SHALL be fixed in the Rust project, not worked around with Python code.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-004.4
+TITLE: Error Handling and Logging
+STATEMENT: The save_sidecar_data() method shall implement comprehensive error handling and logging for troubleshooting.
+RATIONALE: Error handling ensures system stability and provides diagnostic information for format conversion issues.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-005
+TITLE: Format Migration Utility
+STATEMENT: The system shall provide a utility command to migrate existing JSON sidecars to binary format.
+RATIONALE: Migration utility enables users to convert existing JSON sidecars to binary format for improved performance.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-005.1
+TITLE: migrate-sidecars Command
+STATEMENT: The system shall implement 'sportball utility migrate-sidecars' command for batch conversion of sidecars between formats.
+RATIONALE: Migration command provides CLI interface for format conversion operations.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-005.2
+TITLE: Dry-Run Support
+STATEMENT: The migrate-sidecars command shall support dry-run mode to preview conversion operations before execution.
+RATIONALE: Dry-run support enables safe testing of format conversions without risk to existing data.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-005.3
+TITLE: Progress Reporting
+STATEMENT: The migrate-sidecars command shall provide progress reporting during batch conversion operations.
+RATIONALE: Progress reporting provides user feedback during potentially long-running migration operations.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-005.4
+TITLE: Backward Compatibility
+STATEMENT: The migrate-sidecars command shall preserve original JSON files during conversion to enable rollback if needed.
+RATIONALE: Backward compatibility ensures safety during format migration and allows reverting to JSON if issues arise.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-005.5
+TITLE: Rust Tool Integration
+STATEMENT: The migrate-sidecars command shall use the existing Rust tool (image-sidecar-rust convert) for format conversion.
+RATIONALE: Rust tool integration leverages existing high-performance conversion capabilities.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-006
+TITLE: Testing and Validation
+STATEMENT: The system shall include comprehensive tests for multi-format sidecar support.
+RATIONALE: Testing ensures format abstraction works correctly and all formats are properly supported.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-006.1
+TITLE: Multi-Format Write Tests
+STATEMENT: The system shall include tests verifying sidecars can be written in all supported formats (JSON, Binary, Rkyv).
+RATIONALE: Write tests ensure all formats can be successfully written without errors.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-006.2
+TITLE: Multi-Format Read Tests
+STATEMENT: The system shall include tests verifying sidecars can be read in all supported formats with automatic format detection.
+RATIONALE: Read tests ensure all formats can be successfully read and format detection works correctly.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-006.3
+TITLE: Roundtrip Verification
+STATEMENT: The system shall include roundtrip tests verifying data integrity when writing and reading in various formats.
+RATIONALE: Roundtrip tests ensure data integrity is maintained across format conversions.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-006.4
+TITLE: Rust Integration Tests
+STATEMENT: The system shall include integration tests verifying proper Rust backend delegation and Python fallback.
+RATIONALE: Integration tests ensure Rust backend is properly used when available and Python fallback works correctly.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-FR-006.5
+TITLE: Migration Tests
+STATEMENT: The system shall include tests for format migration utility verifying successful conversion between formats.
+RATIONALE: Migration tests ensure format conversion works correctly and preserves data integrity.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-NFR-001
+TITLE: Performance Requirements
+STATEMENT: Binary format sidecars shall provide significant performance improvements over JSON format.
+RATIONALE: Performance improvements justify complexity of multi-format support and migration efforts.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-NFR-001.1
+TITLE: Storage Size Reduction
+STATEMENT: Binary format sidecars shall achieve 50-70% size reduction compared to equivalent JSON format.
+RATIONALE: Size reduction reduces storage requirements and improves file system performance.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-NFR-001.2
+TITLE: Serialization Performance
+STATEMENT: Binary format serialization shall be 3-5x faster than JSON serialization.
+RATIONALE: Serialization performance improves overall processing speed for detection operations.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-NFR-001.3
+TITLE: Deserialization Performance
+STATEMENT: Binary format deserialization shall be 5-10x faster than JSON deserialization.
+RATIONALE: Deserialization performance improves sidecar reading speed for large datasets.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-NFR-001.4
+TITLE: Format Detection Speed
+STATEMENT: Format detection overhead shall add less than 10% to total sidecar read time.
+RATIONALE: Format detection overhead should not negate performance benefits of binary formats.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-NFR-002
+TITLE: Compatibility Requirements
+STATEMENT: The system shall maintain backward compatibility with existing JSON sidecars while supporting binary formats.
+RATIONALE: Compatibility ensures existing deployments continue to function without disruption during migration.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-NFR-002.1
+TITLE: JSON Format Support
+STATEMENT: The system shall continue to support JSON format sidecars indefinitely for backward compatibility.
+RATIONALE: JSON format support ensures existing sidecars remain usable and simplifies troubleshooting.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-NFR-002.2
+TITLE: Rust Tool Availability
+STATEMENT: The Rust tool (image-sidecar-rust) SHALL be available and installed in all environments. If binary formats are "unavailable", the root cause SHALL be fixed (installation/deployment issue), not worked around with format fallbacks.
+RATIONALE: Rust tool availability is a deployment requirement, not an optional feature. Python fallbacks are strictly prohibited.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-NFR-002.3
+TITLE: Mixed Format Support
+STATEMENT: The system shall support directory structures containing both JSON and binary format sidecars.
+RATIONALE: Mixed format support enables gradual migration and coexistence during transition periods.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-NFR-002.4
+TITLE: Data Integrity
+STATEMENT: Sidecar data shall remain identical regardless of storage format (JSON, Binary, Rkyv).
+RATIONALE: Data integrity ensures reliable sidecar operations regardless of format choice.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-NFR-003
+TITLE: Documentation Requirements
+STATEMENT: The system shall provide comprehensive documentation for multi-format sidecar support.
+RATIONALE: Documentation enables users to understand and effectively use binary format sidecars.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-NFR-003.1
+TITLE: Format Guide Documentation
+STATEMENT: The system shall document supported formats, performance characteristics, and use cases.
+RATIONALE: Format guide helps users choose appropriate format for their use case.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-NFR-003.2
+TITLE: Migration Guide
+STATEMENT: The system shall provide migration guide for converting existing JSON sidecars to binary format.
+RATIONALE: Migration guide enables users to upgrade existing deployments to binary formats.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-NFR-003.3
+TITLE: Troubleshooting Documentation
+STATEMENT: The system shall document common issues and solutions for binary format operations.
+RATIONALE: Troubleshooting documentation helps users resolve format-related issues quickly.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-001
+TITLE: SidecarManager Implementation
+STATEMENT: The SidecarManager class shall be updated to implement proper format abstraction and Rust backend delegation.
+RATIONALE: Implementation provides foundation for multi-format sidecar support across all detector modules.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-001.1
+TITLE: Update save_data_merge() Method
+STATEMENT: The save_data_merge() method shall delegate to Rust when available and fall back to Python with format selection.
+RATIONALE: Method updates provide proper format abstraction and backend delegation.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-001.2
+TITLE: Add Format Selection Logic
+STATEMENT: The SidecarManager shall implement logic to select appropriate format based on availability and configuration.
+RATIONALE: Format selection logic ensures optimal format usage based on system capabilities.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-001.3
+TITLE: Implement Multi-Extension Path Resolution
+STATEMENT: The SidecarManager shall implement path resolution that tries multiple extensions to find existing sidecar files.
+RATIONALE: Path resolution enables proper format detection and seamless reading of any format.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-001.4
+TITLE: Add Format Detection from Content
+STATEMENT: The SidecarManager shall implement content-based format detection when file extension is ambiguous.
+RATIONALE: Content detection provides robustness for sidecars that may have incorrect extensions.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-002
+TITLE: Detector Module Refactoring
+STATEMENT: All detector modules shall be refactored to remove direct JSON serialization and use SidecarManager abstraction.
+RATIONALE: Refactoring ensures consistent sidecar handling and proper format support across all detection modules.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-002.1
+TITLE: Refactor Object Detector
+STATEMENT: The object.py module shall be refactored to replace all json.dump() calls with SidecarManager.save_data_merge() calls.
+RATIONALE: Refactoring ensures object detector uses format abstraction properly.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-002.2
+TITLE: Refactor Game Detector
+STATEMENT: The game.py module shall be refactored to replace all json.dump() calls with SidecarManager.save_data_merge() calls.
+RATIONALE: Refactoring ensures game detector uses format abstraction properly.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-002.3
+TITLE: Refactor Face Clustering
+STATEMENT: The face_clustering.py module shall be refactored to replace all json.dump() calls with SidecarManager.save_data_merge() calls.
+RATIONALE: Refactoring ensures face clustering uses format abstraction properly.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-002.4
+TITLE: Refactor Face Benchmark
+STATEMENT: The face_benchmark.py module shall be refactored to replace all json.dump() calls with SidecarManager.save_data_merge() calls.
+RATIONALE: Refactoring ensures face benchmark uses format abstraction properly.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-002.5
+TITLE: Code Review for Consistency
+STATEMENT: All detector modules shall undergo code review to ensure no remaining direct serialization bypasses.
+RATIONALE: Code review ensures complete migration to abstraction layer and identifies any remaining issues.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-003
+TITLE: Rust Integration Enhancement
+STATEMENT: The RustSidecarManager shall be enhanced to support saving sidecar data in binary format.
+RATIONALE: Enhancement enables proper binary format support through Python abstraction layer.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-003.1
+TITLE: Implement save_sidecar_data() Method
+STATEMENT: The RustSidecarManager shall implement save_sidecar_data() method that uses Rust backend for binary serialization.
+RATIONALE: Implementation provides programmatic API for binary format sidecar operations.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-003.2
+TITLE: Implement Rust Binary Communication
+STATEMENT: The save_sidecar_data() method shall communicate with Rust binary tool for bincode serialization.
+RATIONALE: Rust binary communication provides high-performance binary serialization capabilities.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-003.3
+TITLE: Add Error Handling and Retry Logic
+STATEMENT: The save_sidecar_data() method shall include comprehensive error handling and retry logic for robustness.
+RATIONALE: Error handling ensures reliable sidecar operations even when Rust backend encounters issues.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-003.4
+TITLE: Implement Performance Monitoring
+STATEMENT: The save_sidecar_data() method shall log performance metrics for binary operations.
+RATIONALE: Performance monitoring enables measurement and optimization of binary format benefits.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-004
+TITLE: Migration Utility Implementation
+STATEMENT: The system shall implement migration utility command for converting between sidecar formats.
+RATIONALE: Migration utility enables users to upgrade existing JSON sidecars to binary format for improved performance.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-004.1
+TITLE: Add migrate-sidecars Command
+STATEMENT: The utility commands module shall include migrate-sidecars command with CLI interface.
+RATIONALE: Command provides user-friendly interface for format migration operations.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-004.2
+TITLE: Implement Dry-Run Mode
+STATEMENT: The migrate-sidecars command shall support dry-run mode for safe preview of conversion operations.
+RATIONALE: Dry-run mode enables safe testing of migrations without modifying existing data.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-004.3
+TITLE: Add Progress Reporting
+STATEMENT: The migrate-sidecars command shall provide real-time progress reporting during batch operations.
+RATIONALE: Progress reporting provides user feedback during potentially long-running migration operations.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-004.4
+TITLE: Implement Batch Processing
+STATEMENT: The migrate-sidecars command shall process multiple sidecar files efficiently using batch operations.
+RATIONALE: Batch processing enables efficient migration of large collections of sidecar files.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-004.5
+TITLE: Add Rollback Support
+STATEMENT: The migrate-sidecars command shall preserve original files and enable rollback if migration fails.
+RATIONALE: Rollback support provides safety during migration operations and enables recovery from errors.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-005
+TITLE: Testing Implementation
+STATEMENT: The system shall include comprehensive tests for multi-format sidecar functionality.
+RATIONALE: Testing ensures format abstraction works correctly and all features function as designed.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-005.1
+TITLE: Add Format Write Tests
+STATEMENT: The test suite shall include tests verifying successful writing of sidecars in all supported formats.
+RATIONALE: Write tests ensure all formats can be written without errors.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-005.2
+TITLE: Add Format Read Tests
+STATEMENT: The test suite shall include tests verifying successful reading of sidecars in all supported formats.
+RATIONALE: Read tests ensure all formats can be read correctly with automatic detection.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-005.3
+TITLE: Add Roundtrip Tests
+STATEMENT: The test suite shall include roundtrip tests verifying data integrity across format conversions.
+RATIONALE: Roundtrip tests ensure data remains unchanged during format conversions.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-005.4
+TITLE: Add Rust Integration Tests
+STATEMENT: The test suite shall include tests verifying proper Rust backend delegation and fallback behavior.
+RATIONALE: Integration tests ensure proper operation of Rust backend and Python fallback mechanisms.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-005.5
+TITLE: Add Migration Tests
+STATEMENT: The test suite shall include tests for migration utility verifying successful format conversions.
+RATIONALE: Migration tests ensure format conversion utility works correctly and preserves data integrity.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-006
+TITLE: Documentation Updates
+STATEMENT: The system shall include updated documentation for binary format sidecar support.
+RATIONALE: Documentation enables users to understand and effectively use new format capabilities.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-006.1
+TITLE: Update Main README
+STATEMENT: The main README.md shall include information about binary format support and migration options.
+RATIONALE: README updates ensure users are aware of binary format capabilities and migration options.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-006.2
+TITLE: Create Format Comparison Guide
+STATEMENT: The system shall include documentation comparing JSON, Binary, and Rkyv formats with performance metrics.
+RATIONALE: Comparison guide helps users choose appropriate format for their use case.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-006.3
+TITLE: Document Migration Process
+STATEMENT: The system shall include step-by-step migration guide for converting existing JSON sidecars to binary.
+RATIONALE: Migration guide enables users to upgrade existing deployments safely and efficiently.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-006.4
+TITLE: Add Troubleshooting Section
+STATEMENT: The documentation shall include troubleshooting section for common binary format issues.
+RATIONALE: Troubleshooting section helps users resolve format-related issues quickly.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-006.5
+TITLE: Update API Documentation
+STATEMENT: The API documentation shall be updated to reflect binary format support in SidecarManager methods.
+RATIONALE: API documentation updates ensure developers understand binary format capabilities and usage.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-007
+TITLE: No Python Fallback Code
+STATEMENT: The system SHALL NOT contain any Python fallback code for sidecar operations. All sidecar manipulation SHALL use the image-sidecar-rust module exclusively.
+RATIONALE: Eliminating fallback code simplifies the codebase, ensures consistent behavior, and enforces exclusive use of the Rust implementation for all sidecar operations.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-007.1
+TITLE: Remove Fallback Configuration Option
+STATEMENT: The RustSidecarConfig shall not include a 'fallback_to_python' option. The system SHALL require Rust availability.
+RATIONALE: Removing the fallback configuration option enforces exclusive use of the Rust implementation and prevents fallback behavior.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-007.2
+TITLE: Remove Python Fallback Methods
+STATEMENT: All _python_* methods in RustSidecarManager and related classes SHALL be removed. No Python fallback implementations SHALL exist.
+RATIONALE: Removing Python fallback methods ensures exclusive use of the Rust implementation and eliminates fallback code paths.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-007.3
+TITLE: Remove Fallback Exception Handling
+STATEMENT: Sidecar operations SHALL raise RuntimeError when Rust is unavailable instead of falling back to Python implementations.
+RATIONALE: Exceptions when Rust is unavailable enforce exclusive use of the Rust implementation and provide clear error messages to users.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-007.4
+TITLE: Remove _save_with_python Method
+STATEMENT: The _save_with_python method in Sidecar class SHALL be removed. All sidecar save operations SHALL use the image-sidecar-rust module exclusively.
+RATIONALE: Removing _save_with_python eliminates the Python fallback path and ensures consistent Rust-backed operations.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-007.5
+TITLE: Remove Fallback Logic from save_data_merge
+STATEMENT: The save_data_merge method SHALL only use Rust backend and SHALL raise exceptions if Rust is unavailable.
+RATIONALE: Eliminating fallback logic ensures exclusive use of the Rust implementation and prevents Python fallback execution.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-008
+TITLE: Exclusive image-sidecar-rust Module Usage
+STATEMENT: ALL sidecar manipulation operations SHALL use the image-sidecar-rust module. No direct file I/O or serialization SHALL occur outside of the Rust module.
+RATIONALE: Exclusive use of the image-sidecar-rust module ensures consistent binary format usage, high performance, and eliminates format inconsistencies.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-008.1
+TITLE: No Direct JSON Serialization
+STATEMENT: The system SHALL NOT perform direct json.dump() or json.load() operations for sidecar data. All serialization SHALL be handled by the image-sidecar-rust module.
+RATIONALE: Eliminating direct JSON serialization ensures exclusive use of binary format through the Rust module and prevents format inconsistencies.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-008.2
+TITLE: No Direct File I/O
+STATEMENT: The system SHALL NOT perform direct file I/O operations for sidecar files. All file operations SHALL be handled by the image-sidecar-rust module.
+RATIONALE: Delegating file operations to the Rust module ensures proper format handling and maintains consistency across all sidecar operations.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: BINARY-TR-008.3
+TITLE: Exclusive Rust Module Delegation
+STATEMENT: All sidecar read, write, and management operations SHALL delegate exclusively to the image-sidecar-rust module methods.
+RATIONALE: Exclusive Rust delegation ensures consistent behavior, high performance, and eliminates Python fallback code paths.
+PRIORITY: Critical
+STATUS: Pending
+

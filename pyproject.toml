@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61.0", "wheel", "versioneer>=0.29"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "sportball"
-version = "1.0.0"
+version = "1.2.0"
 description = "Unified Sports Photo Analysis Package - AI-powered sports photo processing and organization"
 readme = "README.md"
 license = {text = "MIT"}
@@ -15,7 +15,7 @@ maintainers = [
     {name = "Sportball Team", email = "team@sportball.ai"}
 ]
 keywords = [
-    "computer-vision", "ai", "photo-sorting", "sports", "opencv", "face-recognition", 
+    "computer-vision", "ai", "photo-sorting", "sports", "face-recognition", 
     "image-processing", "machine-learning", "yolo", "object-detection", "game-analysis"
 ]
 classifiers = [
@@ -39,17 +39,26 @@ classifiers = [
 requires-python = ">=3.8"
 dependencies = [
     # Core image processing
-    "opencv-contrib-python>=4.8.0",
     "Pillow>=10.0.0",
     "numpy>=1.24.0",
+    
+    # EXIF handling
+    "fast-exif-rs-py @ git+https://github.com/dapperfu/fast-exif-rs-py.git#egg=fast-exif-rs-py",
     
     # Machine Learning
     "torch>=2.0.0",
     "torchvision>=0.15.0",
     
+    # Pose Detection and Color Analysis
+    "mediapipe>=0.10.0",
+    "scikit-learn>=1.3.0",
+    "opencv-python>=4.8.0",
+    
     # Face recognition
     "face-recognition>=1.3.0",
     "dlib>=19.24.0",
+    "insightface>=0.7.3",
+    "onnxruntime-gpu>=1.23.0",
     
     # Object detection
     "ultralytics>=8.0.0",
@@ -73,10 +82,14 @@ dependencies = [
     
     # Performance
     "psutil>=5.9.0",
+    
+    # High-performance sidecar operations (Rust implementation)
+    "image-sidecar-rust @ git+https://github.com/dapperfu/image-sidecar-rust.git",
 ]
 
 [project.optional-dependencies]
 # CUDA support (recommended for GPU acceleration)
+# Note: onnxruntime-gpu is now included in main dependencies for CUDA support
 cuda = [
     "torch[cuda]>=2.0.0",
     "torchvision[cuda]>=0.15.0",
@@ -105,21 +118,12 @@ Issues = "https://github.com/sportball/sportball/issues"
 Documentation = "https://sportball.readthedocs.io"
 
 [project.scripts]
-sportball = "sportball.cli.main:cli"
-sb = "sportball.cli.main:cli"
+sportball = "sportball.cli.ultra_minimal_main:main"
+sb = "sportball.cli.ultra_minimal_main:main"
 
 [tool.setuptools]
-packages = [
-    "sportball",
-    "sportball.cli",
-    "sportball.cli.commands",
-    "sportball.detectors",
-    "sportball.utils",
-    "sportball.config",
-    "sportball.core",
-    "sportball.analyzers",
-]
-package-dir = {"" = "sportball"}
+packages = ["sportball", "sportball.cli", "sportball.cli.commands", "sportball.detectors"]
+package-dir = {"" = "."}
 
 [tool.setuptools.package-data]
 "sportball" = [
@@ -166,7 +170,6 @@ show_error_codes = true
 
 [[tool.mypy.overrides]]
 module = [
-    "cv2.*",
     "face_recognition.*",
     "dlib.*",
     "torch.*",
@@ -182,7 +185,7 @@ minversion = "7.0"
 addopts = [
     "--strict-markers",
     "--strict-config",
-    "--cov=sportball.sportball",
+    "--cov=sportball",
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-report=xml",

@@ -1,0 +1,848 @@
+[DOCUMENT]
+TITLE: Jersey Color-Based Game Splitting Requirements
+UID: DOC-JERSEY-SPLITTING-001
+VERSION: 1.0
+DATE: 2025-01-27
+CLASSIFICATION: Internal
+
+[GRAMMAR]
+ELEMENTS:
+- TAG: REQUIREMENT
+  FIELDS:
+  - TITLE: UID
+    TYPE: String
+    REQUIRED: True
+  - TITLE: TITLE
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
+  - TITLE: RATIONALE
+    TYPE: String
+    REQUIRED: False
+  - TITLE: COMMENT
+    TYPE: String
+    REQUIRED: False
+  - TITLE: PRIORITY
+    TYPE: String
+    REQUIRED: False
+  - TITLE: STATUS
+    TYPE: String
+    REQUIRED: False
+
+[REQUIREMENT]
+UID: JERSEY-FR-000
+TITLE: Compiled Tool Priority Policy
+STATEMENT: If a Rust or other compiled tool (C, Go, etc.) is available for any operation, the Python interface to that compiled tool SHALL ALWAYS be used over any "Python fallback" implementation. This applies to ALL operations including pose detection, color analysis, and file management. If a compiled tool is inadequate, the compiled tool project SHALL be fixed - do NOT create a lesser quality and slower Python implementation.
+RATIONALE: Compiled tools provide superior performance, reliability, and maintainability. Python fallbacks create inferior solutions and technical debt. All operations MUST prefer compiled tools to maintain quality standards.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-001
+TITLE: Jersey Color-Based Game Splitting Command
+STATEMENT: The system shall provide a 'sb split games' command that automatically splits photographs containing multiple games based on jersey colors of players in each frame.
+RATIONALE: Enables photographers to automatically organize photos from side-by-side games where players wear different colored jerseys, eliminating manual sorting effort.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-001.1
+TITLE: Command Interface
+STATEMENT: The 'sb split games' command shall accept input directory and output directory as required arguments.
+RATIONALE: Ensures users explicitly specify source photos and destination for split games.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-001.2
+TITLE: Person Detection Integration
+STATEMENT: The command shall use YOLOv8 person detection to identify players in photographs.
+RATIONALE: Leverages existing YOLOv8 infrastructure for accurate person detection and bounding box generation.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-001.3
+TITLE: Pose Estimation Integration
+STATEMENT: The command shall integrate pose estimation to identify upper body regions of detected players.
+RATIONALE: Pose estimation enables accurate identification of jersey regions for color analysis.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-001.4
+TITLE: Jersey Color Analysis
+STATEMENT: The command shall analyze dominant colors in upper body regions to determine jersey colors.
+RATIONALE: Color analysis enables automatic identification of team affiliations based on jersey colors.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-001.5
+TITLE: Game Classification
+STATEMENT: The command shall classify photographs into separate games based on detected jersey color patterns.
+RATIONALE: Automatic classification eliminates manual sorting and ensures consistent game organization.
+PRIORITY: Critical
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-002
+TITLE: Pose Detection System
+STATEMENT: The system shall implement pose detection using MediaPipe or MMPose for accurate human pose estimation.
+RATIONALE: Pose detection enables precise identification of upper body regions where jerseys are most visible.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-002.1
+TITLE: Upper Body Keypoints
+STATEMENT: The pose detection system shall identify keypoints for shoulders, chest, and torso regions.
+RATIONALE: Upper body keypoints define the region where jersey colors are most prominent and consistent.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-002.2
+TITLE: Pose Confidence Threshold
+STATEMENT: The system shall use configurable confidence thresholds for pose detection (default: 0.7).
+RATIONALE: Confidence thresholds ensure only high-quality pose detections are used for color analysis.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-002.3
+TITLE: Multiple Person Support
+STATEMENT: The pose detection system shall handle multiple people in a single photograph.
+RATIONALE: Sports photographs often contain multiple players requiring individual pose detection and analysis.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-002.4
+TITLE: Pose Detection Performance
+STATEMENT: Pose detection shall maintain real-time or near real-time performance for typical sports photographs.
+RATIONALE: Performance requirements ensure practical usability for photographers processing large volumes of images.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-003
+TITLE: Color Analysis Engine
+STATEMENT: The system shall implement comprehensive color analysis for jersey color detection.
+RATIONALE: Accurate color analysis is essential for reliable game splitting based on team jersey colors.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-003.1
+TITLE: Dominant Color Extraction
+STATEMENT: The color analysis engine shall extract dominant colors from upper body regions using clustering algorithms.
+RATIONALE: Dominant color extraction identifies the primary jersey color while filtering out background and noise.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-003.2
+TITLE: Color Space Support
+STATEMENT: The system shall support multiple color spaces including RGB, HSV, and LAB for robust color analysis.
+RATIONALE: Different color spaces provide better discrimination for various lighting conditions and jersey materials.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-003.3
+TITLE: Color Clustering
+STATEMENT: The system shall use K-means clustering or similar algorithms to identify dominant jersey colors.
+RATIONALE: Clustering algorithms effectively separate jersey colors from background and other elements in the image.
+PRIORITY: High
+STATUS: PENDING
+
+[REQUIREMENT]
+UID: JERSEY-FR-003.4
+TITLE: Color Similarity Threshold
+STATEMENT: The system shall use configurable color similarity thresholds for grouping similar jersey colors (default: 0.15).
+RATIONALE: Similarity thresholds account for lighting variations and jersey color variations within the same team.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-003.5
+TITLE: Background Filtering
+STATEMENT: The color analysis engine shall filter out background colors and focus on jersey-specific regions.
+RATIONALE: Background filtering improves accuracy by focusing color analysis on actual jersey regions.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-004
+TITLE: Game Splitting Logic
+STATEMENT: The system shall implement intelligent game splitting based on jersey color patterns and player distributions.
+RATIONALE: Intelligent splitting ensures photographs are correctly categorized into appropriate games based on team affiliations.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-004.1
+TITLE: Color Group Identification
+STATEMENT: The system shall identify distinct color groups representing different teams in each photograph.
+RATIONALE: Color group identification enables automatic team separation and game classification.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-004.2
+TITLE: Multi-Team Detection
+STATEMENT: The system shall detect photographs containing players from multiple teams (multiple games).
+RATIONALE: Multi-team detection identifies photographs that span multiple games requiring splitting.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-004.3
+TITLE: Single Team Classification
+STATEMENT: The system shall classify photographs containing only one team color as single-game photographs.
+RATIONALE: Single team classification ensures photographs are properly categorized without unnecessary splitting.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-004.4
+TITLE: Ambiguous Photo Handling
+STATEMENT: The system shall handle photographs with ambiguous or unclear jersey colors by providing confidence scores.
+RATIONALE: Ambiguous photo handling provides transparency about classification confidence and enables manual review.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-004.5
+TITLE: Split Decision Logic
+STATEMENT: The system shall implement decision logic to determine when photographs should be split into multiple games.
+RATIONALE: Decision logic ensures consistent and accurate splitting based on jersey color analysis results.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-005
+TITLE: Output Organization
+STATEMENT: The system shall organize split photographs into logical directory structures based on detected games.
+RATIONALE: Organized output enables photographers to easily locate and manage photographs from specific games.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-005.1
+TITLE: Game Directory Structure
+STATEMENT: Split photographs shall be organized into directories named by detected jersey colors or game identifiers.
+RATIONALE: Directory structure provides clear organization and easy navigation of split game photographs.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-005.2
+TITLE: Metadata Preservation
+STATEMENT: The system shall preserve original image metadata and EXIF data in split photographs.
+RATIONALE: Metadata preservation maintains important photographic information and timestamps.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-005.3
+TITLE: Split Log Generation
+STATEMENT: The system shall generate detailed logs documenting splitting decisions and confidence scores.
+RATIONALE: Split logs provide transparency and enable review of automatic splitting decisions.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-005.4
+TITLE: Original Photo Backup
+STATEMENT: The system shall preserve original photographs in their original location during splitting operations.
+RATIONALE: Original photo backup prevents data loss and enables recovery if splitting results are unsatisfactory.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-005.5
+TITLE: Split Summary Report
+STATEMENT: The system shall generate summary reports showing splitting statistics and detected color groups.
+RATIONALE: Summary reports provide overview of splitting results and enable verification of classification accuracy.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-006
+TITLE: Configuration Options
+STATEMENT: The system shall provide comprehensive configuration options for customizing jersey color splitting behavior.
+RATIONALE: Configuration options enable users to adapt the system to different sports, lighting conditions, and jersey types.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-006.1
+TITLE: Color Sensitivity Settings
+STATEMENT: Users shall be able to configure color sensitivity and similarity thresholds for different sports and conditions.
+RATIONALE: Color sensitivity settings enable fine-tuning for different sports with varying jersey color schemes.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-006.2
+TITLE: Pose Detection Parameters
+STATEMENT: Users shall be able to configure pose detection confidence thresholds and keypoint selection.
+RATIONALE: Pose detection parameters enable optimization for different photograph types and quality levels.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-006.3
+TITLE: Output Format Options
+STATEMENT: Users shall be able to configure output directory structure and naming conventions.
+RATIONALE: Output format options enable customization to match existing workflow and organization preferences.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-006.4
+TITLE: Processing Options
+STATEMENT: Users shall be able to configure batch processing, parallel processing, and GPU acceleration settings.
+RATIONALE: Processing options enable optimization for different hardware configurations and performance requirements.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-006.5
+TITLE: Quality Filters
+STATEMENT: Users shall be able to configure quality filters for pose detection and color analysis confidence.
+RATIONALE: Quality filters enable exclusion of low-confidence detections that might lead to incorrect splitting.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-007
+TITLE: Integration with Existing System
+STATEMENT: The jersey color splitting feature shall integrate seamlessly with existing sportball detection and processing capabilities.
+RATIONALE: Integration ensures consistency with existing workflows and leverages established infrastructure.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-007.1
+TITLE: Sidecar File Integration
+STATEMENT: The system shall generate and update sidecar files with jersey color analysis results.
+RATIONALE: Sidecar file integration maintains consistency with existing sportball data management practices.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-007.2
+TITLE: Existing Detection Reuse
+STATEMENT: The system shall reuse existing YOLOv8 person detection results when available.
+RATIONALE: Reusing existing detection results improves efficiency and maintains consistency with previous analysis.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-007.3
+TITLE: CLI Integration
+STATEMENT: The jersey splitting command shall integrate with existing CLI structure and follow established patterns.
+RATIONALE: CLI integration ensures consistent user experience and follows established command patterns.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-007.4
+TITLE: Core API Integration
+STATEMENT: The jersey splitting functionality shall be accessible through the SportballCore API.
+RATIONALE: Core API integration enables programmatic access and integration with other sportball features.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-FR-007.5
+TITLE: Progress Reporting
+STATEMENT: The system shall provide progress reporting consistent with existing sportball commands.
+RATIONALE: Progress reporting maintains user experience consistency and provides feedback during processing.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-001
+TITLE: Performance Requirements
+STATEMENT: The jersey color splitting system shall maintain acceptable performance for typical sports photography workflows.
+RATIONALE: Performance requirements ensure practical usability for photographers processing large volumes of images.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-001.1
+TITLE: Processing Speed
+STATEMENT: The system shall process photographs at a rate of at least 10 images per minute on standard hardware.
+RATIONALE: Processing speed requirements ensure practical usability for typical photography workflows.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-001.2
+TITLE: Memory Efficiency
+STATEMENT: The system shall operate within reasonable memory constraints for typical desktop systems.
+RATIONALE: Memory efficiency ensures the system can run on standard hardware without excessive resource requirements.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-001.3
+TITLE: GPU Acceleration
+STATEMENT: The system shall support GPU acceleration for pose detection and color analysis when available.
+RATIONALE: GPU acceleration improves processing speed and enables real-time or near real-time performance.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-001.4
+TITLE: Parallel Processing
+STATEMENT: The system shall support parallel processing of multiple photographs for improved throughput.
+RATIONALE: Parallel processing enables efficient batch processing of large photograph collections.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-001.5
+TITLE: Scalability
+STATEMENT: The system shall scale to handle collections of thousands of photographs without significant performance degradation.
+RATIONALE: Scalability ensures the system remains practical for professional photography workflows.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-002
+TITLE: Accuracy Requirements
+STATEMENT: The jersey color splitting system shall achieve high accuracy in game classification and splitting decisions.
+RATIONALE: Accuracy requirements ensure reliable automatic splitting that reduces manual correction effort.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-002.1
+TITLE: Pose Detection Accuracy
+STATEMENT: The system shall achieve at least 90% accuracy in pose detection for clear sports photographs.
+RATIONALE: High pose detection accuracy ensures reliable identification of jersey regions for color analysis.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-002.2
+TITLE: Color Analysis Accuracy
+STATEMENT: The system shall achieve at least 85% accuracy in dominant jersey color identification.
+RATIONALE: High color analysis accuracy ensures reliable team identification and game splitting.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-002.3
+TITLE: Game Splitting Accuracy
+STATEMENT: The system shall achieve at least 80% accuracy in overall game splitting decisions.
+RATIONALE: High splitting accuracy minimizes manual correction effort and ensures reliable organization.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-002.4
+TITLE: Confidence Scoring
+STATEMENT: The system shall provide confidence scores for all splitting decisions to enable manual review.
+RATIONALE: Confidence scoring enables identification of uncertain decisions requiring manual review.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-002.5
+TITLE: Error Handling
+STATEMENT: The system shall gracefully handle photographs where pose detection or color analysis fails.
+RATIONALE: Error handling ensures system stability and provides fallback options for problematic images.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-003
+TITLE: Usability Requirements
+STATEMENT: The jersey color splitting system shall provide excellent user experience and intuitive operation.
+RATIONALE: Usability requirements ensure the system is accessible to photographers with varying technical expertise.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-003.1
+TITLE: Command Simplicity
+STATEMENT: The splitting command shall be simple to use with minimal required parameters.
+RATIONALE: Command simplicity reduces learning curve and enables quick adoption by photographers.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-003.2
+TITLE: Clear Documentation
+STATEMENT: The system shall provide comprehensive documentation with examples and troubleshooting guides.
+RATIONALE: Clear documentation enables users to effectively utilize the system and resolve common issues.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-003.3
+TITLE: Progress Feedback
+STATEMENT: The system shall provide clear progress feedback during processing operations.
+RATIONALE: Progress feedback keeps users informed about processing status and estimated completion time.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-003.4
+TITLE: Error Messages
+STATEMENT: The system shall provide clear, actionable error messages when problems occur.
+RATIONALE: Clear error messages help users understand and resolve issues quickly.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-003.5
+TITLE: Result Verification
+STATEMENT: The system shall provide tools for users to verify and correct splitting results.
+RATIONALE: Result verification tools enable users to review and adjust automatic splitting decisions.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-004
+TITLE: Reliability Requirements
+STATEMENT: The jersey color splitting system shall operate reliably across different conditions and image types.
+RATIONALE: Reliability requirements ensure consistent performance across various sports photography scenarios.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-004.1
+TITLE: Lighting Robustness
+STATEMENT: The system shall perform reliably under various lighting conditions including outdoor and indoor sports.
+RATIONALE: Lighting robustness ensures consistent performance across different photography environments.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-004.2
+TITLE: Image Quality Tolerance
+STATEMENT: The system shall handle photographs of varying quality including motion blur and low resolution.
+RATIONALE: Image quality tolerance ensures the system works with real-world photography conditions.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-004.3
+TITLE: Jersey Type Support
+STATEMENT: The system shall support various jersey types including different materials, patterns, and designs.
+RATIONALE: Jersey type support ensures broad applicability across different sports and team uniforms.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-004.4
+TITLE: Sport Agnostic Design
+STATEMENT: The system shall work across different sports with varying player positioning and jersey styles.
+RATIONALE: Sport agnostic design ensures broad applicability across different sports photography scenarios.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-NFR-004.5
+TITLE: Failure Recovery
+STATEMENT: The system shall recover gracefully from processing failures and continue with remaining photographs.
+RATIONALE: Failure recovery ensures system stability and prevents loss of processing progress.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-001
+TITLE: Pose Detection Implementation
+STATEMENT: The system shall implement pose detection using MediaPipe or MMPose libraries for accurate human pose estimation.
+RATIONALE: Pose detection implementation provides the foundation for identifying jersey regions in photographs.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-001.1
+TITLE: MediaPipe Integration
+STATEMENT: The system shall integrate MediaPipe for pose detection with support for multiple people per image.
+RATIONALE: MediaPipe provides robust pose detection capabilities with good performance and accuracy.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-001.2
+TITLE: MMPose Alternative
+STATEMENT: The system shall support MMPose as an alternative pose detection backend for advanced use cases.
+RATIONALE: MMPose provides high-accuracy pose detection for scenarios requiring maximum precision.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-001.3
+TITLE: Pose Keypoint Mapping
+STATEMENT: The system shall map pose keypoints to upper body regions for jersey color analysis.
+RATIONALE: Keypoint mapping enables precise identification of jersey regions for accurate color analysis.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-001.4
+TITLE: Pose Confidence Filtering
+STATEMENT: The system shall filter pose detections based on confidence scores to ensure quality.
+RATIONALE: Confidence filtering ensures only high-quality pose detections are used for color analysis.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-001.5
+TITLE: Pose Detection Optimization
+STATEMENT: The pose detection system shall be optimized for sports photography scenarios.
+RATIONALE: Sports-specific optimization improves accuracy for typical player poses and movements.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-002
+TITLE: Color Analysis Implementation
+STATEMENT: The system shall implement comprehensive color analysis using computer vision techniques.
+RATIONALE: Color analysis implementation provides the core functionality for jersey color identification.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-002.1
+TITLE: OpenCV Integration
+STATEMENT: The system shall use OpenCV for image processing and color space conversions.
+RATIONALE: OpenCV provides robust computer vision capabilities for color analysis and image processing.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-002.2
+TITLE: K-means Clustering
+STATEMENT: The system shall implement K-means clustering for dominant color extraction from jersey regions.
+RATIONALE: K-means clustering effectively identifies dominant colors while filtering out noise and background.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-002.3
+TITLE: Color Space Conversion
+STATEMENT: The system shall support multiple color space conversions for robust color analysis.
+RATIONALE: Multiple color spaces provide better discrimination under different lighting conditions.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-002.4
+TITLE: Region of Interest Extraction
+STATEMENT: The system shall extract jersey regions of interest based on pose keypoints.
+RATIONALE: Region extraction focuses color analysis on actual jersey areas rather than background.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-002.5
+TITLE: Color Similarity Metrics
+STATEMENT: The system shall implement color similarity metrics for grouping similar jersey colors.
+RATIONALE: Similarity metrics enable accurate grouping of jersey colors accounting for lighting variations.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-003
+TITLE: Game Splitting Algorithm
+STATEMENT: The system shall implement intelligent algorithms for game splitting based on jersey color analysis.
+RATIONALE: Game splitting algorithms provide the core logic for automatic game organization.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-003.1
+TITLE: Color Group Clustering
+STATEMENT: The system shall implement clustering algorithms to group photographs by detected jersey colors.
+RATIONALE: Color group clustering enables automatic identification of games based on team colors.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-003.2
+TITLE: Multi-Team Detection Algorithm
+STATEMENT: The system shall implement algorithms to detect photographs containing multiple teams.
+RATIONALE: Multi-team detection enables identification of photographs requiring splitting.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-003.3
+TITLE: Split Decision Engine
+STATEMENT: The system shall implement decision engines to determine when photographs should be split.
+RATIONALE: Split decision engines provide consistent and accurate splitting decisions.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-003.4
+TITLE: Confidence Scoring System
+STATEMENT: The system shall implement confidence scoring for all splitting decisions.
+RATIONALE: Confidence scoring enables identification of uncertain decisions requiring manual review.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-003.5
+TITLE: Split Validation Logic
+STATEMENT: The system shall implement validation logic to verify splitting decisions make sense.
+RATIONALE: Split validation ensures splitting decisions are logical and consistent with detected patterns.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-004
+TITLE: CLI Command Implementation
+STATEMENT: The system shall implement the 'sb split games' command following existing CLI patterns.
+RATIONALE: CLI implementation provides user interface for jersey color splitting functionality.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-004.1
+TITLE: Click Framework Integration
+STATEMENT: The splitting command shall use Click framework for argument parsing and help generation.
+RATIONALE: Click framework integration maintains consistency with existing CLI commands.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-004.2
+TITLE: Command Arguments
+STATEMENT: The command shall accept input directory, output directory, and configuration options as arguments.
+RATIONALE: Command arguments provide necessary parameters for splitting operations.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-004.3
+TITLE: Help Documentation
+STATEMENT: The command shall provide comprehensive help text with examples and usage instructions.
+RATIONALE: Help documentation enables users to understand and effectively use the splitting command.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-004.4
+TITLE: Progress Reporting
+STATEMENT: The command shall provide progress reporting consistent with existing sportball commands.
+RATIONALE: Progress reporting maintains user experience consistency and provides processing feedback.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-004.5
+TITLE: Error Handling
+STATEMENT: The command shall implement robust error handling with clear error messages.
+RATIONALE: Error handling ensures stable operation and provides helpful feedback when issues occur.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-005
+TITLE: Core API Integration
+STATEMENT: The jersey splitting functionality shall be integrated into the SportballCore API.
+RATIONALE: Core API integration enables programmatic access and integration with other sportball features.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-005.1
+TITLE: Core Method Implementation
+STATEMENT: The system shall implement 'core.split_games_by_jersey_color()' method for programmatic access.
+RATIONALE: Core method implementation provides API access to jersey splitting functionality.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-005.2
+TITLE: Sidecar Integration
+STATEMENT: The splitting functionality shall integrate with existing sidecar file management.
+RATIONALE: Sidecar integration maintains consistency with existing data management practices.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-005.3
+TITLE: Detection Integration
+STATEMENT: The splitting functionality shall integrate with existing detection systems.
+RATIONALE: Detection integration enables reuse of existing person detection results for efficiency.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-005.4
+TITLE: Configuration Management
+STATEMENT: The splitting functionality shall integrate with existing configuration management systems.
+RATIONALE: Configuration integration enables consistent parameter management across sportball features.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-005.5
+TITLE: Logging Integration
+STATEMENT: The splitting functionality shall integrate with existing logging systems.
+RATIONALE: Logging integration maintains consistent logging practices and debugging capabilities.
+PRIORITY: Medium
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-006
+TITLE: Testing and Validation
+STATEMENT: The jersey splitting system shall undergo comprehensive testing and validation.
+RATIONALE: Testing and validation ensure the system meets requirements and operates reliably.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-006.1
+TITLE: Unit Testing
+STATEMENT: The system shall include comprehensive unit tests for all core functionality.
+RATIONALE: Unit testing ensures individual components function correctly and reliably.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-006.2
+TITLE: Integration Testing
+STATEMENT: The system shall include integration tests for pose detection and color analysis components.
+RATIONALE: Integration testing ensures components work together correctly and efficiently.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-006.3
+TITLE: Performance Testing
+STATEMENT: The system shall undergo performance testing to validate speed and resource requirements.
+RATIONALE: Performance testing ensures the system meets performance requirements and scales appropriately.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-006.4
+TITLE: Accuracy Testing
+STATEMENT: The system shall undergo accuracy testing with diverse sports photography datasets.
+RATIONALE: Accuracy testing validates the system's ability to correctly split games based on jersey colors.
+PRIORITY: High
+STATUS: Pending
+
+[REQUIREMENT]
+UID: JERSEY-TR-006.5
+TITLE: User Acceptance Testing
+STATEMENT: The system shall undergo user acceptance testing with real photographers and workflows.
+RATIONALE: User acceptance testing ensures the system meets real-world requirements and user expectations.
+PRIORITY: Medium
+STATUS: Pending
