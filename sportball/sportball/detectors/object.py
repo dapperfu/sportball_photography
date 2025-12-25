@@ -20,6 +20,8 @@ import numpy as np
 from tqdm import tqdm
 from loguru import logger
 
+from ..config.paths import get_model_path
+
 # Try to import ultralytics for YOLOv8
 try:
     from ultralytics import YOLO
@@ -173,12 +175,13 @@ class ObjectDetector:
     """
     
     def __init__(self, 
-                 model_path: str = "yolov8n.pt",
+                 model_path: Optional[str] = None,
                  border_padding: float = 0.25, 
                  enable_gpu: bool = True,
                  target_objects: Optional[Set[str]] = None,
                  confidence_threshold: float = 0.5,
-                 cache_enabled: bool = True):
+                 cache_enabled: bool = True,
+                 gpu_batch_size: int = 8):
         """
         Initialize YOLOv8 object detector.
         
@@ -189,29 +192,19 @@ class ObjectDetector:
             target_objects: Set of object class names to detect (None = all)
             confidence_threshold: Minimum confidence for detections
             cache_enabled: Whether to enable result caching
+            gpu_batch_size: Number of images to process in GPU batches
         """
         self.border_padding = border_padding
         self.enable_gpu = enable_gpu
         self.confidence_threshold = confidence_threshold
         self.target_objects = target_objects or set()
         self.cache_enabled = cache_enabled
+        self.gpu_batch_size = gpu_batch_size
         
         if not YOLO_AVAILABLE:
             raise ImportError("ultralytics package is required for YOLOv8 detection")
         
-        # Load YOLOv8 model
-        try:
-            # Suppress Ultralytics logging
-            import logging as std_logging
-            std_logging.getLogger('ultralytics').setLevel(std_logging.WARNING)
-            
-            self.model = YOLO(model_path)
-            logger.info(f"Loaded YOLOv8 model: {model_path}")
-        except Exception as e:
-            logger.error(f"Failed to load YOLOv8 model: {e}")
-            raise
-        
-        # Check for GPU support
+        # Check for GPU support first
         if self.enable_gpu:
             try:
                 # Check if CUDA is available
@@ -230,6 +223,48 @@ class ObjectDetector:
                 self.device = "cpu"
         else:
             self.device = "cpu"
+        
+        # Load YOLOv8 model with proper device configuration
+        try:
+            # Suppress Ultralytics logging
+            import logging as std_logging
+            std_logging.getLogger('ultralytics').setLevel(std_logging.WARNING)
+            
+            # Load model and move to appropriate device
+            # Use default model path from config if not provided, with auto-download
+            if model_path is None:
+                from ..config.paths import ensure_model_downloaded
+                model_path = str(ensure_model_downloaded("yolov8n.pt", download_if_missing=True))
+            else:
+                # If a custom path is provided, check if it exists
+                model_path_obj = Path(model_path)
+                if not model_path_obj.exists():
+                    # Try to download if it's a standard model name
+                    if model_path_obj.name in ["yolov8n.pt", "yolov8s.pt", "yolov8m.pt", "yolov8l.pt", "yolov8x.pt"]:
+                        from ..config.paths import ensure_model_downloaded
+                        model_path = str(ensure_model_downloaded(model_path_obj.name, download_if_missing=True))
+                    else:
+                        raise FileNotFoundError(f"Model file not found: {model_path}")
+            self.model = YOLO(model_path)
+            
+            # Configure model for GPU if available
+            if self.enable_gpu and self.device == "cuda":
+                try:
+                    # Move model to GPU
+                    self.model.to(self.device)
+                    logger.info(f"YOLOv8 model moved to GPU: {self.device}")
+                except Exception as e:
+                    logger.warning(f"Failed to move YOLOv8 model to GPU: {e}")
+                    self.device = "cpu"
+                    self.model.to(self.device)
+            else:
+                self.model.to(self.device)
+                logger.info(f"YOLOv8 model using device: {self.device}")
+            
+            logger.info(f"Loaded YOLOv8 model: {model_path}")
+        except Exception as e:
+            logger.error(f"Failed to load YOLOv8 model: {e}")
+            raise
         
         # Create class name to ID mapping
         self.class_name_to_id = {name: class_id for class_id, name in COCO_CLASSES.items()}
@@ -304,10 +339,60 @@ class ObjectDetector:
         return self.detect_objects_in_image(image_path, force)
     
     def _detect_multiple_images(self, image_paths: List[Path], force: bool, max_workers: Optional[int]) -> List[DetectionResult]:
-        """Detect objects in multiple images with parallel processing."""
+        """Detect objects in multiple images with optimized processing."""
+        if self.enable_gpu and self.device == "cuda":
+            # Use GPU batch processing for better GPU utilization
+            return self._detect_multiple_images_gpu_batch(image_paths, force)
+        else:
+            # Use CPU parallel processing
+            return self._detect_multiple_images_cpu_parallel(image_paths, force, max_workers)
+    
+    def _detect_multiple_images_gpu_batch(self, image_paths: List[Path], force: bool) -> List[DetectionResult]:
+        """Detect objects in multiple images using GPU batch processing."""
+        logger.info(f"Using GPU batch processing for {len(image_paths)} images")
+        
+        # Calculate optimal batch size based on GPU memory
+        optimal_batch_size = self._calculate_optimal_batch_size()
+        logger.info(f"Using GPU batch size: {optimal_batch_size}")
+        
+        results = []
+        
+        for i in range(0, len(image_paths), optimal_batch_size):
+            batch_paths = image_paths[i:i + optimal_batch_size]
+            logger.info(f"Processing GPU batch {i//optimal_batch_size + 1}: {len(batch_paths)} images")
+            
+            try:
+                batch_results = self._process_gpu_batch(batch_paths, force)
+                results.extend(batch_results)
+            except Exception as e:
+                logger.error(f"GPU batch processing failed: {e}")
+                # Fallback to individual processing
+                for image_path in batch_paths:
+                    try:
+                        result = self.detect_objects_in_image(image_path, force)
+                        results.append(result)
+                    except Exception as img_error:
+                        logger.error(f"Error processing {image_path}: {img_error}")
+                        error_result = DetectionResult(
+                            image_path=str(image_path),
+                            image_width=0,
+                            image_height=0,
+                            objects_found=0,
+                            detection_time=0.0,
+                            detected_objects=[],
+                            error=str(img_error)
+                        )
+                        results.append(error_result)
+        
+        return results
+    
+    def _detect_multiple_images_cpu_parallel(self, image_paths: List[Path], force: bool, max_workers: Optional[int]) -> List[DetectionResult]:
+        """Detect objects in multiple images with CPU parallel processing."""
         if max_workers is None:
             max_workers = os.cpu_count() or 4
         max_workers = min(max_workers, len(image_paths))
+        
+        logger.info(f"Using CPU parallel processing with {max_workers} workers")
         
         results = []
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -333,6 +418,207 @@ class ObjectDetector:
                         detection_time=0.0,
                         detected_objects=[],
                         error=str(e)
+                    )
+                    results.append(error_result)
+        
+        return results
+    
+    def _calculate_optimal_batch_size(self) -> int:
+        """Calculate optimal batch size based on GPU memory and image size."""
+        try:
+            import torch
+            
+            if not torch.cuda.is_available():
+                return self.gpu_batch_size
+            
+            # Get GPU memory info
+            gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+            
+            # Estimate memory usage per 1080p image (3 channels, uint8)
+            # 1920 * 1080 * 3 bytes = ~6.2 MB per image
+            # Plus model overhead, intermediate tensors, etc.
+            memory_per_image_mb = 25  # Conservative estimate including model overhead
+            
+            # Calculate how many images we can fit in GPU memory
+            # Leave 20% memory free for model and intermediate operations
+            available_memory_mb = gpu_memory_gb * 1024 * 0.8
+            max_images = int(available_memory_mb / memory_per_image_mb)
+            
+            # Use the smaller of: calculated max, configured batch size, or 16 (safety limit)
+            optimal_batch_size = min(max_images, self.gpu_batch_size, 16)
+            
+            # Ensure minimum batch size of 1
+            optimal_batch_size = max(optimal_batch_size, 1)
+            
+            logger.info(f"GPU memory: {gpu_memory_gb:.1f} GB, estimated {memory_per_image_mb} MB per image")
+            logger.info(f"Calculated optimal batch size: {optimal_batch_size}")
+            
+            return optimal_batch_size
+            
+        except Exception as e:
+            logger.warning(f"Failed to calculate optimal batch size: {e}, using default: {self.gpu_batch_size}")
+            return self.gpu_batch_size
+    
+    def _process_gpu_batch(self, image_paths: List[Path], force: bool) -> List[DetectionResult]:
+        """Process a batch of images using GPU batch inference."""
+        import torch
+        
+        # Load and preprocess all images in the batch
+        batch_images = []
+        batch_metadata = []
+        
+        for image_path in image_paths:
+            # Check if we should skip this image
+            if not force:
+                original_image_path = image_path.resolve() if image_path.is_symlink() else image_path
+                json_path = original_image_path.parent / f"{original_image_path.stem}.json"
+                if json_path.exists():
+                    try:
+                        with open(json_path, 'r') as f:
+                            json_data = json.load(f)
+                        if 'yolov8' in json_data:
+                            logger.info(f"Skipping {image_path.name} - YOLOv8 data already exists")
+                            continue
+                    except Exception:
+                        pass
+            
+            # Load image
+            image = cv2.imread(str(image_path))
+            if image is None:
+                logger.error(f"Failed to load image: {image_path}")
+                continue
+            
+            original_height, original_width = image.shape[:2]
+            
+            # Resize image to 1080p for optimal detection performance
+            target_width = 1920
+            target_height = 1080
+            scale_factor = min(target_width / original_width, target_height / original_height)
+            
+            if scale_factor < 1.0:
+                new_width = int(original_width * scale_factor)
+                new_height = int(original_height * scale_factor)
+                image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+            else:
+                scale_factor = 1.0
+            
+            batch_images.append(image)
+            batch_metadata.append({
+                'path': image_path,
+                'original_width': original_width,
+                'original_height': original_height,
+                'scale_factor': scale_factor
+            })
+        
+        if not batch_images:
+            return []
+        
+        # Run batch inference
+        start_time = cv2.getTickCount()
+        results = []
+        
+        try:
+            # Use YOLO's batch processing capability
+            batch_results = self.model(batch_images, device=self.device, conf=self.confidence_threshold, verbose=False)
+            detection_time = (cv2.getTickCount() - start_time) / cv2.getTickFrequency()
+            
+            # Process results for each image
+            for i, (result, metadata) in enumerate(zip(batch_results, batch_metadata)):
+                detected_objects = []
+                
+                boxes = result.boxes
+                if boxes is not None:
+                    for j, box in enumerate(boxes):
+                        # Get box coordinates (x1, y1, x2, y2)
+                        x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                        confidence = box.conf[0].cpu().numpy()
+                        class_id = int(box.cls[0].cpu().numpy())
+                        
+                        # Filter by target objects if specified
+                        if self.target_class_ids is not None and class_id not in self.target_class_ids:
+                            continue
+                        
+                        # Scale coordinates back to original image size
+                        orig_x1 = int(x1 / metadata['scale_factor'])
+                        orig_y1 = int(y1 / metadata['scale_factor'])
+                        orig_x2 = int(x2 / metadata['scale_factor'])
+                        orig_y2 = int(y2 / metadata['scale_factor'])
+                        
+                        # Calculate width and height
+                        orig_w = orig_x2 - orig_x1
+                        orig_h = orig_y2 - orig_y1
+                        
+                        # Calculate percentage coordinates
+                        x_percent = orig_x1 / metadata['original_width']
+                        y_percent = orig_y1 / metadata['original_height']
+                        width_percent = orig_w / metadata['original_width']
+                        height_percent = orig_h / metadata['original_height']
+                        
+                        # Calculate padded coordinates for cropping
+                        padding_x_percent = width_percent * self.border_padding
+                        padding_y_percent = height_percent * self.border_padding
+                        
+                        # Calculate crop area with padding (as percentages)
+                        crop_x_percent = max(0.0, x_percent - padding_x_percent)
+                        crop_y_percent = max(0.0, y_percent - padding_y_percent)
+                        crop_width_percent = min(1.0 - crop_x_percent, width_percent + 2 * padding_x_percent)
+                        crop_height_percent = min(1.0 - crop_y_percent, height_percent + 2 * padding_y_percent)
+                        
+                        # Get class name
+                        class_name = COCO_CLASSES.get(class_id, f"class_{class_id}")
+                        
+                        # Create detected object
+                        detected_object = DetectedObject(
+                            object_id=j+1,
+                            class_name=class_name,
+                            class_id=class_id,
+                            x=orig_x1,
+                            y=orig_y1,
+                            width=orig_w,
+                            height=orig_h,
+                            x_percent=x_percent,
+                            y_percent=y_percent,
+                            width_percent=width_percent,
+                            height_percent=height_percent,
+                            confidence=float(confidence),
+                            crop_x_percent=crop_x_percent,
+                            crop_y_percent=crop_y_percent,
+                            crop_width_percent=crop_width_percent,
+                            crop_height_percent=crop_height_percent,
+                            detection_scale_factor=metadata['scale_factor']
+                        )
+                        
+                        detected_objects.append(detected_object)
+                
+                # Create detection result
+                detection_result = DetectionResult(
+                    image_path=str(metadata['path']),
+                    image_width=metadata['original_width'],
+                    image_height=metadata['original_height'],
+                    objects_found=len(detected_objects),
+                    detection_time=detection_time / len(batch_images),  # Average time per image
+                    detected_objects=detected_objects
+                )
+                
+                results.append(detection_result)
+        
+        except Exception as e:
+            logger.error(f"GPU batch processing error: {e}")
+            # Fallback to individual processing
+            for metadata in batch_metadata:
+                try:
+                    result = self.detect_objects_in_image(metadata['path'], force)
+                    results.append(result)
+                except Exception as img_error:
+                    logger.error(f"Error processing {metadata['path']}: {img_error}")
+                    error_result = DetectionResult(
+                        image_path=str(metadata['path']),
+                        image_width=metadata['original_width'],
+                        image_height=metadata['original_height'],
+                        objects_found=0,
+                        detection_time=0.0,
+                        detected_objects=[],
+                        error=str(img_error)
                     )
                     results.append(error_result)
         

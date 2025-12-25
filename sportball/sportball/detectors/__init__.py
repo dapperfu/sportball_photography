@@ -1,7 +1,8 @@
 """
 Sportball Detectors Module
 
-Detection modules for faces, objects, games, balls, and quality assessment.
+Detection modules for faces, objects, games, balls, quality assessment,
+colors, actions, and field analysis.
 
 Author: Claude Sonnet 4 (claude-3-5-sonnet-20241022)
 Generated via Cursor IDE (cursor.sh) with AI assistance
@@ -30,10 +31,28 @@ try:
 except ImportError:
     QualityAssessor = None
 
+try:
+    from .color import ColorDetector
+except ImportError:
+    ColorDetector = None
+
+try:
+    from .action import ActionClassifier
+except ImportError:
+    ActionClassifier = None
+
+try:
+    from .field import FieldAnalyzer
+except ImportError:
+    FieldAnalyzer = None
+
 __all__ = [
     "FaceDetector",
     "ObjectDetector", 
     "GameDetector",
     "BallDetector",
-    "QualityAssessor"
+    "QualityAssessor",
+    "ColorDetector",
+    "ActionClassifier",
+    "FieldAnalyzer",
 ]

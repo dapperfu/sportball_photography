@@ -155,6 +155,14 @@ class ProcessingConfig(BaseModel):
         default=False,
         description="Enable verbose output"
     )
+    
+    @validator('log_level')
+    def validate_log_level(cls, v):
+        """Validate log level."""
+        valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+        if v.upper() not in valid_levels:
+            raise ValueError(f"Log level must be one of {valid_levels}")
+        return v.upper()
 
 
 class Settings(BaseModel):
@@ -209,14 +217,6 @@ class Settings(BaseModel):
         if v is not None:
             return Path(v)
         return v
-    
-    @validator('log_level')
-    def validate_log_level(cls, v):
-        """Validate log level."""
-        valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
-        if v.upper() not in valid_levels:
-            raise ValueError(f"Log level must be one of {valid_levels}")
-        return v.upper()
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert settings to dictionary."""

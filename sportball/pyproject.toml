@@ -39,7 +39,7 @@ classifiers = [
 requires-python = ">=3.8"
 dependencies = [
     # Core image processing
-    "opencv-python>=4.8.0",
+    "opencv-contrib-python>=4.8.0",
     "Pillow>=10.0.0",
     "numpy>=1.24.0",
     
@@ -109,8 +109,17 @@ sportball = "sportball.cli.main:cli"
 sb = "sportball.cli.main:cli"
 
 [tool.setuptools]
-packages = ["sportball"]
-package-dir = {"" = "."}
+packages = [
+    "sportball",
+    "sportball.cli",
+    "sportball.cli.commands",
+    "sportball.detectors",
+    "sportball.utils",
+    "sportball.config",
+    "sportball.core",
+    "sportball.analyzers",
+]
+package-dir = {"" = "sportball"}
 
 [tool.setuptools.package-data]
 "sportball" = [

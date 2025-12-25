@@ -1,24 +1,15 @@
-"""
-Sportball Core Module
+"""Core modules for sportball."""
 
-This module provides the core functionality for the sportball package,
-integrating all detection, analysis, and processing capabilities.
+from .image_processor import ImageProcessor
 
-Author: Claude Sonnet 4 (claude-3-5-sonnet-20241022)
-Generated via Cursor IDE (cursor.sh) with AI assistance
-"""
-
-import logging
+# SportballCore class - moved from core.py
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from loguru import logger
 
-from .sidecar import SidecarManager
-from .decorators import (
+from ..sidecar import SidecarManager
+from ..decorators import (
     gpu_accelerated,
-    parallel_processing,
-    progress_tracked,
-    cached_result,
     timing_decorator
 )
 
@@ -58,7 +49,6 @@ class SportballCore:
         self._face_detector = None
         self._object_detector = None
         self._game_detector = None
-        self._ball_detector = None
         self._quality_assessor = None
         
         self.logger = logger.bind(component="core")
@@ -68,50 +58,58 @@ class SportballCore:
     def face_detector(self):
         """Lazy-loaded face detector."""
         if self._face_detector is None:
-            from .detectors.face import FaceDetector
+            from ..detectors.face import FaceDetector
             self._face_detector = FaceDetector(
                 enable_gpu=self.enable_gpu,
                 cache_enabled=self.cache_enabled
             )
         return self._face_detector
     
+    def get_face_detector(self, batch_size: int = 8):
+        """Get face detector with custom batch size."""
+        from ..detectors.face import FaceDetector
+        return FaceDetector(
+            enable_gpu=self.enable_gpu,
+            cache_enabled=self.cache_enabled,
+            batch_size=batch_size
+        )
+    
     @property
     def object_detector(self):
         """Lazy-loaded object detector."""
         if self._object_detector is None:
-            from .detectors.object import ObjectDetector
+            from ..detectors.object import ObjectDetector
             self._object_detector = ObjectDetector(
                 enable_gpu=self.enable_gpu,
                 cache_enabled=self.cache_enabled
             )
         return self._object_detector
     
+    def get_object_detector(self, gpu_batch_size: int = 8):
+        """Get object detector with custom batch size."""
+        from ..detectors.object import ObjectDetector
+        return ObjectDetector(
+            enable_gpu=self.enable_gpu,
+            cache_enabled=self.cache_enabled,
+            gpu_batch_size=gpu_batch_size
+        )
+    
     @property
     def game_detector(self):
         """Lazy-loaded game detector."""
         if self._game_detector is None:
-            from .detectors.game import GameDetector
+            from ..detectors.game import GameDetector
             self._game_detector = GameDetector(
                 cache_enabled=self.cache_enabled
             )
         return self._game_detector
     
-    @property
-    def ball_detector(self):
-        """Lazy-loaded ball detector."""
-        if self._ball_detector is None:
-            from .detectors.ball import BallDetector
-            self._ball_detector = BallDetector(
-                enable_gpu=self.enable_gpu,
-                cache_enabled=self.cache_enabled
-            )
-        return self._ball_detector
     
     @property
     def quality_assessor(self):
         """Lazy-loaded quality assessor."""
         if self._quality_assessor is None:
-            from .detectors.quality import QualityAssessor
+            from ..detectors.quality import QualityAssessor
             self._quality_assessor = QualityAssessor(
                 cache_enabled=self.cache_enabled
             )
@@ -122,6 +120,7 @@ class SportballCore:
     def detect_faces(self, 
                      image_paths: Union[Path, List[Path]], 
                      save_sidecar: bool = True,
+                     batch_size: int = 8,
                      **kwargs) -> Dict[str, Any]:
         """
         Detect faces in images.
@@ -129,6 +128,7 @@ class SportballCore:
         Args:
             image_paths: Single image path or list of image paths
             save_sidecar: Whether to save results to sidecar files
+            batch_size: Batch size for processing multiple images
             **kwargs: Additional arguments for face detection
             
         Returns:
@@ -139,33 +139,24 @@ class SportballCore:
         
         self.logger.info(f"Detecting faces in {len(image_paths)} images")
         
-        results = {}
-        for image_path in image_paths:
-            try:
-                # Check cache first
-                if self.cache_enabled:
-                    cached_data = self.sidecar.load_data(image_path, "face_detection")
-                    if cached_data:
-                        results[str(image_path)] = cached_data
-                        continue
-                
-                # Perform detection
-                detection_result = self.face_detector.detect_faces(image_path, **kwargs)
-                
-                # Save to sidecar if requested
-                if save_sidecar:
+        # Use custom face detector with specified batch size
+        face_detector = self.get_face_detector(batch_size=batch_size)
+        
+        # Perform batch detection
+        results = face_detector.detect_faces_batch(image_paths, **kwargs)
+        
+        # Save to sidecar if requested
+        if save_sidecar:
+            for image_path in image_paths:
+                if str(image_path) in results:
+                    # Format the result for JSON serialization
+                    formatted_result = face_detector._format_result(results[str(image_path)])
                     self.sidecar.save_data(
                         image_path, 
                         "face_detection", 
-                        detection_result,
-                        metadata={"kwargs": kwargs}
+                        formatted_result,
+                        metadata={"kwargs": kwargs, "batch_size": batch_size}
                     )
-                
-                results[str(image_path)] = detection_result
-                
-            except Exception as e:
-                self.logger.error(f"Face detection failed for {image_path}: {e}")
-                results[str(image_path)] = {"error": str(e), "success": False}
         
         return results
     
@@ -174,6 +165,7 @@ class SportballCore:
     def detect_objects(self, 
                       image_paths: Union[Path, List[Path]], 
                       save_sidecar: bool = True,
+                      gpu_batch_size: int = 8,
                       **kwargs) -> Dict[str, Any]:
         """
         Detect objects in images.
@@ -181,6 +173,7 @@ class SportballCore:
         Args:
             image_paths: Single image path or list of image paths
             save_sidecar: Whether to save results to sidecar files
+            gpu_batch_size: GPU batch size for processing multiple images
             **kwargs: Additional arguments for object detection
             
         Returns:
@@ -191,33 +184,24 @@ class SportballCore:
         
         self.logger.info(f"Detecting objects in {len(image_paths)} images")
         
-        results = {}
-        for image_path in image_paths:
-            try:
-                # Check cache first
-                if self.cache_enabled:
-                    cached_data = self.sidecar.load_data(image_path, "object_detection")
-                    if cached_data:
-                        results[str(image_path)] = cached_data
-                        continue
-                
-                # Perform detection
-                detection_result = self.object_detector.detect_objects(image_path, **kwargs)
-                
-                # Save to sidecar if requested
-                if save_sidecar:
+        # Use custom object detector with specified batch size
+        object_detector = self.get_object_detector(gpu_batch_size=gpu_batch_size)
+        
+        # Perform batch detection
+        results = object_detector.detect_objects(image_paths, **kwargs)
+        
+        # Save to sidecar if requested
+        if save_sidecar:
+            for image_path in image_paths:
+                if str(image_path) in results:
+                    # Format the result for JSON serialization
+                    formatted_result = object_detector._format_result(results[str(image_path)])
                     self.sidecar.save_data(
                         image_path, 
                         "object_detection", 
-                        detection_result,
-                        metadata={"kwargs": kwargs}
+                        formatted_result,
+                        metadata={"kwargs": kwargs, "gpu_batch_size": gpu_batch_size}
                     )
-                
-                results[str(image_path)] = detection_result
-                
-            except Exception as e:
-                self.logger.error(f"Object detection failed for {image_path}: {e}")
-                results[str(image_path)] = {"error": str(e), "success": False}
         
         return results
     
@@ -265,57 +249,6 @@ class SportballCore:
             self.logger.error(f"Game detection failed: {e}")
             return {"error": str(e), "success": False}
     
-    @timing_decorator
-    @gpu_accelerated(fallback_cpu=True)
-    def detect_balls(self, 
-                    image_paths: Union[Path, List[Path]], 
-                    save_sidecar: bool = True,
-                    **kwargs) -> Dict[str, Any]:
-        """
-        Detect balls in images.
-        
-        Args:
-            image_paths: Single image path or list of image paths
-            save_sidecar: Whether to save results to sidecar files
-            **kwargs: Additional arguments for ball detection
-            
-        Returns:
-            Dictionary containing detection results
-        """
-        if isinstance(image_paths, Path):
-            image_paths = [image_paths]
-        
-        self.logger.info(f"Detecting balls in {len(image_paths)} images")
-        
-        results = {}
-        for image_path in image_paths:
-            try:
-                # Check cache first
-                if self.cache_enabled:
-                    cached_data = self.sidecar.load_data(image_path, "ball_detection")
-                    if cached_data:
-                        results[str(image_path)] = cached_data
-                        continue
-                
-                # Perform detection
-                detection_result = self.ball_detector.detect_balls(image_path, **kwargs)
-                
-                # Save to sidecar if requested
-                if save_sidecar:
-                    self.sidecar.save_data(
-                        image_path, 
-                        "ball_detection", 
-                        detection_result,
-                        metadata={"kwargs": kwargs}
-                    )
-                
-                results[str(image_path)] = detection_result
-                
-            except Exception as e:
-                self.logger.error(f"Ball detection failed for {image_path}: {e}")
-                results[str(image_path)] = {"error": str(e), "success": False}
-        
-        return results
     
     @timing_decorator
     def assess_quality(self, 
@@ -451,3 +384,6 @@ class SportballCore:
         removed_count = self.sidecar.cleanup_orphaned_sidecars(target_dir)
         self.logger.info(f"Removed {removed_count} orphaned sidecar files")
         return removed_count
+
+
+__all__ = ["ImageProcessor", "SportballCore"]

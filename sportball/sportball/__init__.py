@@ -21,7 +21,7 @@ __version__ = "1.0.0"
 __author__ = "Sportball Team"
 __email__ = "team@sportball.ai"
 
-from .core import SportballCore
+from .core import SportballCore  # SportballCore is in core.py, not core/__init__.py
 from .sidecar import SidecarManager
 from .decorators import (
     gpu_accelerated,
