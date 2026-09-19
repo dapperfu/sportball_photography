@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sportball"
-version = "1.3.0"
+version = "1.3.2"
 description = "Unified Sports Photo Analysis Package - AI-powered sports photo processing and organization"
 readme = "README.md"
 license = {text = "MIT"}
@@ -176,6 +176,7 @@ module = [
     "torchvision.*",
     "ultralytics.*",
     "loguru.*",
+    "fast_exif_rs_py",
 ]
 ignore_missing_imports = true
 

@@ -932,12 +932,15 @@ class SportballCore:
     def detect_games(
         self,
         photo_directory: Path,
-        pattern: str = "*_*",
+        pattern: str = "*",
         save_sidecar: bool = True,
         **kwargs,
     ) -> Dict[str, Any]:
         """
         Detect game boundaries in a directory of photos.
+
+        Capture times are read from each image's EXIF data via
+        fast-exif-rs-py.
 
         Args:
             photo_directory: Directory containing photos

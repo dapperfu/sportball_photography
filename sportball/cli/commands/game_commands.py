@@ -67,8 +67,8 @@ def game_group():
 @click.option(
     "--pattern",
     "-p",
-    default="*_*",
-    help='File pattern to match (e.g., "202509*_*" for Sep 2025)',
+    default="*",
+    help='File pattern to match (e.g., "202509*" for Sep 2025)',
 )
 @click.option(
     "--min-duration",
@@ -148,9 +148,10 @@ def split(
     Split photos into games with optional manual split points.
 
     This is the main game organization command that detects game boundaries
-    based on photo timestamps and organizes them into folders.
+    from each photo's EXIF capture time and organizes them into folders.
 
-    INPUT_PATH should be a directory containing photos with timestamp filenames.
+    INPUT_PATH should be a directory of images. Capture times come from EXIF
+    (DateTimeOriginal), not the filename.
     OUTPUT_DIR is where organized games will be created (unless --analyze-only is used).
 
     Examples:

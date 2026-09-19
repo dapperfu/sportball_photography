@@ -1,8 +1,8 @@
 """
 Game Detection Module
 
-Automated game boundary detection based on photo timestamps with support
-for manual splits and comprehensive game session management.
+Automated game boundary detection based on image EXIF capture times with
+support for manual splits and comprehensive game session management.
 
 Author: Claude Sonnet 4 (claude-3-5-sonnet-20241022)
 Generated via Cursor IDE (cursor.sh) with AI assistance
@@ -12,8 +12,177 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Dict, Any, Tuple
+from typing import Dict, List, Mapping, Optional, Tuple, Any
 from loguru import logger
+
+_IMAGE_SUFFIXES = {
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".tif",
+    ".tiff",
+    ".webp",
+    ".heic",
+    ".hif",
+    ".cr2",
+    ".nef",
+    ".arw",
+    ".dng",
+    ".raf",
+    ".orf",
+    ".rw2",
+}
+
+# Camera capture time first; filesystem mtime is never used.
+_EXIF_DATETIME_TAGS = (
+    "DateTimeOriginal",
+    "CreateDate",
+    "DateTimeDigitized",
+    "DateTime",
+    "ModifyDate",
+)
+
+_EXIF_DATETIME_FORMATS = (
+    "%Y:%m:%d %H:%M:%S",
+    "%Y:%m:%d %H:%M:%S.%f",
+    "%Y-%m-%d %H:%M:%S",
+    "%Y-%m-%d %H:%M:%S.%f",
+    "%Y-%m-%dT%H:%M:%S",
+    "%Y-%m-%dT%H:%M:%S.%f",
+)
+
+
+def _exif_tag_value(tags: Mapping[str, str], name: str) -> Optional[str]:
+    """
+    Return a tag value by ExifTool-style name.
+
+    Parameters
+    ----------
+    tags : mapping
+        EXIF tag map from fast-exif-rs-py.
+    name : str
+        Bare tag name such as ``DateTimeOriginal``.
+
+    Returns
+    -------
+    str or None
+        Tag value, or None if the tag is missing or empty.
+    """
+    direct = tags.get(name)
+    if direct:
+        return direct
+
+    suffix = f":{name}"
+    for key, value in tags.items():
+        if key.endswith(suffix) and value:
+            return value
+    return None
+
+
+def parse_exif_datetime(value: str) -> Optional[datetime]:
+    """
+    Parse a camera EXIF datetime string into a naive datetime.
+
+    Parameters
+    ----------
+    value : str
+        EXIF datetime, commonly ``YYYY:MM:DD HH:MM:SS``.
+
+    Returns
+    -------
+    datetime or None
+        Naive capture time, or None if the string cannot be parsed.
+    """
+    text = value.strip()
+    if not text:
+        return None
+
+    # Drop a trailing timezone so all photos sort in camera-local time.
+    if len(text) >= 6 and text[-6] in "+-" and text[-3] == ":":
+        text = text[:-6].rstrip()
+    elif len(text) >= 5 and text[-5] in "+-":
+        text = text[:-5].rstrip()
+    if text.endswith("Z"):
+        text = text[:-1]
+
+    for fmt in _EXIF_DATETIME_FORMATS:
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=None)
+
+
+def _subseconds_to_microseconds(value: str) -> int:
+    """
+    Convert an EXIF SubSecTime value to microseconds.
+
+    Parameters
+    ----------
+    value : str
+        Subsecond digits, e.g. ``96`` or ``960``.
+
+    Returns
+    -------
+    int
+        Microseconds in ``[0, 999999]``.
+    """
+    digits = "".join(ch for ch in value if ch.isdigit())
+    if not digits:
+        return 0
+    padded = (digits + "000000")[:6]
+    return int(padded)
+
+
+def timestamp_from_exif_tags(tags: Mapping[str, str]) -> Optional[datetime]:
+    """
+    Pick a capture time from an EXIF tag map.
+
+    Prefers ``DateTimeOriginal``, then digitized/create times. Subsecond
+    tags are applied when present.
+
+    Parameters
+    ----------
+    tags : mapping
+        EXIF tag map from fast-exif-rs-py.
+
+    Returns
+    -------
+    datetime or None
+        Naive capture time, or None if no usable datetime tag exists.
+    """
+    raw_dt: Optional[str] = None
+    source_name: Optional[str] = None
+    for name in _EXIF_DATETIME_TAGS:
+        candidate = _exif_tag_value(tags, name)
+        if candidate:
+            raw_dt = candidate
+            source_name = name
+            break
+
+    if raw_dt is None or source_name is None:
+        return None
+
+    parsed = parse_exif_datetime(raw_dt)
+    if parsed is None:
+        return None
+
+    subsec_name = {
+        "DateTimeOriginal": "SubSecTimeOriginal",
+        "CreateDate": "SubSecTimeDigitized",
+        "DateTimeDigitized": "SubSecTimeDigitized",
+        "DateTime": "SubSecTime",
+        "ModifyDate": "SubSecTime",
+    }.get(source_name, "SubSecTime")
+    subsec = _exif_tag_value(tags, subsec_name)
+    if subsec and parsed.microsecond == 0:
+        parsed = parsed.replace(microsecond=_subseconds_to_microseconds(subsec))
+    return parsed
 
 
 @dataclass
@@ -40,11 +209,10 @@ class GameSession:
 
 class GameDetector:
     """
-    Game boundary detection based on photo timestamps.
+    Game boundary detection based on EXIF capture times.
 
-    This class provides automated game detection capabilities by analyzing
-    photo timestamps to identify game boundaries, with support for manual
-    splits and comprehensive game session management.
+    This class reads DateTimeOriginal (and related capture tags) from each
+    image via fast-exif-rs-py, then looks for gaps that mark game boundaries.
     """
 
     def __init__(
@@ -60,15 +228,16 @@ class GameDetector:
         self.config = config or GameDetectionConfig()
         self.cache_enabled = cache_enabled
         self.games: List[GameSession] = []
+        self._photo_timestamps: Dict[str, datetime] = {}
         self.logger = logger.bind(component="game_detector")
         self.logger.info("Initialized GameDetector")
 
     def detect_games(
         self,
         photo_directory: Path,
-        pattern: str = "*_*",
+        pattern: str = "*",
         save_sidecar: bool = True,
-        **kwargs,
+        **kwargs: Any,
     ) -> Dict[str, Any]:
         """
         Detect game boundaries in a directory of photos.
@@ -86,11 +255,10 @@ class GameDetector:
 
         try:
             # Find photos matching the pattern
-            photo_paths = list(photo_directory.rglob(pattern))
             photo_paths = [
                 p
-                for p in photo_paths
-                if p.is_file() and p.suffix.lower() in [".jpg", ".jpeg", ".png"]
+                for p in photo_directory.rglob(pattern)
+                if p.is_file() and p.suffix.lower() in _IMAGE_SUFFIXES
             ]
 
             if not photo_paths:
@@ -98,11 +266,14 @@ class GameDetector:
 
             self.logger.info(f"Found {len(photo_paths)} photos")
 
-            # Analyze timestamps
+            # Analyze timestamps from EXIF
             photo_metadata = self._analyze_timestamps(photo_paths)
 
             if not photo_metadata:
-                return {"error": "No valid timestamps found", "success": False}
+                return {
+                    "error": "No valid EXIF capture times found",
+                    "success": False,
+                }
 
             # Detect game boundaries
             boundaries = self._detect_game_boundaries(photo_metadata)
@@ -139,50 +310,160 @@ class GameDetector:
             self.logger.error(f"Game detection failed: {e}")
             return {"error": str(e), "success": False}
 
-    def _analyze_timestamps(self, photo_paths: List[Path]) -> List[Dict]:
-        """Analyze timestamps from photo filenames."""
-        photo_metadata = []
+    def _analyze_timestamps(self, photo_paths: List[Path]) -> List[Dict[str, Any]]:
+        """
+        Read capture times from each image's EXIF data.
 
-        for photo_path in photo_paths:
-            timestamp = self.extract_timestamp_from_filename(photo_path.name)
-            if timestamp:
-                photo_metadata.append(
-                    {
-                        "path": photo_path,
-                        "filename": photo_path.name,
-                        "timestamp": timestamp,
-                        "time_str": timestamp.strftime("%H%M%S"),
-                    }
-                )
+        Parameters
+        ----------
+        photo_paths : list of Path
+            Image files to read.
 
-        # Sort by timestamp
-        photo_metadata.sort(key=lambda x: x["timestamp"])
+        Returns
+        -------
+        list of dict
+            Metadata dicts with ``path``, ``filename``, ``timestamp``, and
+            ``time_str``, sorted by capture time. Files without a usable
+            EXIF datetime are omitted.
+        """
+        tag_maps = self._read_exif_tag_maps(photo_paths)
+        photo_metadata: List[Dict[str, Any]] = []
+        self._photo_timestamps = {}
+        skipped = 0
+
+        for photo_path, tags in zip(photo_paths, tag_maps):
+            timestamp = timestamp_from_exif_tags(tags)
+            if timestamp is None:
+                skipped += 1
+                continue
+
+            resolved = str(photo_path.resolve())
+            self._photo_timestamps[resolved] = timestamp
+            photo_metadata.append(
+                {
+                    "path": photo_path,
+                    "filename": photo_path.name,
+                    "timestamp": timestamp,
+                    "time_str": timestamp.strftime("%H%M%S"),
+                }
+            )
+
+        if skipped:
+            self.logger.warning(
+                f"Skipped {skipped} photos with no EXIF capture time"
+            )
+
+        photo_metadata.sort(key=lambda item: item["timestamp"])
         return photo_metadata
+
+    def _read_exif_tag_maps(
+        self, photo_paths: List[Path]
+    ) -> List[Dict[str, str]]:
+        """
+        Read EXIF tag maps for ``photo_paths`` with fast-exif-rs-py.
+
+        Parallel read is preferred. If that call fails as a batch, each
+        file is read individually so one corrupt image does not drop the
+        rest.
+
+        Parameters
+        ----------
+        photo_paths : list of Path
+            Image files to read.
+
+        Returns
+        -------
+        list of dict
+            One string-to-string tag map per input path, same order.
+
+        Raises
+        ------
+        RuntimeError
+            If fast-exif-rs-py is not installed.
+        """
+        try:
+            import fast_exif_rs_py
+        except ImportError as exc:
+            raise RuntimeError(
+                "fast-exif-rs-py is required to read EXIF capture times for "
+                "game splitting. Install project dependencies (Rust is "
+                "required to build the extension)."
+            ) from exc
+
+        path_strs = [str(photo_path) for photo_path in photo_paths]
+        try:
+            tag_maps = fast_exif_rs_py.read_exif_files_parallel(path_strs)
+        except RuntimeError as exc:
+            self.logger.warning(
+                f"Parallel EXIF read failed ({exc}); reading files individually"
+            )
+            reader = fast_exif_rs_py.PyFastExifReader()
+            tag_maps = []
+            for path_str in path_strs:
+                try:
+                    tag_maps.append(reader.read_file(path_str))
+                except RuntimeError as file_exc:
+                    self.logger.debug(
+                        f"EXIF read failed for {path_str}: {file_exc}"
+                    )
+                    tag_maps.append({})
+
+        if len(tag_maps) != len(photo_paths):
+            raise RuntimeError(
+                "fast-exif-rs-py returned a different number of EXIF maps "
+                "than input files"
+            )
+
+        return tag_maps
+
+    def extract_timestamp_from_exif(self, photo_path: Path) -> Optional[datetime]:
+        """
+        Read the capture time from one image's EXIF data.
+
+        Parameters
+        ----------
+        photo_path : Path
+            Image file to read.
+
+        Returns
+        -------
+        datetime or None
+            Naive capture time, or None if no usable EXIF datetime exists.
+        """
+        resolved = str(photo_path.resolve())
+        cached = self._photo_timestamps.get(resolved)
+        if cached is not None:
+            return cached
+
+        tag_maps = self._read_exif_tag_maps([photo_path])
+        timestamp = timestamp_from_exif_tags(tag_maps[0])
+        if timestamp is not None:
+            self._photo_timestamps[resolved] = timestamp
+        return timestamp
 
     def extract_timestamp_from_filename(self, filename: str) -> Optional[datetime]:
         """
         Extract timestamp from filename.
 
-        Supports formats like:
-        - 20250920_143022.jpg
-        - 20250920_143022_001.jpg
-        - IMG_20250920_143022.jpg
+        Kept for callers that still pass camera-style names. Game splitting
+        uses EXIF via :meth:`extract_timestamp_from_exif`.
 
-        Args:
-            filename: The filename to parse
+        Parameters
+        ----------
+        filename : str
+            The filename to parse.
 
-        Returns:
-            Parsed datetime or None if parsing fails
+        Returns
+        -------
+        datetime or None
+            Parsed datetime or None if parsing fails.
         """
         try:
-            # Remove extension
             name = Path(filename).stem
-
-            # Try different patterns
             patterns = [
-                "%Y%m%d_%H%M%S",  # 20250920_143022
-                "%Y%m%d_%H%M%S_%f",  # 20250920_143022_001
-                "IMG_%Y%m%d_%H%M%S",  # IMG_20250920_143022
+                "%Y%m%d_%H%M%S",
+                "%Y%m%d_%H%M%S_%f",
+                "IMG_%Y%m%d_%H%M%S",
             ]
 
             for pattern in patterns:
@@ -191,7 +472,6 @@ class GameDetector:
                 except ValueError:
                     continue
 
-            # Try to extract date and time parts separately
             if "_" in name:
                 parts = name.split("_")
                 if len(parts) >= 2:
@@ -584,14 +864,14 @@ class GameDetector:
                 segment_start = split_points[i]
                 segment_end = split_points[i + 1]
 
-                # Find photos in this time segment
-                segment_photos = [
-                    photo
-                    for photo in game.photo_files
-                    if segment_start
-                    <= self.extract_timestamp_from_filename(photo.name)
-                    <= segment_end
-                ]
+                # Find photos in this time segment using EXIF capture times
+                segment_photos = []
+                for photo in game.photo_files:
+                    photo_time = self.extract_timestamp_from_exif(photo)
+                    if photo_time is None:
+                        continue
+                    if segment_start <= photo_time <= segment_end:
+                        segment_photos.append(photo)
 
                 if len(segment_photos) >= self.config.min_photos_per_game:
                     # Create new game session for this segment

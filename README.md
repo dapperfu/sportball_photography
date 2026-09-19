@@ -8,7 +8,7 @@ It does a few other vision things (faces, YOLO, jersey colors, quality scores) b
 
 ## How the split works
 
-Cameras name files with a timestamp, usually `YYYYMMDD_HHMMSS.jpg` (sometimes with a sequence suffix or an `IMG_` prefix). We parse that, sort the photos, and look at the gaps.
+Each photo's capture time comes from EXIF (`DateTimeOriginal`, then related capture tags) via [fast-exif-rs-py](https://github.com/dapperfu/fast-exif-rs-py). Filenames are not used. Photos without a usable EXIF datetime are skipped. After that we sort and look at the gaps.
 
 - A **gap** of about 10 minutes is treated as a possible game boundary.
 - Halftime / water breaks are usually shorter than the gap between games, so they stay in the same folder. If a later gap is much larger, a smaller gap in the middle is left alone.
@@ -23,9 +23,7 @@ Game2_20Sep2025_113005-124410/
 
 By default those folders are **symlinks** back to the originals. The dump stays put. Pass `--copy` if you want real copies.
 
-If the auto-split is wrong, drop timestamps in a text file (one `YYYYMMDD_HHMMSS` per line) and pass `--split-file`.
-
-Filenames without a parseable timestamp are ignored. EXIF is not used for this.
+If the auto-split is wrong, drop timestamps in a text file (one `YYYY-MM-DD HH:MM:SS` or `HH:MM:SS` per line) and pass `--split-file`.
 
 ## Install
 
@@ -66,7 +64,7 @@ sportball games split /path/to/dump /path/to/games
 Useful knobs:
 
 ```bash
-# only files matching a glob (default is *_*)
+# only files matching a glob (default is *)
 sportball games split /path/to/dump /path/to/games --pattern "20250920_*"
 
 # copy instead of symlink
