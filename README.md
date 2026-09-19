@@ -1,362 +1,121 @@
-# Sportball 🏈⚽📸
+# sportball
 
-**Unified Sports Photo Analysis Package**
+I shoot a lot of rec / youth sports. After a Saturday you end up with one dump folder: a few thousand JPEGs from two or three games, plus warmups, plus the game after yours that you accidentally kept shooting. Sorting that by hand is miserable.
 
-A comprehensive Python package for analyzing and organizing sports photographs using computer vision, machine learning, and AI techniques.
+This repo exists to take that dump and put each game in its own folder.
 
-## 🚀 Features
+It does a few other vision things (faces, YOLO, jersey colors, quality scores) but the thing I actually needed first was: **folder of images in, folders of games out**.
 
-- **Face Detection & Recognition** - Detect and cluster faces in sports photos
-- **Object Detection** - YOLOv8-powered object detection (players, balls, equipment)
-- **Game Boundary Detection** - Automatically split photos into games based on timestamps
-- **Jersey Color Splitting** - Split games based on jersey colors using pose detection and color analysis
-- **Photo Quality Assessment** - Multi-metric quality analysis and filtering
-- **Recursive Processing** - Process directories recursively by default
-- **Parallel Processing** - GPU-accelerated processing with multi-threading
-- **High-Performance Sidecar Management** - Rust-powered JSON sidecar operations (3-10x faster)
-- **Comprehensive CLI** - Clean command-line interface with subcommands
+## How the split works
 
-## 📦 Installation
+Cameras name files with a timestamp, usually `YYYYMMDD_HHMMSS.jpg` (sometimes with a sequence suffix or an `IMG_` prefix). We parse that, sort the photos, and look at the gaps.
 
-### Basic Installation
+- A **gap** of about 10 minutes is treated as a possible game boundary.
+- Halftime / water breaks are usually shorter than the gap between games, so they stay in the same folder. If a later gap is much larger, a smaller gap in the middle is left alone.
+- A stretch only becomes a game if it lasts at least **30 minutes** and has at least **50 photos**. That keeps a 12-shot burst of kids posing from becoming "Game 7".
 
-```bash
-pip install sportball
+Output folders look like:
+
+```
+Game1_20Sep2025_090012-102348/
+Game2_20Sep2025_113005-124410/
 ```
 
-### With GPU Support (Recommended)
+By default those folders are **symlinks** back to the originals. The dump stays put. Pass `--copy` if you want real copies.
+
+If the auto-split is wrong, drop timestamps in a text file (one `YYYYMMDD_HHMMSS` per line) and pass `--split-file`.
+
+Filenames without a parseable timestamp are ignored. EXIF is not used for this.
+
+## Install
+
+Needs Python 3.8+, a venv, and Rust (sidecar writes go through `image-sidecar-rust`; no Python fallback).
 
 ```bash
-pip install sportball[cuda]
+git clone <this-repo>
+cd sportball_photography
+python3 -m venv venv
+source venv/bin/activate
+venv/bin/pip install -e .
 ```
 
-### Development Installation
+GPU (optional):
 
 ```bash
-git clone https://github.com/sportball/sportball.git
-cd sportball
-pip install -e .[dev]
+venv/bin/pip install -e ".[cuda]"
 ```
 
-### High-Performance Rust Integration
+Same thing via Make: `make install` or `make install-cuda`.
 
-The Rust sidecar tool is automatically included as a Git dependency from [https://github.com/dapperfu/image-sidecar-rust.git](https://github.com/dapperfu/image-sidecar-rust.git).
+Entry points after install: `sportball` and `sb`.
 
-**Installation Requirements** (choose one):
+## Split a folder of images into game folders
 
-#### Option 1: Automatic (Rust Python Package)
-If you have Rust installed, the Python package will be built automatically during install:
+Preview first (no folders created):
 
 ```bash
-# Install sportball (will automatically build Rust package if Rust is available)
-pip install -e .  # or pip install sportball
+sportball games split /path/to/dump /path/to/games --analyze-only
 ```
 
-#### Option 2: Binary CLI Approach
-If you prefer using the pre-built binary:
+Do the split:
 
 ```bash
-# Build the Rust binary separately
-cd /path/to/image-sidecar-rust
-cargo build --release
-
-# Make it available in PATH
-export PATH=$PATH:/path/to/image-sidecar-rust/target/release
+sportball games split /path/to/dump /path/to/games
 ```
 
-**Note**: The Rust tool is an **optional** dependency. If neither the Python package nor the binary is available, Sportball will automatically fall back to Python implementations. The Rust tool provides 3-10x performance improvements for sidecar operations.
-
-## 🎯 Quick Start
-
-### Face Detection
+Useful knobs:
 
 ```bash
-# Detect faces in images (recursive by default)
-sportball face detect /path/to/images
+# only files matching a glob (default is *_*)
+sportball games split /path/to/dump /path/to/games --pattern "20250920_*"
 
-# Detect faces with specific confidence threshold
-sportball face detect /path/to/images --confidence 0.7
+# copy instead of symlink
+sportball games split /path/to/dump /path/to/games --copy
 
-# Process only current directory (disable recursion)
-sportball face detect /path/to/images --no-recursive
+# force splits at known times
+sportball games split /path/to/dump /path/to/games --split-file splits.txt
+
+# if your games are short / sparse
+sportball games split /path/to/dump /path/to/games --min-duration 20 --min-gap 8 --min-photos 30
+
+# after games are already time-split, further split by jersey color
+sportball games split /path/to/dump /path/to/games --split-by-jersey
 ```
 
-### Object Detection
+`splits.txt` is just:
 
-```bash
-# Detect objects in images (recursive by default)
-sportball object detect /path/to/images
-
-# Detect specific object classes (including balls)
-sportball object detect /path/to/images --classes "person,sports ball"
-
-# Detect only balls
-sportball object detect /path/to/images --classes "sports ball"
-
-# Extract detected objects
-sportball object extract /path/to/images /path/to/output --object-types "person,sports ball"
+```
+20250920_102500
+20250920_124500
 ```
 
-### Game Splitting
-
-```bash
-# Automatically detect and split games
-sportball games split /path/to/photos /path/to/games
-
-# Use specific file pattern (e.g., September 2025 photos)
-sportball games split /path/to/photos /path/to/games --pattern "202509*_*"
-
-# Add manual split points
-sportball games split /path/to/photos /path/to/games --split-file splits.txt
-
-# Split games by jersey colors (requires pose detection)
-sportball games split /path/to/photos /path/to/games --split-by-jersey
-
-# Jersey splitting with custom parameters
-sportball games split /path/to/photos /path/to/games --split-by-jersey --pose-confidence 0.8 --color-similarity 0.1
-```
-
-### Ball Detection (via Object Detection)
-
-```bash
-# Detect balls in images (recursive by default)
-sportball object detect /path/to/images --classes "sports ball"
-
-# Extract detected balls
-sportball object extract /path/to/images /path/to/output --object-types "sports ball"
-
-# Analyze ball detection results
-sportball object analyze /path/to/images --classes "sports ball"
-```
-
-### Quality Assessment
-
-```bash
-# Assess photo quality (recursive by default)
-sportball quality assess /path/to/images
-
-# Filter low-quality images
-sportball quality assess /path/to/images --filter-low-quality --min-score 0.6
-
-# Process only current directory
-sportball quality assess /path/to/images --no-recursive
-```
-
-## 🛠️ CLI Commands
-
-### Main Commands
-
-- `sportball face` - Face detection and recognition
-- `sportball object` - Object detection and extraction (including balls)
-- `sportball games` - Game boundary detection and splitting
-- `sportball quality` - Photo quality assessment
-- `sportball util` - Utility operations (cache, sidecar management)
-
-### Command Aliases
-
-You can use `sb` as a shorter alias for `sportball`:
-
-```bash
-sb face detect /path/to/images
-sb object detect /path/to/images --classes "sports ball"
-sb object extract /path/to/images /path/to/output
-sb games split /path/to/photos /path/to/games
-```
-
-### Global Options
-
-- `--gpu/--no-gpu` - Enable/disable GPU acceleration
-- `--workers N` - Number of parallel workers
-- `--cache/--no-cache` - Enable/disable result caching
-- `--verbose` - Enable verbose logging
-- `--quiet` - Suppress output except errors
-- `--no-recursive` - Disable recursive directory processing (most commands)
-
-## 🔧 Configuration
-
-### GPU Acceleration
-
-Sportball automatically detects and uses GPU acceleration when available. You can control this behavior:
-
-```bash
-# Force CPU usage
-sportball --no-gpu face detect /path/to/images
-
-# Specify number of workers
-sportball --workers 8 face detect /path/to/images
-```
-
-### Caching
-
-Results are automatically cached to avoid reprocessing. Cache management:
-
-```bash
-# Clear cache
-sportball util clear-cache
-
-# Show cache summary
-sportball util sidecar-summary /path/to/images
-```
-
-## 📊 Sidecar Files
-
-Sportball uses JSON sidecar files to store metadata and results:
-
-- `image_face_detection.json` - Face detection results
-- `image_object_detection.json` - Object detection results
-- `image_ball_detection.json` - Ball detection results
-- `image_quality_assessment.json` - Quality assessment results
-- `game_detection.json` - Game boundary detection results
-
-### Sidecar Management
-
-```bash
-# Show sidecar summary
-sportball util sidecar-summary /path/to/images
-
-# Clean up orphaned sidecar files
-sportball util cleanup-sidecars /path/to/images
-
-# Delete sidecar files for specific operation
-sportball util delete-sidecars /path/to/images --operation face_detection
-```
-
-## 🐍 Python API
-
-You can also use Sportball programmatically:
+Python, if you want it:
 
 ```python
-from sportball import SportballCore
 from pathlib import Path
+from sportball import SportballCore
 
-# Initialize core
-core = SportballCore(enable_gpu=True, max_workers=4)
-
-# Detect faces
-results = core.detect_faces(Path("/path/to/images"))
-
-# Detect objects
-results = core.detect_objects(Path("/path/to/images"))
-
-# Detect games
-results = core.detect_games(Path("/path/to/photos"))
-
-# Assess quality
-results = core.assess_quality(Path("/path/to/images"))
+core = SportballCore()
+print(core.detect_games(Path("/path/to/dump")))
 ```
 
-## 🎨 Decorators
+The CLI is what actually builds the output folders.
 
-Sportball provides Pythonic decorators for common operations:
+## Other commands that exist
 
-```python
-from sportball.decorators import gpu_accelerated, parallel_processing, progress_tracked
-
-@gpu_accelerated(device='cuda:0')
-@parallel_processing(max_workers=4)
-@progress_tracked(description="Processing images")
-def process_images(images):
-    # Your processing code here
-    pass
-```
-
-## 📈 Performance
-
-- **GPU Acceleration** - Automatic CUDA detection and fallback to CPU
-- **Parallel Processing** - Multi-threaded and multi-process support
-- **Progress Tracking** - Real-time progress bars with tqdm
-- **Result Caching** - Avoid reprocessing with intelligent caching
-- **Memory Efficient** - Lazy loading and efficient memory management
-
-## 🔍 Examples
-
-### Complete Workflow
+These work to varying degrees. I use them after the dump is already split.
 
 ```bash
-# 1. Detect faces in all photos (recursive)
-sportball face detect /path/to/photos --confidence 0.6
-
-# 2. Detect objects (players, balls) - recursive by default
-sportball object detect /path/to/photos --classes "person,sports ball"
-
-# 3. Split photos into games
-sportball games split /path/to/photos /path/to/games
-
-# 4. Assess photo quality (recursive)
-sportball quality assess /path/to/photos --filter-low-quality
-
-# 5. Generate comprehensive report
-sportball util sidecar-summary /path/to/photos
+sportball face detect /path/to/game
+sportball object detect /path/to/game --classes "person,sports ball"
+sportball quality assess /path/to/game
+sportball util sidecar-summary /path/to/game
 ```
 
-### Batch Processing
+`sportball --help` and `sportball games split --help` have the rest.
 
-```bash
-# Process multiple directories
-for dir in /path/to/games/*/; do
-    sportball face detect "$dir" --confidence 0.7
-    sportball object detect "$dir" --classes "person,sports ball"
-done
-```
+## Layout
 
-## 🧪 Testing
-
-```bash
-# Run tests
-pytest
-
-# Run with coverage
-pytest --cov=sportball
-
-# Run specific test categories
-pytest -m "not slow"  # Skip slow tests
-pytest -m cuda        # Only CUDA tests
-```
-
-## 📚 Documentation
-
-- [API Reference](https://sportball.readthedocs.io/api/)
-- [CLI Reference](https://sportball.readthedocs.io/cli/)
-- [Examples](https://sportball.readthedocs.io/examples/)
-- [Contributing](https://sportball.readthedocs.io/contributing/)
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- OpenCV for computer vision capabilities
-- PyTorch for deep learning framework
-- YOLOv8 (Ultralytics) for object detection
-- face_recognition for face detection and recognition
-- Click for CLI framework
-- Rich for beautiful terminal output
-- Rust for high-performance sidecar operations
-- Rayon for parallel processing
-
-## 📞 Support
-
-- [GitHub Issues](https://github.com/sportball/sportball/issues)
-- [Discussions](https://github.com/sportball/sportball/discussions)
-- [Email](mailto:support@sportball.ai)
-
-## 🚀 Performance
-
-Sportball now includes high-performance Rust integration for sidecar operations:
-
-- **3-10x faster** JSON validation and processing
-- **Massive parallelism** across all CPU cores
-- **Automatic fallback** to Python when Rust unavailable
-- **Zero code changes** required for existing code
-
-See [RUST_SIDECAR_INTEGRATION.md](RUST_SIDECAR_INTEGRATION.md) for details.
-
----
-
-**Sportball** - Making sports photo analysis simple, fast, and powerful! 🏈⚽📸
-# Version bump to 1.1.0
+- `sportball/` — the package and CLI
+- `tests/` — pytest
+- `development/` — old standalone scripts from before this was a package. Don't start there.

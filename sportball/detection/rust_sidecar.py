@@ -192,7 +192,7 @@ class RustSidecarManager:
                     self.logger.error(
                         "read_data() method not available in image-sidecar-rust. "
                         "This method must be implemented per requirement RUST-019. "
-                        "See IMAGE_SIDECAR_RUST_REQUIREMENTS.md for details."
+                        "See development/IMAGE_SIDECAR_RUST_REQUIREMENTS.md for details."
                     )
                     raise RuntimeError(
                         "read_data() method not implemented in image-sidecar-rust. "

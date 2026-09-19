@@ -1,6 +1,6 @@
 # Sportball Development Makefile
-# Author: Claude Sonnet 4 (claude-3-5-sonnet-20241022)
-# Generated via Cursor IDE (cursor.sh) with AI assistance
+
+VENV := venv
 
 .PHONY: help install install-dev test lint format clean setup build-rust-sidecar test-rust-sidecar bench-rust-sidecar benchmark-rust test-integration
 
@@ -69,7 +69,7 @@ test-cli: install
 
 # Run quick test
 quick-test: install
-	python test_sportball.py
+	${VENV}/bin/python tests/test_sportball.py
 
 # Install with CUDA support
 install-cuda: venv
