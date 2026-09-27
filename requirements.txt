@@ -1,7 +1,5 @@
 # Core dependencies for soccer photo sorter
-opencv-python>=4.8.0
 Pillow>=10.0.0
-numpy>=1.24.0
 
 # Machine Learning
 torch>=2.0.0

@@ -61,12 +61,14 @@ git push
 
 ## Rust Requirements (CRITICAL)
 
-### Rust is MANDATORY
-- Rust is NOT optional - it MUST be required
-- If Rust is unavailable, operations SHALL raise RuntimeError
-- Per requirements TR-007: "Exceptions when Rust is unavailable enforce exclusive use of the Rust implementation"
-- ALL sidecar operations SHALL use image-sidecar-rust module exclusively
-- NO Python fallback code SHALL exist for sidecar operations
+### Rust is MANDATORY for EXIF
+- Rust is NOT optional for EXIF reads - fast-exif-rs-py MUST be used
+- If Rust/EXIF bindings are unavailable, operations SHALL raise RuntimeError
+
+### No sidecar I/O
+- Sportball SHALL NOT read or write sidecar files
+- Sportball SHALL NOT depend on sidecar-rs or image-sidecar-rust
+- This package splits photos into game folders only; metadata files are out of scope
 
 ### Rust Availability Check
 When Rust is not available, the system MUST fail with a clear error message instructing the user to install Rust tools.

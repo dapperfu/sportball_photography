@@ -7,17 +7,66 @@ Author: Claude Sonnet 4 (claude-3-5-sonnet-20241022)
 Generated via Cursor IDE (cursor.sh) with AI assistance
 """
 
-import click
 import shutil
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Dict, List, Optional, Tuple
+
+import click
+
+from sportball.detectors.game import (
+    DEFAULT_MIN_PHOTOS,
+    DEFAULT_MIN_PHOTOS_PER_HOUR,
+    resolve_session_floors,
+)
+
+from ..utils import get_core
+
 # Lazy import: from rich.console import Console
 # Lazy import: from rich.table import Table
 # Lazy import: from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
-from ..utils import get_core
 
-console = None  # Will be initialized lazily
+
+def _session_floors_from_cli(
+    ctx: click.Context, min_photos: int, min_rate: int
+) -> Tuple[Optional[int], Optional[int]]:
+    """
+    Apply mutually exclusive --min-photos / --min-rate from Click.
+
+    Parameters
+    ----------
+    ctx : click.Context
+        Current command context, used to see which flags were passed.
+    min_photos : int
+        Absolute photo floor from the option default or CLI.
+    min_rate : int
+        Photos-per-hour floor from the option default or CLI.
+
+    Returns
+    -------
+    tuple of (int or None, int or None)
+        ``(min_photos, min_rate)`` for game detection.
+
+    Raises
+    ------
+    click.UsageError
+        If both flags were passed.
+    """
+    from click.core import ParameterSource
+
+    photos_explicit = (
+        ctx.get_parameter_source("min_photos") == ParameterSource.COMMANDLINE
+    )
+    rate_explicit = ctx.get_parameter_source("min_rate") == ParameterSource.COMMANDLINE
+    try:
+        return resolve_session_floors(
+            min_photos,
+            min_rate,
+            photos_explicit=photos_explicit,
+            rate_explicit=rate_explicit,
+        )
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
 
 
 def _get_console():
@@ -30,10 +79,10 @@ def _get_console():
 def _get_progress():
     """Lazy import of Progress components to avoid heavy imports at startup."""
     from rich.progress import (
+        BarColumn,
         Progress,
         SpinnerColumn,
         TextColumn,
-        BarColumn,
         TimeElapsedColumn,
     )
 
@@ -47,17 +96,17 @@ def _get_table():
     return Table
 
 
-@click.group(context_settings={"help_option_names": ["-h", "--help"]})
-def game_group():
-    """Game detection and splitting commands."""
-    pass
-
-
-@game_group.command()
-@click.argument(
-    "input_path", type=click.Path(exists=True, file_okay=False, path_type=Path)
+@click.command(context_settings={"help_option_names": ["-h", "--help"]})
+@click.argument("inputs", nargs=-1, required=True)
+@click.option(
+    "-o",
+    "--output",
+    "output_dir",
+    type=click.Path(path_type=Path),
+    default=Path("Games"),
+    show_default=True,
+    help="Directory for numbered game folders",
 )
-@click.argument("output_dir", type=click.Path(path_type=Path))
 @click.option(
     "--split-file",
     "-s",
@@ -74,130 +123,92 @@ def game_group():
     "--min-duration",
     "min_duration",
     type=int,
-    default=30,
-    help="Minimum game duration in minutes",
+    default=0,
+    help="Minimum game duration in minutes (0 keeps short bursts)",
 )
 @click.option(
     "--min-gap",
     "min_gap",
-    type=int,
-    default=10,
-    help="Minimum gap to separate games in minutes",
+    type=float,
+    default=10.0,
+    show_default=True,
+    help="Minimum gap to separate games, in minutes (fractions allowed, e.g. 0.5)",
 )
 @click.option(
-    "--min-photos", "min_photos", type=int, default=50, help="Minimum photos per game"
+    "--min-photos",
+    "min_photos",
+    type=int,
+    default=DEFAULT_MIN_PHOTOS,
+    show_default=True,
+    help=(
+        "Minimum photos in a game (absolute count). "
+        "Mutually exclusive with --min-rate. Wrestling: a 7-minute match "
+        "with 10 frames still counts."
+    ),
+)
+@click.option(
+    "--min-rate",
+    "min_rate",
+    type=int,
+    default=DEFAULT_MIN_PHOTOS_PER_HOUR,
+    show_default=True,
+    help=(
+        "Minimum photos per hour in a session. "
+        "Mutually exclusive with --min-photos. "
+        "20 shots in 12 min is 100/hour."
+    ),
 )
 @click.option(
     "--copy/--symlink", default=False, help="Copy files instead of creating symlinks"
 )
-@click.option(
-    "--save-sidecar/--no-sidecar", default=True, help="Save results to sidecar files"
-)
-@click.option(
-    "--analyze-only",
-    "analyze_only",
-    is_flag=True,
-    help="Only analyze and display results without creating folders",
-)
-@click.option(
-    "--split-by-jersey",
-    "split_by_jersey",
-    is_flag=True,
-    help="Split games based on jersey colors (requires pose detection)",
-)
-@click.option(
-    "--pose-confidence",
-    "pose_confidence",
-    type=float,
-    default=0.7,
-    help="Minimum confidence for pose detections (jersey splitting)",
-)
-@click.option(
-    "--color-similarity",
-    "color_similarity",
-    type=float,
-    default=0.15,
-    help="Threshold for grouping similar jersey colors (jersey splitting)",
-)
-@click.option(
-    "--min-team-photos",
-    "min_team_photos",
-    type=int,
-    default=5,
-    help="Minimum photos required to form a team (jersey splitting)",
-)
 @click.pass_context
 def split(
     ctx: click.Context,
-    input_path: Path,
+    inputs: Tuple[str, ...],
     output_dir: Path,
     split_file: Optional[Path],
     pattern: str,
     min_duration: int,
-    min_gap: int,
+    min_gap: float,
     min_photos: int,
+    min_rate: int,
     copy: bool,
-    save_sidecar: bool,
-    analyze_only: bool,
-    split_by_jersey: bool,
-    pose_confidence: float,
-    color_similarity: float,
-    min_team_photos: int,
-):
+) -> None:
     """
-    Split photos into games with optional manual split points.
+    Split photos from one or more directories into numbered game folders.
 
-    This is the main game organization command that detects game boundaries
-    from each photo's EXIF capture time and organizes them into folders.
-
-    INPUT_PATH should be a directory of images. Capture times come from EXIF
-    (DateTimeOriginal), not the filename.
-    OUTPUT_DIR is where organized games will be created (unless --analyze-only is used).
+    INPUTS are dump directories or globs (``04_Apr 05_May`` or ``*``).
+    Capture times come from EXIF (DateTimeOriginal). All inputs are
+    pooled so games are numbered across a whole season.
+    Output defaults to ``./Games`` unless ``-o`` / ``--output`` is set.
 
     Examples:
 
     \b
-    # Basic game splitting
-    sb games split /path/to/photos /path/to/games
+    sb split 04_Apr 05_May
 
     \b
-    # With manual splits
-    sb games split /path/to/photos /path/to/games --split-file splits.txt
+    sb split --output SpringGames 04_Apr 05_May
 
     \b
-    # Only analyze without creating folders
-    sb games split /path/to/photos /path/to/games --analyze-only
-
-    \b
-    # Copy files instead of symlinks
-    sb games split /path/to/photos /path/to/games --copy
-
-    \b
-    # Split by jersey colors (requires pose detection)
-    sb games split /path/to/photos /path/to/games --split-by-jersey
-
-    \b
-    # Jersey splitting with custom parameters
-    sb games split /path/to/photos /path/to/games --split-by-jersey --pose-confidence 0.8 --color-similarity 0.1
+    sb split --output SpringGames *
     """
+    from sportball.detectors.game import expand_input_directories
+
+    try:
+        input_dirs = expand_input_directories(inputs, output_dir=output_dir)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc)) from exc
+
+    min_photos, min_rate = _session_floors_from_cli(ctx, min_photos, min_rate)
 
     core = get_core(ctx)
+    dir_label = ", ".join(str(path) for path in input_dirs)
 
-    # Handle jersey-based splitting
-    if split_by_jersey:
-        _handle_jersey_splitting(
-            core, input_path, output_dir, analyze_only, copy, save_sidecar,
-            pose_confidence, color_similarity, min_team_photos
-        )
-        return
-
-    if analyze_only:
-        _get_console().print(f"📊 Analyzing games in {input_path}...", style="blue")
-    else:
-        _get_console().print(
-            f"✂️  Splitting photos in {input_path} into games...", style="blue"
-        )
-        _get_console().print(f"Output: {output_dir}")
+    _get_console().print(
+        f"✂️  Splitting photos in {dir_label} into games...", style="blue"
+    )
+    _get_console().print(f"Output: {output_dir}")
 
     _get_console().print(f"Pattern: {pattern}")
 
@@ -219,10 +230,11 @@ def split(
 
     # Perform game detection
     import time
+
     start_time = time.time()
-    
+
     Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn = _get_progress()
-    
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -234,16 +246,17 @@ def split(
 
         # Detect games automatically
         results = core.detect_games(
-            input_path,
+            input_dirs,
             pattern=pattern,
-            save_sidecar=save_sidecar,
             min_duration=min_duration,
             min_gap=min_gap,
             min_photos=min_photos,
+            min_rate=min_rate,
+            output_dir=output_dir,
         )
 
         progress.update(task, completed=True, description="Game detection complete")
-    
+
     end_time = time.time()
     processing_time = end_time - start_time
 
@@ -264,13 +277,474 @@ def split(
             )
 
     # Display results
-    display_game_results(results, output_dir, copy, analyze_only, processing_time)
+    display_game_results(results, output_dir, copy, processing_time)
+
+
+@click.command(context_settings={"help_option_names": ["-h", "--help"]})
+@click.argument("inputs", nargs=-1, required=True)
+@click.option(
+    "-o",
+    "--output",
+    "output_dir",
+    type=click.Path(path_type=Path),
+    default=Path("Games"),
+    show_default=True,
+    help="Existing game album to skip when scanning (not written)",
+)
+@click.option(
+    "--pattern",
+    "-p",
+    default="*",
+    help='File pattern to match (e.g., "202509*" for Sep 2025)',
+)
+@click.option(
+    "--min-duration",
+    "min_duration",
+    type=int,
+    default=0,
+    help="Minimum game duration in minutes (0 keeps short bursts)",
+)
+@click.option(
+    "--min-gap",
+    "min_gap",
+    type=float,
+    default=10.0,
+    show_default=True,
+    help="Minimum gap to separate games, in minutes (fractions allowed, e.g. 0.5)",
+)
+@click.option(
+    "--min-photos",
+    "min_photos",
+    type=int,
+    default=DEFAULT_MIN_PHOTOS,
+    show_default=True,
+    help=(
+        "Minimum photos in a game (absolute count). "
+        "Mutually exclusive with --min-rate."
+    ),
+)
+@click.option(
+    "--min-rate",
+    "min_rate",
+    type=int,
+    default=DEFAULT_MIN_PHOTOS_PER_HOUR,
+    show_default=True,
+    help=(
+        "Minimum photos per hour in a session. " "Mutually exclusive with --min-photos."
+    ),
+)
+@click.option(
+    "--bin-minutes",
+    "bin_minutes",
+    type=int,
+    default=None,
+    help="Histogram bin width in minutes (chosen from the span if omitted)",
+)
+@click.pass_context
+def analyze(
+    ctx: click.Context,
+    inputs: Tuple[str, ...],
+    output_dir: Path,
+    pattern: str,
+    min_duration: int,
+    min_gap: float,
+    min_photos: int,
+    min_rate: int,
+    bin_minutes: Optional[int],
+) -> None:
+    """
+    Show how photos would be split: albums, breaks, and a density histogram.
+
+    Does not create folders. INPUTS are dump directories or globs.
+
+    Examples:
+
+    \b
+    sb analyze 04_Apr 05_May
+    sb analyze --output SpringGames *
+    """
+    from sportball.detectors.game import expand_input_directories
+
+    try:
+        input_dirs = expand_input_directories(inputs, output_dir=output_dir)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc)) from exc
+
+    min_photos, min_rate = _session_floors_from_cli(ctx, min_photos, min_rate)
+
+    core = get_core(ctx)
+    dir_label = ", ".join(str(path) for path in input_dirs)
+    _get_console().print(f"📊 Analyzing games in {dir_label}...", style="blue")
+    _get_console().print(f"Pattern: {pattern}")
+
+    import time
+
+    start_time = time.time()
+    Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn = _get_progress()
+    kwargs: Dict[str, object] = {
+        "pattern": pattern,
+        "min_duration": min_duration,
+        "min_gap": min_gap,
+        "min_photos": min_photos,
+        "min_rate": min_rate,
+        "output_dir": output_dir,
+    }
+    if bin_minutes is not None:
+        kwargs["bin_minutes"] = bin_minutes
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TimeElapsedColumn(),
+        console=_get_console(),
+    ) as progress:
+        task = progress.add_task("Reading EXIF and clustering...", total=None)
+        results = core.analyze_games(input_dirs, **kwargs)
+        progress.update(task, completed=True, description="Analysis complete")
+
+    display_game_analysis(results, time.time() - start_time)
+
+
+@click.command(context_settings={"help_option_names": ["-h", "--help"]})
+@click.argument("inputs", nargs=-1, required=True)
+@click.option(
+    "--duration",
+    "duration_seconds",
+    type=float,
+    default=None,
+    help="Target video length in seconds per game (FPS = photos / duration). Default 60 when --fps is omitted.",
+)
+@click.option(
+    "--fps",
+    type=float,
+    default=None,
+    help="Frames per second (fractional allowed). Mutually exclusive with --duration.",
+)
+@click.option(
+    "--size",
+    "size_spec",
+    type=str,
+    default=None,
+    help=(
+        "Output frame size: WIDTHxHEIGHT (5568x3712), WIDTHx (5568x), "
+        "or xHEIGHT (x1080 for 1080p). An omitted axis keeps aspect ratio."
+    ),
+)
+@click.option(
+    "--workers",
+    "-w",
+    type=int,
+    default=2,
+    show_default=True,
+    help="Parallel ffmpeg encodes",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Overwrite existing .mp4 files",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Show planned encodes without running ffmpeg",
+)
+@click.option(
+    "--ffmpeg",
+    "ffmpeg_bin",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Path to ffmpeg (default: look up on PATH)",
+)
+def animate(
+    inputs: Tuple[str, ...],
+    duration_seconds: Optional[float],
+    fps: Optional[float],
+    size_spec: Optional[str],
+    workers: int,
+    force: bool,
+    dry_run: bool,
+    ffmpeg_bin: Optional[Path],
+) -> None:
+    """
+    Encode each Game## album into a matching .mp4 with ffmpeg.
+
+    INPUTS are game folders (``Game44_12Oct2025_144301-144303``) and/or
+    a parent that contains them (``Games``). Each video is written next to
+    its album as ``Game44_12Oct2025_144301-144303.mp4``.
+
+    Pass ``--duration`` to fit the whole album into that many seconds
+    (FPS is derived). Pass ``--fps`` for an explicit fractional rate.
+    Default is ``--duration 60`` (one minute per game).
+
+    ``--size`` resizes each frame. ``5568x3712`` is exact,
+    ``5568x`` sets width and keeps aspect ratio, and ``x1080`` sets
+    height (1080p).
+
+    Examples:
+
+    \b
+    sb animate Games
+    sb animate --duration 60 Games
+    sb animate --fps 12.5 Games
+    sb animate --fps 0.5 Game44_12Oct2025_144301-144303
+    sb animate --size 5568x3712 Games
+    sb animate --size x1080 Games
+    """
+    from sportball.detectors.animate import (
+        VideoSize,
+        animate_games,
+        find_ffmpeg,
+        parse_video_size,
+    )
+
+    if fps is not None and duration_seconds is not None:
+        raise click.UsageError("Use either --fps or --duration, not both")
+    if fps is None and duration_seconds is None:
+        duration_seconds = 60.0
+    if fps is not None and fps <= 0.0:
+        raise click.BadParameter("must be positive", param_hint="--fps")
+    if duration_seconds is not None and duration_seconds <= 0.0:
+        raise click.BadParameter("must be positive", param_hint="--duration")
+
+    size: Optional[VideoSize] = None
+    if size_spec is not None:
+        try:
+            size = parse_video_size(size_spec)
+        except ValueError as exc:
+            raise click.BadParameter(str(exc), param_hint="--size") from exc
+
+    input_paths = [Path(item) for item in inputs]
+    ffmpeg_path: Optional[str] = None
+    if ffmpeg_bin is not None:
+        ffmpeg_path = str(ffmpeg_bin)
+    elif not dry_run:
+        try:
+            ffmpeg_path = find_ffmpeg()
+        except RuntimeError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+    mode = f"--fps {fps:g}" if fps is not None else f"--duration {duration_seconds:g}s"
+    size_note = f", size={size.label}" if size is not None else ""
+    _get_console().print(
+        f"🎬 Animating game albums ({mode}{size_note}, workers={workers})...",
+        style="blue",
+    )
+
+    def _on_progress(name: str, status: str) -> None:
+        style = (
+            "green"
+            if "wrote" in status or "would write" in status
+            else ("yellow" if "exists" in status else "red")
+        )
+        _get_console().print(f"  {name}: {status}", style=style)
+
+    try:
+        results = animate_games(
+            input_paths,
+            fps=fps,
+            duration_seconds=duration_seconds,
+            size=size,
+            workers=workers,
+            force=force,
+            dry_run=dry_run,
+            ffmpeg_bin=ffmpeg_path,
+            on_progress=_on_progress,
+        )
+    except ValueError as exc:
+        raise click.BadParameter(str(exc)) from exc
+
+    ok = sum(1 for item in results if item.success and not item.skipped)
+    skipped = sum(1 for item in results if item.skipped)
+    failed = sum(1 for item in results if not item.success)
+    _get_console().print(
+        f"\n✅ {ok} encoded, {skipped} skipped, {failed} failed "
+        f"({len(results)} albums)",
+        style="green" if failed == 0 else "yellow",
+    )
+    if failed:
+        raise SystemExit(1)
+
+
+def _format_gap_minutes(minutes: float) -> str:
+    """
+    Format a gap for the analyze timeline.
+
+    Parameters
+    ----------
+    minutes : float
+        Gap length in minutes.
+
+    Returns
+    -------
+    str
+        Human-readable duration.
+    """
+    if minutes < 1.0:
+        return f"{max(minutes * 60.0, 0.0):.0f} sec"
+    if minutes < 120.0:
+        return f"{minutes:.1f} min"
+    hours = minutes / 60.0
+    if hours < 48.0:
+        return f"{hours:.1f} h"
+    return f"{hours / 24.0:.1f} days"
+
+
+def display_game_analysis(
+    results: dict, processing_time: Optional[float] = None
+) -> None:
+    """
+    Print albums, breaks, leftover clusters, and an inter-shot gap histogram.
+
+    Parameters
+    ----------
+    results : dict
+        Payload from ``GameDetector.analyze_games``.
+    processing_time : float, optional
+        Seconds spent clustering.
+    """
+    if not results.get("success", False):
+        _get_console().print(
+            f"❌ Game analysis failed: {results.get('error', 'Unknown error')}",
+            style="red",
+        )
+        return
+
+    summary = results.get("summary", {})
+    Table = _get_table()
+
+    from sportball.detectors.game import format_fractional_minutes
+
+    current_gap = float(summary.get("min_gap_minutes", 10))
+    min_photos = summary.get("min_photos")
+    min_rate = summary.get("min_photos_per_hour")
+    if min_photos is None:
+        photos_floor = "no --min-photos"
+    else:
+        photos_floor = f"--min-photos {min_photos}"
+    if min_rate is None:
+        rate_floor = "no --min-rate"
+    else:
+        rate_floor = f"--min-rate {min_rate}/h"
+    _get_console().print(
+        f"\n{summary.get('total_photos', 0)} photos, "
+        f"{summary.get('total_games', 0)} games, "
+        f"{summary.get('unsorted_photos', 0)} unsorted, "
+        f"span {_format_gap_minutes(float(summary.get('span_minutes', 0)))}, "
+        f"{photos_floor}, {rate_floor}, "
+        f"--min-gap {format_fractional_minutes(current_gap * 60.0)} "
+        f"({current_gap * 60.0:g}s)"
+    )
+    if processing_time is not None:
+        _get_console().print(f"Clustered in {processing_time:.1f}s")
+
+    timeline_table = Table(title="How photos will be sorted")
+    timeline_table.add_column("", style="dim", width=8)
+    timeline_table.add_column("Album", style="cyan")
+    timeline_table.add_column("When", style="green")
+    timeline_table.add_column("Duration", style="yellow", justify="right")
+    timeline_table.add_column("Photos", style="magenta", justify="right")
+    timeline_table.add_column("Rate", style="blue", justify="right")
+    timeline_table.add_column("Notes", style="white")
+
+    for event in results.get("timeline", []):
+        kind = event.get("kind")
+        if kind == "break":
+            timeline_table.add_row(
+                "break",
+                "",
+                "",
+                _format_gap_minutes(float(event.get("gap_minutes", 0))),
+                "",
+                "",
+                f"{event.get('after', '')} → {event.get('before', '')}",
+            )
+            continue
+        notes = event.get("reason", "") if kind == "unsorted" else ""
+        timeline_table.add_row(
+            "game" if kind == "game" else "skip",
+            str(event.get("label", "")),
+            f"{event.get('start_label', '')}–{event.get('end_label', '')}",
+            f"{event.get('duration_minutes', 0):.1f} min",
+            str(event.get("photo_count", 0)),
+            f"{event.get('photos_per_hour', 0):.0f}/h",
+            notes,
+        )
+
+    _get_console().print()
+    _get_console().print(timeline_table)
+
+    gap_histogram = results.get("gap_histogram", [])
+    if gap_histogram:
+        gap_table = Table(
+            title=(
+                "Seconds between consecutive shots "
+                f"(current --min-gap {format_fractional_minutes(current_gap * 60.0)}; "
+                "keep = same game, split = new game)"
+            )
+        )
+        gap_table.add_column("Gap", style="green", no_wrap=True)
+        gap_table.add_column("--min-gap", style="yellow", justify="right")
+        gap_table.add_column("Pairs", style="magenta", justify="right")
+        gap_table.add_column("Histogram", style="cyan")
+        gap_table.add_column("If set here", style="white")
+        for row in gap_histogram:
+            gap_table.add_row(
+                str(row.get("label", "")),
+                str(row.get("min_gap_minutes", "")),
+                str(row.get("count", 0)),
+                str(row.get("bar", "")),
+                str(row.get("effect", "")),
+            )
+        _get_console().print()
+        _get_console().print(gap_table)
+        _get_console().print(
+            "Set --min-gap to a bin's minutes value to start splitting at that gap.",
+            style="dim",
+        )
+
+    unsorted = results.get("unsorted", [])
+    if unsorted:
+        leftover_table = Table(title="Unsorted clusters (will stay in the dump)")
+        leftover_table.add_column("When", style="green")
+        leftover_table.add_column("Photos", justify="right", style="magenta")
+        leftover_table.add_column("Duration", justify="right", style="yellow")
+        leftover_table.add_column("Rate", justify="right", style="blue")
+        leftover_table.add_column("Why", style="white")
+        for cluster in unsorted:
+            leftover_table.add_row(
+                f"{cluster.get('start_label', '')}–{cluster.get('end_label', '')}",
+                str(cluster.get("photo_count", 0)),
+                f"{cluster.get('duration_minutes', 0):.1f} min",
+                f"{cluster.get('photos_per_hour', 0):.0f}/h",
+                str(cluster.get("reason", "")),
+            )
+        _get_console().print()
+        _get_console().print(leftover_table)
+    elif not results.get("games"):
+        _get_console().print("\nNo games and no leftover clusters.", style="yellow")
 
 
 def display_game_results(
-    results: dict, output_dir: Path, copy_files: bool, analyze_only: bool = False, processing_time: Optional[float] = None
-):
-    """Display game detection results."""
+    results: dict,
+    output_dir: Path,
+    copy_files: bool,
+    processing_time: Optional[float] = None,
+) -> None:
+    """
+    Display game detection results and write album folders.
+
+    Parameters
+    ----------
+    results : dict
+        Payload from ``detect_games``.
+    output_dir : Path
+        Destination for numbered game folders.
+    copy_files : bool
+        Copy files when True; symlink otherwise.
+    processing_time : float, optional
+        Seconds spent clustering.
+    """
 
     if not results.get("success", False):
         _get_console().print(
@@ -298,6 +772,9 @@ def display_game_results(
     total_photos = 0
     total_duration = 0
 
+    from sportball.detectors.game import format_game_id
+
+    total_games = len(games)
     for game in games:
         duration_minutes = game.get("duration_minutes", 0)
         photo_count = game.get("photo_count", 0)
@@ -308,7 +785,7 @@ def display_game_results(
         total_duration += duration_minutes
 
         table.add_row(
-            str(game.get("game_id", "N/A")),
+            format_game_id(int(game.get("game_id", 1)), total_games),
             game.get("start_time_formatted", "N/A"),
             game.get("end_time_formatted", "N/A"),
             f"{duration_minutes:.1f} min",
@@ -318,17 +795,17 @@ def display_game_results(
         )
 
     _get_console().print(table)
-    
+
     # Format timing information
     if processing_time is not None:
         hours = int(processing_time // 3600)
         minutes = int((processing_time % 3600) // 60)
         seconds = int(processing_time % 60)
         time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-        
+
         # Calculate photos per second
         photos_per_second = total_photos / processing_time if processing_time > 0 else 0
-        
+
         _get_console().print(
             f"\n📊 Summary: {len(games)} games detected in {time_str}, {photos_per_second:.1f} photos/sec, {total_photos} photos, {total_duration:.1f} minutes total"
         )
@@ -337,17 +814,10 @@ def display_game_results(
             f"\n📊 Summary: {len(games)} games detected, {total_photos} photos, {total_duration:.1f} minutes total"
         )
 
-    # Create organized folders (unless analyze-only mode)
-    if not analyze_only:
-        _get_console().print(
-            f"\n📁 Creating organized folders in {output_dir}...", style="blue"
-        )
-        create_organized_folders(games, output_dir, copy_files)
-    else:
-        _get_console().print(
-            "\n📊 Analysis complete - no folders created (use without --analyze-only to create folders)",
-            style="blue",
-        )
+    _get_console().print(
+        f"\n📁 Creating organized folders in {output_dir}...", style="blue"
+    )
+    create_organized_folders(games, output_dir, copy_files)
 
 
 def create_organized_folders(
@@ -376,9 +846,13 @@ def create_organized_folders(
     output_dir.mkdir(parents=True, exist_ok=True)
     game_folders = {}
 
+    from sportball.detectors.game import format_game_id
+
+    total_games = len(games)
     for game in games:
         # Create game folder name
-        game_id = game.get("game_id", 1)
+        game_id = int(game.get("game_id", 1))
+        game_label = format_game_id(game_id, total_games)
         start_time = game.get("start_time_formatted", "00:00:00")
         end_time = game.get("end_time_formatted", "00:00:00")
 
@@ -398,7 +872,7 @@ def create_organized_folders(
         else:
             date_str = "UnknownDate"
 
-        game_folder_name = f"Game{game_id}_{date_str}_{start_time.replace(':', '')}-{end_time.replace(':', '')}"
+        game_folder_name = f"Game{game_label}_{date_str}_{start_time.replace(':', '')}-{end_time.replace(':', '')}"
         game_folder = output_dir / game_folder_name
         game_folder.mkdir(exist_ok=True)
 
@@ -435,294 +909,9 @@ def create_organized_folders(
                         # Fallback to copying
                         shutil.copy2(photo_path, dest_path)
 
-        game_folders[f"Game{game_id}"] = game_folder
+        game_folders[f"Game{game_label}"] = game_folder
 
     _get_console().print(
         f"✅ Created {len(game_folders)} organized game folders", style="green"
     )
     return game_folders
-
-
-def _handle_jersey_splitting(
-    core,
-    input_path: Path,
-    output_dir: Path,
-    analyze_only: bool,
-    copy_files: bool,
-    save_sidecar: bool,
-    pose_confidence: float,
-    color_similarity: float,
-    min_team_photos: int,
-):
-    """Handle jersey-based game splitting."""
-    console = _get_console()
-    
-    if analyze_only:
-        console.print(f"📊 Analyzing jersey colors in {input_path}...", style="blue")
-    else:
-        console.print(
-            f"🎨 Splitting games by jersey colors in {input_path}...", style="blue"
-        )
-        console.print(f"Output: {output_dir}")
-    
-    console.print(f"Pose confidence threshold: {pose_confidence}")
-    console.print(f"Color similarity threshold: {color_similarity}")
-    console.print(f"Minimum team photos: {min_team_photos}")
-    
-    # Find image files
-    image_files = []
-    for ext in [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]:
-        image_files.extend(input_path.rglob(f"*{ext}"))
-        image_files.extend(input_path.rglob(f"*{ext.upper()}"))
-    
-    if not image_files:
-        console.print("❌ No image files found", style="red")
-        return
-    
-    console.print(f"Found {len(image_files)} images to process")
-    
-    # Check for existing pose detection data
-    missing_pose_data = []
-    for image_file in image_files:
-        sidecar_data = core.sidecar.load_data(image_file, "pose_detection")
-        if not sidecar_data:
-            missing_pose_data.append(image_file)
-    
-    if missing_pose_data:
-        console.print(
-            f"⚠️  Warning: {len(missing_pose_data)} images missing pose detection data",
-            style="yellow"
-        )
-        console.print(
-            "Consider running pose detection first: sb pose detect /path/to/images",
-            style="yellow"
-        )
-    
-    # Perform jersey splitting
-    import time
-    start_time = time.time()
-    
-    Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn = _get_progress()
-    
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TimeElapsedColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task("Processing jersey colors...", total=None)
-        
-        # Perform jersey-based game splitting
-        results = core.split_games_by_jersey_color(
-            image_files,
-            output_dir=output_dir if not analyze_only else None,
-            save_sidecar=save_sidecar,
-            pose_confidence_threshold=pose_confidence,
-            color_similarity_threshold=color_similarity,
-            min_team_photos=min_team_photos,
-        )
-        
-        progress.update(task, completed=True, description="Jersey splitting complete")
-    
-    end_time = time.time()
-    processing_time = end_time - start_time
-    
-    # Display results
-    _display_jersey_splitting_results(results, output_dir, copy_files, analyze_only, processing_time)
-
-
-def _display_jersey_splitting_results(
-    results: dict, 
-    output_dir: Path, 
-    copy_files: bool, 
-    analyze_only: bool = False, 
-    processing_time: Optional[float] = None
-):
-    """Display jersey splitting results."""
-    console = _get_console()
-    
-    if not results.get("success", False):
-        console.print(
-            f"❌ Jersey splitting failed: {results.get('error', 'Unknown error')}",
-            style="red",
-        )
-        return
-    
-    summary = results.get("summary", {})
-    detected_teams = results.get("detected_teams", [])
-    split_decisions = results.get("split_decisions", [])
-    
-    if not detected_teams:
-        console.print("❌ No teams detected", style="red")
-        return
-    
-    # Display detected teams
-    Table = _get_table()
-    teams_table = Table(title="Detected Teams")
-    teams_table.add_column("Team Name", style="cyan")
-    teams_table.add_column("Dominant Color", style="green")
-    teams_table.add_column("Photo Count", style="magenta", justify="right")
-    teams_table.add_column("Confidence", style="yellow", justify="right")
-    
-    for team in detected_teams:
-        color_rgb = team.get("dominant_color", {}).get("rgb_color", (0, 0, 0))
-        color_str = f"RGB{color_rgb}"
-        
-        teams_table.add_row(
-            team.get("team_name", "Unknown"),
-            color_str,
-            str(team.get("photo_count", 0)),
-            f"{team.get('confidence', 0.0):.2f}",
-        )
-    
-    console.print(teams_table)
-    
-    # Display splitting statistics
-    total_photos = summary.get("total_photos", 0)
-    split_photos = summary.get("split_photos", 0)
-    single_team_photos = summary.get("single_team_photos", 0)
-    multi_team_photos = summary.get("multi_team_photos", 0)
-    no_team_photos = summary.get("no_team_photos", 0)
-    avg_confidence = summary.get("average_confidence", 0.0)
-    
-    # Format timing information
-    if processing_time is not None:
-        hours = int(processing_time // 3600)
-        minutes = int((processing_time % 3600) // 60)
-        seconds = int(processing_time % 60)
-        time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-        
-        # Calculate photos per second
-        photos_per_second = total_photos / processing_time if processing_time > 0 else 0
-        
-        console.print(
-            f"\n📊 Summary: {len(detected_teams)} teams detected in {time_str}, "
-            f"{photos_per_second:.1f} photos/sec, {total_photos} photos total"
-        )
-    else:
-        console.print(
-            f"\n📊 Summary: {len(detected_teams)} teams detected, {total_photos} photos total"
-        )
-    
-    console.print(f"Split photos: {split_photos}")
-    console.print(f"Single team photos: {single_team_photos}")
-    console.print(f"Multi-team photos: {multi_team_photos}")
-    console.print(f"No team photos: {no_team_photos}")
-    console.print(f"Average confidence: {avg_confidence:.2f}")
-    
-    # Create organized folders (unless analyze-only mode)
-    if not analyze_only and output_dir:
-        console.print(
-            f"\n📁 Creating organized folders in {output_dir}...", style="blue"
-        )
-        _create_jersey_organized_folders(split_decisions, detected_teams, output_dir, copy_files)
-    else:
-        console.print(
-            "\n📊 Analysis complete - no folders created (use without --analyze-only to create folders)",
-            style="blue",
-        )
-
-
-def _create_jersey_organized_folders(
-    split_decisions: List[Dict], 
-    detected_teams: List[Dict], 
-    output_dir: Path, 
-    copy_files: bool = False
-) -> Dict[str, Path]:
-    """
-    Create organized folders for jersey-based game splitting.
-    
-    Args:
-        split_decisions: List of splitting decisions
-        detected_teams: List of detected teams
-        output_dir: Output directory for organized games
-        copy_files: Whether to copy files (True) or create symlinks (False)
-        
-    Returns:
-        Dictionary mapping team names to folder paths
-    """
-    console = _get_console()
-    
-    if not detected_teams:
-        console.print("❌ No teams to organize", style="red")
-        return {}
-    
-    console.print(
-        f"📁 Creating organized folders for {len(detected_teams)} teams...", style="blue"
-    )
-    
-    # Create output directory
-    output_dir.mkdir(parents=True, exist_ok=True)
-    team_folders = {}
-    
-    # Create folders for each team
-    for team in detected_teams:
-        team_name = team.get("team_name", "Unknown")
-        team_folder = output_dir / team_name
-        team_folder.mkdir(exist_ok=True)
-        team_folders[team_name] = team_folder
-        
-        console.print(f"📂 Created folder: {team_name}", style="green")
-    
-    # Create folders for special categories
-    multi_team_folder = output_dir / "MultiTeam"
-    multi_team_folder.mkdir(exist_ok=True)
-    
-    single_team_folder = output_dir / "SingleTeam"
-    single_team_folder.mkdir(exist_ok=True)
-    
-    no_team_folder = output_dir / "NoTeam"
-    no_team_folder.mkdir(exist_ok=True)
-    
-    # Organize photos
-    for decision in split_decisions:
-        photo_path = Path(decision.get("photo_path", ""))
-        if not photo_path.exists():
-            continue
-        
-        should_split = decision.get("should_split", False)
-        split_games = decision.get("split_games", [])
-        
-        if should_split and len(split_games) > 1:
-            # Multi-team photo
-            dest_path = multi_team_folder / photo_path.name
-            _copy_or_symlink_photo(photo_path, dest_path, copy_files)
-        elif len(split_games) == 1:
-            # Single team photo
-            team_name = split_games[0]
-            if team_name in team_folders:
-                dest_path = team_folders[team_name] / photo_path.name
-                _copy_or_symlink_photo(photo_path, dest_path, copy_files)
-        else:
-            # No clear team
-            dest_path = no_team_folder / photo_path.name
-            _copy_or_symlink_photo(photo_path, dest_path, copy_files)
-    
-    console.print(
-        "✅ Created organized folders for jersey-based splitting", style="green"
-    )
-    return team_folders
-
-
-def _copy_or_symlink_photo(src_path: Path, dest_path: Path, copy_files: bool):
-    """Copy or symlink photo from source to destination."""
-    try:
-        import shutil
-        
-        if copy_files:
-            # Copy file
-            if dest_path.exists():
-                dest_path.unlink()
-            shutil.copy2(src_path, dest_path)
-        else:
-            # Create symlink
-            if dest_path.exists():
-                dest_path.unlink()
-            dest_path.symlink_to(src_path.resolve())
-    except Exception as e:
-        console = _get_console()
-        console.print(
-            f"⚠️  Warning: Could not copy/symlink {src_path}: {e}",
-            style="yellow",
-        )

@@ -1,7 +1,7 @@
 """Utility functions for the sportball package."""
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 from PIL import Image, ImageOps
 import logging
 
@@ -72,30 +72,4 @@ def find_image_files(input_path: Path, recursive: bool = True) -> List[Path]:
     
     # Remove duplicates and sort
     return sorted(list(set(image_files)))
-
-
-def check_sidecar_file_parallel(
-    image_file: Path, force: bool, operation_type: str = "face_detection"
-) -> tuple[Path, bool]:
-    """
-    Check if a sidecar file exists for an image file (thread-safe).
-    
-    Args:
-        image_file: Path to the image file
-        force: Whether to force processing even if sidecar exists
-        operation_type: Type of operation to check for
-        
-    Returns:
-        Tuple of (image_file, should_process) where should_process is True if
-        the image should be processed
-    """
-    # Look for sidecar file
-    for ext in [".bin", ".rkyv", ".json"]:
-        sidecar_file = image_file.with_suffix(ext)
-        if sidecar_file.exists():
-            # Sidecar exists
-            return (image_file, force)
-    
-    # No sidecar found
-    return (image_file, True)
 

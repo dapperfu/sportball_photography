@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sportball"
-version = "1.3.2"
-description = "Unified Sports Photo Analysis Package - AI-powered sports photo processing and organization"
+version = "1.3.4"
+description = "Sports photo organization: EXIF game splitting"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
@@ -15,8 +15,7 @@ maintainers = [
     {name = "Sportball Team", email = "team@sportball.ai"}
 ]
 keywords = [
-    "computer-vision", "ai", "photo-sorting", "sports", "face-recognition", 
-    "image-processing", "machine-learning", "yolo", "object-detection", "game-analysis"
+    "photo-sorting", "sports", "exif", "image-processing", "game-analysis"
 ]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -25,53 +24,27 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Multimedia :: Graphics :: Graphics Conversion",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Image Processing",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = [
-    # Core image processing
+    # Image helpers
     "Pillow>=10.0.0",
-    "numpy>=1.24.0",
     
     # EXIF handling
     "fast-exif-rs-py @ git+https://github.com/dapperfu/fast-exif-rs-py.git#egg=fast-exif-rs-py",
-    
-    # Machine Learning
-    "torch>=2.0.0",
-    "torchvision>=0.15.0",
-    
-    # Pose Detection and Color Analysis
-    "mediapipe>=0.10.0",
-    "scikit-learn>=1.3.0",
-    "opencv-python>=4.8.0",
-    
-    # Face recognition
-    "face-recognition>=1.3.0",
-    "dlib>=19.24.0",
-    "insightface>=0.7.3",
-    "onnxruntime-gpu>=1.23.0",
-    
-    # Object detection
-    "ultralytics>=8.0.0",
     
     # CLI and utilities
     "click>=8.1.0",
     "rich>=13.0.0",
     "tqdm>=4.65.0",
     "loguru>=0.7.0",
-    
-    # Data handling
-    "pandas>=2.0.0",
-    "matplotlib>=3.7.0",
     
     # Configuration
     "pyyaml>=6.0",
@@ -82,19 +55,9 @@ dependencies = [
     
     # Performance
     "psutil>=5.9.0",
-    
-    # High-performance sidecar operations (Rust implementation)
-    "image-sidecar-rust @ git+https://github.com/dapperfu/image-sidecar-rust.git",
 ]
 
 [project.optional-dependencies]
-# CUDA support (recommended for GPU acceleration)
-# Note: onnxruntime-gpu is now included in main dependencies for CUDA support
-cuda = [
-    "torch[cuda]>=2.0.0",
-    "torchvision[cuda]>=0.15.0",
-]
-
 # Development dependencies
 dev = [
     "pytest>=7.4.0",
@@ -108,7 +71,7 @@ dev = [
 
 # All optional dependencies
 all = [
-    "sportball[cuda,dev]"
+    "sportball[dev]"
 ]
 
 [project.urls]
@@ -122,17 +85,13 @@ sportball = "sportball.cli.ultra_minimal_main:main"
 sb = "sportball.cli.ultra_minimal_main:main"
 
 [tool.setuptools]
-packages = ["sportball", "sportball.cli", "sportball.cli.commands", "sportball.detectors"]
+packages = ["sportball", "sportball.cli", "sportball.cli.commands", "sportball.detectors", "sportball.detection"]
 package-dir = {"" = "."}
 
 [tool.setuptools.package-data]
 "sportball" = [
     "config/*.json",
     "config/*.yaml",
-    "models/*.pkl",
-    "models/*.h5",
-    "models/*.onnx",
-    "models/*.pt",
 ]
 
 [tool.setuptools.exclude-package-data]
@@ -153,7 +112,7 @@ known_first_party = ["sportball"]
 
 # MyPy configuration
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -170,13 +129,9 @@ show_error_codes = true
 
 [[tool.mypy.overrides]]
 module = [
-    "face_recognition.*",
-    "dlib.*",
-    "torch.*",
-    "torchvision.*",
-    "ultralytics.*",
     "loguru.*",
     "fast_exif_rs_py",
+    "tqdm",
 ]
 ignore_missing_imports = true
 
@@ -198,7 +153,6 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "cuda: marks tests that require CUDA",
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
 ]

@@ -16,13 +16,6 @@ from typing import Callable, Optional, Union
 from loguru import logger
 
 try:
-    import torch
-
-    TORCH_AVAILABLE = True
-except ImportError:
-    TORCH_AVAILABLE = False
-
-try:
     from tqdm import tqdm
 
     TQDM_AVAILABLE = True
@@ -32,54 +25,20 @@ except ImportError:
 
 def gpu_accelerated(device: Optional[str] = None, fallback_cpu: bool = True):
     """
-    Decorator to automatically handle GPU acceleration for functions.
+    Compatibility decorator. Neural-net GPU work lives in other projects.
 
-    Args:
-        device: Specific GPU device to use (e.g., 'cuda:0', 'cuda:1')
-        fallback_cpu: Whether to fall back to CPU if GPU is not available
-
-    Example:
-        @gpu_accelerated(device='cuda:0')
-        def detect_faces(image):
-            # Function will automatically use GPU if available
-            pass
+    Parameters
+    ----------
+    device : str, optional
+        Unused. Kept for call sites that still pass a device name.
+    fallback_cpu : bool
+        Unused. Kept for call-site compatibility.
     """
 
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            if not TORCH_AVAILABLE:
-                logger.warning("PyTorch not available, running on CPU")
-                return func(*args, **kwargs)
-
-            # Determine device
-            if device:
-                target_device = device
-            else:
-                target_device = "cuda" if torch.cuda.is_available() else "cpu"
-
-            # Set device context
-            original_device = None
-            if hasattr(func, "__self__") and hasattr(func.__self__, "device"):
-                original_device = func.__self__.device
-                func.__self__.device = target_device
-
-            try:
-                result = func(*args, **kwargs)
-                return result
-            except Exception as e:
-                if fallback_cpu and target_device != "cpu":
-                    logger.warning(f"GPU operation failed, falling back to CPU: {e}")
-                    target_device = "cpu"
-                    if hasattr(func, "__self__") and hasattr(func.__self__, "device"):
-                        func.__self__.device = target_device
-                    return func(*args, **kwargs)
-                else:
-                    raise
-            finally:
-                # Restore original device
-                if original_device is not None and hasattr(func, "__self__"):
-                    func.__self__.device = original_device
+            return func(*args, **kwargs)
 
         return wrapper
 

@@ -1,17 +1,8 @@
 """
-Sportball - Unified Sports Photo Analysis Package
+Sportball - sports photo organization.
 
-A comprehensive Python package for analyzing and organizing sports photographs
-using computer vision, machine learning, and AI techniques.
-
-Features:
-- Face detection and recognition
-- Object detection and extraction
-- Game boundary detection and splitting
-- Jersey color and number detection
-- Photo quality assessment
-- Parallel processing with GPU support
-- Comprehensive CLI interface
+EXIF-based game splitting.
+Neural-net detection lives in other projects.
 
 Author: Claude Sonnet 4 (claude-3-5-sonnet-20241022)
 Generated via Cursor IDE (cursor.sh) with AI assistance
@@ -34,13 +25,6 @@ if not os.environ.get("SPORTBALL_VERBOSE"):
 
     # Suppress specific noisy loggers
     logging.getLogger("PIL").setLevel(logging.ERROR)
-    logging.getLogger("matplotlib").setLevel(logging.ERROR)
-    logging.getLogger("torch").setLevel(logging.ERROR)
-    logging.getLogger("torchvision").setLevel(logging.ERROR)
-    logging.getLogger("ultralytics").setLevel(logging.ERROR)
-    logging.getLogger("insightface").setLevel(logging.ERROR)
-    logging.getLogger("onnxruntime").setLevel(logging.ERROR)
-    logging.getLogger("cv2").setLevel(logging.ERROR)
 
 __version__ = "1.0.0"
 __author__ = "Sportball Team"
@@ -53,13 +37,6 @@ def _lazy_import_core():
     from .core import SportballCore
 
     return SportballCore
-
-
-def _lazy_import_sidecar():
-    """Lazy import SidecarManager to avoid heavy dependencies."""
-    from .sidecar import SidecarManager
-
-    return SidecarManager
 
 
 def _lazy_import_decorators():
@@ -76,13 +53,11 @@ def _lazy_import_decorators():
 
 # Create lazy properties for backward compatibility
 class LazySportballCore:
+    def __call__(self, *args, **kwargs):
+        return _lazy_import_core()(*args, **kwargs)
+
     def __getattr__(self, name):
         return getattr(_lazy_import_core(), name)
-
-
-class LazySidecarManager:
-    def __getattr__(self, name):
-        return getattr(_lazy_import_sidecar(), name)
 
 
 class LazyDecorators:
@@ -99,16 +74,9 @@ class LazyDecorators:
 
 # Export lazy objects
 SportballCore = LazySportballCore()
-SidecarManager = LazySidecarManager()
 decorators = LazyDecorators()
 
-# Don't access decorators immediately - keep them truly lazy
-# gpu_accelerated = decorators.gpu_accelerated
-# parallel_processing = decorators.parallel_processing
-# progress_tracked = decorators.progress_tracked
-# cached_result = decorators.cached_result
-
-__all__ = ["SportballCore", "SidecarManager", "decorators"]
+__all__ = ["SportballCore", "decorators"]
 
 from . import _version
 

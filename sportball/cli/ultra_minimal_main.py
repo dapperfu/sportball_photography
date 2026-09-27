@@ -68,41 +68,15 @@ def cli(
     """
     Sportball - Unified Sports Photo Analysis Package
 
-    A comprehensive tool for analyzing and organizing sports photographs
-    using computer vision, machine learning, and AI techniques.
+    Split a dump of sports photos into game folders using EXIF times.
 
-    Features:
-    - Face detection and recognition
-    - Object detection and extraction (including balls)
-    - Game boundary detection
-    - Photo quality assessment
-    - Sidecar file management and statistics
-    - Parallel processing with GPU support
+    Neural-net face/object/pose detection lives in other projects.
 
     Examples:
 
     \b
-    # Detect faces in images
-    sportball face detect /path/to/images
-
-    \b
-    # Extract objects from images
-    sportball object extract /path/to/images --output /path/to/output
-
-    \b
     # Split photos into games
-    sportball games split /path/to/photos --output /path/to/games
-
-    \b
-    # Detect balls specifically
-    sportball object detect /path/to/images --classes "sports ball"
-
-    \b
-    # Assess photo quality
-    sportball quality assess /path/to/images
-
-    # Analyze sidecar files
-    sportball sidecar stats /path/to/images
+    sportball split --output SpringGames *
 
     Bash Completion:
     To enable bash completion, add this to your ~/.bashrc or ~/.bash_profile:
@@ -145,28 +119,16 @@ def cli(
 def _load_commands():
     """Load command groups lazily to avoid heavy imports at startup."""
     from .commands import (
-        face_commands,
-        object_commands,
         game_commands,
-        quality_commands,
+        pano_commands,
         utility_commands,
-        sidecar_commands,
-        annotate_commands,
-        unified_commands,
     )
 
-    # Add unified commands first (these are the primary commands)
-    cli.add_command(unified_commands.detect, name="detect")
-    cli.add_command(unified_commands.extract, name="extract")
-    
-    # Add individual command groups
-    cli.add_command(face_commands.face_group, name="face")
-    cli.add_command(object_commands.object_group, name="object")
-    cli.add_command(game_commands.game_group, name="games")
-    cli.add_command(quality_commands.quality_group, name="quality")
+    cli.add_command(game_commands.split)
+    cli.add_command(game_commands.analyze)
+    cli.add_command(game_commands.animate)
+    cli.add_command(pano_commands.pano)
     cli.add_command(utility_commands.utility_group, name="util")
-    cli.add_command(sidecar_commands.sidecar_group, name="sidecar")
-    cli.add_command(annotate_commands.annotate, name="annotate")
 
 
 @cli.command()
@@ -205,46 +167,13 @@ _{script_name}_completion() {{
     
     # Main commands
     if [[ $COMP_CWORD -eq 1 ]]; then
-        opts="detect extract face games object quality sidecar util completion --help --version --base-dir --gpu --no-gpu --workers --cache --no-cache --verbose --quiet"
+        opts="analyze split animate pano util completion --help --version --base-dir --gpu --no-gpu --workers --cache --no-cache --verbose --quiet"
         COMPREPLY=( $(compgen -W "${{opts}}" -- "${{cur}}") )
         return 0
     fi
     
     # Sub-commands based on main command
     case "${{COMP_WORDS[1]}}" in
-        detect|extract)
-            # These are standalone commands, no sub-commands
-            ;;
-        face)
-            if [[ $COMP_CWORD -eq 2 ]]; then
-                opts="detect recognize cluster benchmark"
-                COMPREPLY=( $(compgen -W "${{opts}}" -- "${{cur}}") )
-            fi
-            ;;
-        games)
-            if [[ $COMP_CWORD -eq 2 ]]; then
-                opts="split detect analyze"
-                COMPREPLY=( $(compgen -W "${{opts}}" -- "${{cur}}") )
-            fi
-            ;;
-        object)
-            if [[ $COMP_CWORD -eq 2 ]]; then
-                opts="detect extract analyze"
-                COMPREPLY=( $(compgen -W "${{opts}}" -- "${{cur}}") )
-            fi
-            ;;
-        quality)
-            if [[ $COMP_CWORD -eq 2 ]]; then
-                opts="assess analyze filter"
-                COMPREPLY=( $(compgen -W "${{opts}}" -- "${{cur}}") )
-            fi
-            ;;
-        sidecar)
-            if [[ $COMP_CWORD -eq 2 ]]; then
-                opts="stats analyze validate"
-                COMPREPLY=( $(compgen -W "${{opts}}" -- "${{cur}}") )
-            fi
-            ;;
         util)
             if [[ $COMP_CWORD -eq 2 ]]; then
                 opts="cache-clear cache-stats system-info"
@@ -295,13 +224,10 @@ _{script_name}() {{
         command)
             local commands
             commands=(
-                'detect:Detect faces and objects in images using unified processing'
-                'extract:Extract detected faces and objects from images'
-                'face:Face detection and recognition commands'
-                'games:Game detection and splitting commands'
-                'object:Object detection and extraction commands'
-                'quality:Photo quality assessment commands'
-                'sidecar:Sidecar file management and statistics commands'
+                'analyze:Show how photos would be split into games'
+                'split:Split photos into game folders'
+                'animate:Encode each game folder to an MP4'
+                'pano:Find action panoramas and write Hugin projects'
                 'util:Utility commands for cache management and system operations'
                 'completion:Generate shell completion script'
             )
@@ -309,23 +235,8 @@ _{script_name}() {{
             ;;
         args)
             case $line[1] in
-                detect|extract)
-                    # These are standalone commands, no sub-commands
-                    ;;
-                face)
-                    _arguments '1: :(detect recognize cluster benchmark)'
-                    ;;
                 games)
                     _arguments '1: :(split detect analyze)'
-                    ;;
-                object)
-                    _arguments '1: :(detect extract analyze)'
-                    ;;
-                quality)
-                    _arguments '1: :(assess analyze filter)'
-                    ;;
-                sidecar)
-                    _arguments '1: :(stats analyze validate)'
                     ;;
                 util)
                     _arguments '1: :(cache-clear cache-stats system-info)'

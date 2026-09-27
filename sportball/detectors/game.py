@@ -8,11 +8,12 @@ Author: Claude Sonnet 4 (claude-3-5-sonnet-20241022)
 Generated via Cursor IDE (cursor.sh) with AI assistance
 """
 
-import json
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Mapping, Optional, Tuple, Any
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple, Union, Any
 from loguru import logger
 
 _IMAGE_SUFFIXES = {
@@ -50,6 +51,180 @@ _EXIF_DATETIME_FORMATS = (
     "%Y-%m-%dT%H:%M:%S",
     "%Y-%m-%dT%H:%M:%S.%f",
 )
+
+_GLOB_METACHARACTERS = "*?["
+
+DEFAULT_MIN_PHOTOS = 10
+DEFAULT_MIN_PHOTOS_PER_HOUR = 100
+
+
+def _has_glob_metacharacters(value: str) -> bool:
+    """
+    Return whether ``value`` looks like a glob pattern.
+
+    Parameters
+    ----------
+    value : str
+        Path or glob supplied on the command line.
+
+    Returns
+    -------
+    bool
+        True when ``*``, ``?``, or ``[`` is present.
+    """
+    return any(char in value for char in _GLOB_METACHARACTERS)
+
+
+def expand_input_directories(
+    inputs: Sequence[str],
+    output_dir: Optional[Path] = None,
+    cwd: Optional[Path] = None,
+) -> List[Path]:
+    """
+    Expand user-supplied roots (including globs like ``*``) into directories.
+
+    Files are ignored. The output directory is skipped so a default
+    ``Games`` folder is not ingested when expanding ``*``.
+
+    Parameters
+    ----------
+    inputs : sequence of str
+        Directory paths or globs, e.g. ``("04_Apr", "05_May")`` or ``("*",)``.
+    output_dir : Path, optional
+        Destination for game folders; excluded from the result when it
+        matches an expanded path.
+    cwd : Path, optional
+        Base directory for relative paths and globs. Defaults to the
+        process working directory.
+
+    Returns
+    -------
+    list of Path
+        Existing directories, resolved, in a stable order.
+
+    Raises
+    ------
+    ValueError
+        If a non-glob path is missing, or nothing usable remains.
+    """
+    base = cwd if cwd is not None else Path.cwd()
+    exclude: Optional[Path] = None
+    if output_dir is not None:
+        exclude = output_dir if output_dir.is_absolute() else (base / output_dir)
+        exclude = exclude.resolve()
+
+    discovered: List[Path] = []
+    seen: set[Path] = set()
+
+    for raw in inputs:
+        text = str(raw)
+        if _has_glob_metacharacters(text):
+            matches = sorted(base.glob(text))
+        else:
+            candidate = Path(text)
+            if not candidate.is_absolute():
+                candidate = base / candidate
+            matches = [candidate]
+
+        if not matches and not _has_glob_metacharacters(text):
+            raise ValueError(f"Input path does not exist: {text}")
+
+        for match in matches:
+            if not match.is_dir():
+                continue
+            resolved = match.resolve()
+            if exclude is not None and resolved == exclude:
+                continue
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            discovered.append(resolved)
+
+    if not discovered:
+        raise ValueError("No input directories found")
+    return discovered
+
+
+def collect_photo_paths(
+    directories: Sequence[Path],
+    pattern: str = "*",
+    output_dir: Optional[Path] = None,
+) -> List[Path]:
+    """
+    Gather image files under one or more directories.
+
+    Paths are de-duplicated by resolved location. Anything inside
+    ``output_dir`` is omitted so a previous ``Games`` split is not
+    ingested again.
+
+    Parameters
+    ----------
+    directories : sequence of Path
+        Roots to search.
+    pattern : str
+        Glob passed to ``Path.rglob`` (default ``*``).
+    output_dir : Path, optional
+        Game-folder destination to exclude.
+
+    Returns
+    -------
+    list of Path
+        Image files, unsorted.
+    """
+    exclude: Optional[Path] = None
+    if output_dir is not None:
+        exclude = output_dir.resolve()
+
+    photos: List[Path] = []
+    seen: set[Path] = set()
+
+    for directory in directories:
+        for photo_path in directory.rglob(pattern):
+            if not photo_path.is_file():
+                continue
+            if photo_path.suffix.lower() not in _IMAGE_SUFFIXES:
+                continue
+            resolved = photo_path.resolve()
+            if exclude is not None and (
+                resolved == exclude or exclude in resolved.parents
+            ):
+                continue
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            photos.append(photo_path)
+
+    return photos
+
+
+def _normalize_photo_directories(
+    photo_directory: Union[Path, Sequence[Path]],
+) -> List[Path]:
+    """
+    Coerce a single path or a sequence of paths into a directory list.
+
+    Parameters
+    ----------
+    photo_directory : Path or sequence of Path
+        One dump folder or several (e.g. month folders).
+
+    Returns
+    -------
+    list of Path
+        Directories as ``Path`` objects.
+
+    Raises
+    ------
+    ValueError
+        If the input is empty.
+    """
+    if isinstance(photo_directory, (str, Path)):
+        directories = [Path(photo_directory)]
+    else:
+        directories = [Path(item) for item in photo_directory]
+    if not directories:
+        raise ValueError("No photo directories given")
+    return directories
 
 
 def _exif_tag_value(tags: Mapping[str, str], name: str) -> Optional[str]:
@@ -185,13 +360,628 @@ def timestamp_from_exif_tags(tags: Mapping[str, str]) -> Optional[datetime]:
     return parsed
 
 
+def photos_per_hour(photo_count: int, duration_minutes: float) -> float:
+    """
+    Convert a session's photo count into an hourly shooting rate.
+
+    A zero-length span (every photo at the same instant) is treated as
+    one second so the rate stays finite.
+
+    Parameters
+    ----------
+    photo_count : int
+        Number of photos in the session.
+    duration_minutes : float
+        Elapsed minutes from first to last capture.
+
+    Returns
+    -------
+    float
+        Photos per hour. Zero when ``photo_count`` is not positive.
+    """
+    if photo_count < 1:
+        return 0.0
+    minutes = duration_minutes if duration_minutes > 0.0 else (1.0 / 60.0)
+    return float(photo_count) * 60.0 / minutes
+
+
+def game_id_width(total_games: int) -> int:
+    """
+    Digit width for game numbers so lexical order matches numeric order.
+
+    At least two digits (``01``) so ``Game10`` does not sort before
+    ``Game2``. Wider when there are 100 or more games.
+
+    Parameters
+    ----------
+    total_games : int
+        How many games are in this split.
+
+    Returns
+    -------
+    int
+        Pad width, at least 2.
+    """
+    if total_games < 1:
+        return 2
+    return max(2, len(str(total_games)))
+
+
+def format_game_id(game_id: int, total_games: int) -> str:
+    """
+    Format a game number with zero padding.
+
+    Parameters
+    ----------
+    game_id : int
+        1-based game index.
+    total_games : int
+        How many games are in this split.
+
+    Returns
+    -------
+    str
+        Zero-padded id, e.g. ``01`` or ``001``.
+    """
+    return f"{int(game_id):0{game_id_width(total_games)}d}"
+
+
+_HISTOGRAM_BIN_MINUTES = (
+    1,
+    2,
+    5,
+    10,
+    15,
+    30,
+    60,
+    120,
+    180,
+    360,
+    720,
+    1440,
+)
+
+
+def histogram_bin_minutes(span_minutes: float, target_bins: int = 40) -> int:
+    """
+    Pick a histogram bin width for a capture span.
+
+    Parameters
+    ----------
+    span_minutes : float
+        Minutes from first to last photo.
+    target_bins : int
+        Approximate number of bins if every slot were filled.
+
+    Returns
+    -------
+    int
+        Bin width in minutes. At least 1, at most one day.
+    """
+    if span_minutes <= 0:
+        return 1
+    raw = span_minutes / float(max(target_bins, 1))
+    for size in _HISTOGRAM_BIN_MINUTES:
+        if raw <= size:
+            return size
+    return 1440
+
+
+def floor_to_bin(timestamp: datetime, bin_minutes: int) -> datetime:
+    """
+    Floor a capture time to the start of its histogram bin.
+
+    Parameters
+    ----------
+    timestamp : datetime
+        Naive capture time.
+    bin_minutes : int
+        Bin width in minutes.
+
+    Returns
+    -------
+    datetime
+        Bin start, seconds and microseconds cleared.
+    """
+    width = max(int(bin_minutes), 1)
+    if width >= 1440:
+        return datetime(timestamp.year, timestamp.month, timestamp.day)
+    minutes_since_midnight = timestamp.hour * 60 + timestamp.minute
+    slot = (minutes_since_midnight // width) * width
+    return datetime(
+        timestamp.year,
+        timestamp.month,
+        timestamp.day,
+        slot // 60,
+        slot % 60,
+    )
+
+
+def leftover_index_ranges(
+    photo_count: int,
+    boundaries: Sequence[Tuple[int, int]],
+) -> List[Tuple[int, int]]:
+    """
+    Inclusive index ranges that are not part of any detected game.
+
+    Parameters
+    ----------
+    photo_count : int
+        Number of photos in capture-time order.
+    boundaries : sequence of tuple of int
+        Inclusive ``(start, end)`` game ranges.
+
+    Returns
+    -------
+    list of tuple of int
+        Inclusive leftover ranges, in order.
+    """
+    if photo_count < 1:
+        return []
+    covered = [False] * photo_count
+    for start_idx, end_idx in boundaries:
+        low = max(0, int(start_idx))
+        high = min(photo_count - 1, int(end_idx))
+        for index in range(low, high + 1):
+            covered[index] = True
+
+    ranges: List[Tuple[int, int]] = []
+    index = 0
+    while index < photo_count:
+        if covered[index]:
+            index += 1
+            continue
+        end_idx = index
+        while end_idx + 1 < photo_count and not covered[end_idx + 1]:
+            end_idx += 1
+        ranges.append((index, end_idx))
+        index = end_idx + 1
+    return ranges
+
+
+def leftover_reason(
+    photo_count: int,
+    duration_minutes: float,
+    config: GameDetectionConfig,
+) -> str:
+    """
+    Explain why a cluster was not kept as a game album.
+
+    Parameters
+    ----------
+    photo_count : int
+        Photos in the cluster.
+    duration_minutes : float
+        Elapsed minutes from first to last capture.
+    config : GameDetectionConfig
+        Thresholds used for the split.
+
+    Returns
+    -------
+    str
+        Short reason for the CLI.
+    """
+    if photo_count < 2:
+        return "fewer than 2 photos"
+    if (
+        config.min_photos is not None
+        and photo_count < int(config.min_photos)
+    ):
+        return f"{photo_count} photos is under {config.min_photos} photos"
+    if duration_minutes < float(config.min_game_duration_minutes):
+        return (
+            f"{duration_minutes:.1f} min is under "
+            f"{config.min_game_duration_minutes} min duration"
+        )
+    if config.min_photos_per_hour is not None:
+        rate = photos_per_hour(photo_count, duration_minutes)
+        if rate < float(config.min_photos_per_hour):
+            return f"{rate:.0f}/h is under {config.min_photos_per_hour}/h"
+    return "not grouped into a game"
+
+
+def histogram_bar(count: int, max_count: int, width: int = 32) -> str:
+    """
+    Build a text bar for one histogram bin.
+
+    Parameters
+    ----------
+    count : int
+        Photos in the bin.
+    max_count : int
+        Largest bin count in the chart.
+    width : int
+        Maximum bar width in characters.
+
+    Returns
+    -------
+    str
+        A string of block characters, empty when ``count`` is 0.
+    """
+    if count <= 0 or max_count <= 0 or width <= 0:
+        return ""
+    filled = int(round(float(count) / float(max_count) * float(width)))
+    if filled < 1:
+        filled = 1
+    if filled > width:
+        filled = width
+    return "█" * filled
+
+
+_GAP_BIN_EDGES_SECONDS: Tuple[float, ...] = (
+    0.0,
+    0.25,
+    0.5,
+    1.0,
+    2.0,
+    3.0,
+    5.0,
+    10.0,
+    15.0,
+    30.0,
+    45.0,
+    60.0,
+    90.0,
+    120.0,
+    180.0,
+    300.0,
+    450.0,
+    600.0,
+    900.0,
+    1200.0,
+    1800.0,
+    3600.0,
+    7200.0,
+    14400.0,
+    float("inf"),
+)
+
+
+def intershot_gaps_seconds(timestamps: Sequence[datetime]) -> List[float]:
+    """
+    Seconds between consecutive photos in capture-time order.
+
+    Parameters
+    ----------
+    timestamps : sequence of datetime
+        Sorted capture times.
+
+    Returns
+    -------
+    list of float
+        One gap per adjacent pair. Empty when fewer than two photos.
+    """
+    gaps: List[float] = []
+    for index in range(1, len(timestamps)):
+        gaps.append((timestamps[index] - timestamps[index - 1]).total_seconds())
+    return gaps
+
+
+def format_fractional_minutes(seconds: float) -> str:
+    """
+    Format a duration as minutes for ``--min-gap``.
+
+    Parameters
+    ----------
+    seconds : float
+        Duration in seconds.
+
+    Returns
+    -------
+    str
+        Minutes with up to four decimal places, trailing zeros stripped.
+    """
+    if seconds <= 0.0:
+        return "0"
+    text = f"{seconds / 60.0:.4f}".rstrip("0").rstrip(".")
+    return text if text else "0"
+
+
+def _format_gap_bin_seconds(seconds: float) -> str:
+    """
+    Short label for a histogram bin edge.
+
+    Parameters
+    ----------
+    seconds : float
+        Edge in seconds, or infinity.
+
+    Returns
+    -------
+    str
+        Compact duration label.
+    """
+    if seconds == float("inf"):
+        return "∞"
+    if seconds < 60.0:
+        if seconds == int(seconds):
+            return f"{int(seconds)}s"
+        return f"{seconds:g}s"
+    minutes = seconds / 60.0
+    if minutes == int(minutes) and minutes < 60.0:
+        return f"{int(minutes)}m"
+    if minutes < 60.0:
+        return f"{minutes:g}m"
+    hours = minutes / 60.0
+    if hours == int(hours):
+        return f"{int(hours)}h"
+    return f"{hours:g}h"
+
+
+def build_gap_histogram(
+    timestamps: Sequence[datetime],
+    min_gap_minutes: float,
+) -> List[Dict[str, Any]]:
+    """
+    Count consecutive-shot gaps by duration so ``--min-gap`` can be chosen.
+
+    Each bin is labeled in seconds and as fractional minutes (the
+    ``--min-gap`` value that would start splitting at that bin).
+
+    Parameters
+    ----------
+    timestamps : sequence of datetime
+        Sorted capture times.
+    min_gap_minutes : float
+        Current split threshold, used to mark keep vs split bins.
+
+    Returns
+    -------
+    list of dict
+        Histogram rows from the first occupied bin through the last.
+    """
+    gaps = intershot_gaps_seconds(timestamps)
+    edges = _GAP_BIN_EDGES_SECONDS
+    counts = [0] * (len(edges) - 1)
+    for gap in gaps:
+        placed = False
+        for index in range(len(edges) - 1):
+            low = edges[index]
+            high = edges[index + 1]
+            if gap >= low and gap < high:
+                counts[index] += 1
+                placed = True
+                break
+        if not placed and gaps:
+            counts[-1] += 1
+
+    first_used = next((i for i, count in enumerate(counts) if count > 0), None)
+    last_used = next(
+        (i for i, count in reversed(list(enumerate(counts))) if count > 0),
+        None,
+    )
+    if first_used is None or last_used is None:
+        return []
+
+    threshold_seconds = float(min_gap_minutes) * 60.0
+    max_count = max(counts[first_used : last_used + 1])
+    rows: List[Dict[str, Any]] = []
+    for index in range(first_used, last_used + 1):
+        low = edges[index]
+        high = edges[index + 1]
+        count = counts[index]
+        if high != float("inf") and high <= threshold_seconds:
+            effect = "keep"
+        elif low >= threshold_seconds:
+            effect = "split"
+        else:
+            effect = "straddle"
+        rows.append(
+            {
+                "low_seconds": low,
+                "high_seconds": None if high == float("inf") else high,
+                "label": (
+                    f"{_format_gap_bin_seconds(low)}–"
+                    f"{_format_gap_bin_seconds(high)}"
+                ),
+                "min_gap_minutes": format_fractional_minutes(low),
+                "count": count,
+                "bar": histogram_bar(count, max_count),
+                "effect": effect,
+            }
+        )
+    return rows
+
+
+def build_activity_histogram(
+    timestamps: Sequence[datetime],
+    assignments: Sequence[Optional[int]],
+    total_games: int,
+    bin_minutes: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Bin photos by capture time and label each bin with a game or unsorted.
+
+    Empty bins are omitted so a season of Saturday shoots stays readable.
+
+    Parameters
+    ----------
+    timestamps : sequence of datetime
+        Capture times in the same order as ``assignments``.
+    assignments : sequence of int or None
+        Game id for each photo, or None if unsorted.
+    total_games : int
+        Used to zero-pad game labels.
+    bin_minutes : int, optional
+        Bin width. Chosen from the span when omitted.
+
+    Returns
+    -------
+    list of dict
+        Each item has ``start``, ``label``, ``count``, ``bar_count``,
+        ``assignment``, and ``game_id``.
+    """
+    if not timestamps:
+        return []
+    if len(timestamps) != len(assignments):
+        raise ValueError("timestamps and assignments must be the same length")
+
+    first = timestamps[0]
+    last = timestamps[-1]
+    span_minutes = max((last - first).total_seconds() / 60.0, 0.0)
+    width = (
+        int(bin_minutes)
+        if bin_minutes is not None and bin_minutes > 0
+        else histogram_bin_minutes(span_minutes)
+    )
+
+    bins: Dict[datetime, Dict[str, Any]] = {}
+    for timestamp, game_id in zip(timestamps, assignments):
+        start = floor_to_bin(timestamp, width)
+        bucket = bins.get(start)
+        if bucket is None:
+            game_counts: Dict[Optional[int], int] = {}
+            bucket = {"start": start, "count": 0, "game_counts": game_counts}
+            bins[start] = bucket
+        bucket["count"] = int(bucket["count"]) + 1
+        counts = bucket["game_counts"]
+        counts[game_id] = int(counts.get(game_id, 0)) + 1
+
+    rows: List[Dict[str, Any]] = []
+    for start in sorted(bins):
+        bucket = bins[start]
+        game_counts = bucket["game_counts"]
+        majority_id = max(game_counts, key=lambda key: int(game_counts[key]))
+        mixed = len(game_counts) > 1
+        if mixed:
+            assignment = "mixed"
+        elif majority_id is None:
+            assignment = "unsorted"
+        else:
+            assignment = f"Game{format_game_id(int(majority_id), max(total_games, 1))}"
+        if width >= 1440:
+            label = start.strftime("%d %b %Y")
+        else:
+            label = start.strftime("%d %b %H:%M")
+        rows.append(
+            {
+                "start": start,
+                "label": label,
+                "count": int(bucket["count"]),
+                "game_id": majority_id,
+                "assignment": assignment,
+                "mixed": mixed,
+                "bin_minutes": width,
+            }
+        )
+    return rows
+
+
 @dataclass
 class GameDetectionConfig:
     """Configuration for game detection."""
 
-    min_game_duration_minutes: int = 30
-    min_gap_minutes: int = 10
-    min_photos_per_game: int = 50
+    min_game_duration_minutes: int = 0
+    min_gap_minutes: float = 10.0
+    min_photos: Optional[int] = DEFAULT_MIN_PHOTOS
+    min_photos_per_hour: Optional[int] = DEFAULT_MIN_PHOTOS_PER_HOUR
+
+
+def resolve_session_floors(
+    min_photos: int,
+    min_rate: int,
+    *,
+    photos_explicit: bool,
+    rate_explicit: bool,
+) -> Tuple[Optional[int], Optional[int]]:
+    """
+    Resolve mutually exclusive photo-count and photos-per-hour floors.
+
+    When neither flag was passed, both defaults apply (10 photos and
+    100/hour). Passing one flag disables the other. Passing both is an
+    error so wrestling (absolute count) and field sports (hourly rate)
+    stay distinct.
+
+    Parameters
+    ----------
+    min_photos : int
+        Absolute photo floor (CLI default 10).
+    min_rate : int
+        Photos-per-hour floor (CLI default 100).
+    photos_explicit : bool
+        True when the user passed ``--min-photos``.
+    rate_explicit : bool
+        True when the user passed ``--min-rate``.
+
+    Returns
+    -------
+    tuple of (int or None, int or None)
+        ``(min_photos, min_rate)``. ``None`` disables that floor.
+
+    Raises
+    ------
+    ValueError
+        If both flags were passed.
+    """
+    if photos_explicit and rate_explicit:
+        raise ValueError("Use either --min-photos or --min-rate, not both")
+    if photos_explicit:
+        return min_photos, None
+    if rate_explicit:
+        return None, min_rate
+    return min_photos, min_rate
+
+
+def _optional_floor(value: object) -> Optional[int]:
+    """
+    Convert a count or rate floor, treating None and non-positive as off.
+
+    Parameters
+    ----------
+    value : object
+        Integer floor, or ``None`` to disable.
+
+    Returns
+    -------
+    int or None
+        Positive floor, or ``None`` when the check should be skipped.
+    """
+    if value is None:
+        return None
+    number = int(value)
+    if number <= 0:
+        return None
+    return number
+
+
+def session_meets_thresholds(
+    photo_count: int,
+    duration_minutes: float,
+    config: GameDetectionConfig,
+) -> bool:
+    """
+    Return whether a candidate session should be kept as a game.
+
+    Defaults require at least 10 photos and 100 photos per hour. Either
+    floor can be disabled (``None``) so a short wrestling match can use
+    an absolute count while a soccer game uses rate only. At least two
+    photos are always required so a span can be measured.
+
+    Parameters
+    ----------
+    photo_count : int
+        Photos in the candidate session.
+    duration_minutes : float
+        Elapsed minutes from first to last capture.
+    config : GameDetectionConfig
+        Duration, count, and rate thresholds.
+
+    Returns
+    -------
+    bool
+        True when the session should become a game album.
+    """
+    if photo_count < 2:
+        return False
+    if duration_minutes < float(config.min_game_duration_minutes):
+        return False
+    if config.min_photos is not None and photo_count < int(config.min_photos):
+        return False
+    if config.min_photos_per_hour is not None:
+        rate = photos_per_hour(photo_count, duration_minutes)
+        if rate < float(config.min_photos_per_hour):
+            return False
+    return True
 
 
 @dataclass
@@ -234,81 +1024,370 @@ class GameDetector:
 
     def detect_games(
         self,
-        photo_directory: Path,
+        photo_directory: Union[Path, Sequence[Path]],
         pattern: str = "*",
-        save_sidecar: bool = True,
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """
-        Detect game boundaries in a directory of photos.
+        Detect game boundaries across one or more directories of photos.
+
+        All matching images are pooled, sorted by EXIF capture time, and
+        numbered as a single season of games.
 
         Args:
-            photo_directory: Directory containing photos
+            photo_directory: Directory or sequence of directories
             pattern: File pattern to match
-            save_sidecar: Whether to save results to sidecar files
-            **kwargs: Additional arguments for game detection
+            **kwargs: Additional arguments for game detection. ``output_dir``
+                excludes an existing Games folder from the scan.
 
         Returns:
             Dictionary containing game detection results
         """
-        self.logger.info(f"Detecting games in {photo_directory} with pattern {pattern}")
-
         try:
-            # Find photos matching the pattern
-            photo_paths = [
-                p
-                for p in photo_directory.rglob(pattern)
-                if p.is_file() and p.suffix.lower() in _IMAGE_SUFFIXES
-            ]
-
-            if not photo_paths:
-                return {"error": "No photos found", "success": False}
-
-            self.logger.info(f"Found {len(photo_paths)} photos")
-
-            # Analyze timestamps from EXIF
-            photo_metadata = self._analyze_timestamps(photo_paths)
-
-            if not photo_metadata:
+            prepared = self._prepare_detection(photo_directory, pattern, kwargs)
+            if not prepared["success"]:
                 return {
-                    "error": "No valid EXIF capture times found",
                     "success": False,
+                    "error": prepared.get("error", "Game detection failed"),
                 }
-
-            # Detect game boundaries
-            boundaries = self._detect_game_boundaries(photo_metadata)
-
-            if not boundaries:
+            if not prepared["games"]:
                 return {"error": "No games detected", "success": False}
 
-            # Create game sessions
-            games = self._create_game_sessions(photo_metadata, boundaries)
-
-            # Store games for later use
-            self.games = games
-
-            # Format results
             results = {
                 "success": True,
-                "games": self._format_games_for_output(games),
+                "games": self._format_games_for_output(prepared["games"]),
                 "summary": {
-                    "total_games": len(games),
-                    "total_photos": sum(game.photo_count for game in games),
-                    "detected_dates": self._get_detected_dates(photo_metadata),
+                    "total_games": len(prepared["games"]),
+                    "total_photos": sum(
+                        game.photo_count for game in prepared["games"]
+                    ),
+                    "detected_dates": self._get_detected_dates(
+                        prepared["photo_metadata"]
+                    ),
                 },
             }
-
-            # Save to sidecar if requested
-            if save_sidecar:
-                sidecar_path = photo_directory / "game_detection.json"
-                with open(sidecar_path, "w") as f:
-                    json.dump(results, f, indent=2, default=str)
-
             return results
 
         except Exception as e:
             self.logger.error(f"Game detection failed: {e}")
             return {"error": str(e), "success": False}
+
+    def analyze_games(
+        self,
+        photo_directory: Union[Path, Sequence[Path]],
+        pattern: str = "*",
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """
+        Explain how photos would be split, including gaps and leftovers.
+
+        Unlike ``detect_games``, an empty game list is still a successful
+        analysis: every cluster is reported as unsorted.
+
+        Parameters
+        ----------
+        photo_directory : Path or sequence of Path
+            Directories to scan.
+        pattern : str
+            File glob passed to ``rglob``.
+        **kwargs
+            Same detection knobs as ``detect_games``, plus optional
+            ``bin_minutes`` for the activity histogram.
+
+        Returns
+        -------
+        dict
+            Timeline, histogram bins, games, and unsorted clusters.
+        """
+        try:
+            prepared = self._prepare_detection(photo_directory, pattern, kwargs)
+            if not prepared["success"]:
+                return {
+                    "success": False,
+                    "error": prepared.get("error", "Game analysis failed"),
+                }
+
+            photo_metadata: List[Dict[str, Any]] = prepared["photo_metadata"]
+            games: List[GameSession] = prepared["games"]
+            boundaries: List[Tuple[int, int]] = prepared["boundaries"]
+            bin_minutes = kwargs.get("bin_minutes")
+            parsed_bin: Optional[int] = (
+                int(bin_minutes) if bin_minutes is not None else None
+            )
+            return self._build_analysis(
+                photo_metadata, games, boundaries, bin_minutes=parsed_bin
+            )
+        except Exception as e:
+            self.logger.error(f"Game analysis failed: {e}")
+            return {"error": str(e), "success": False}
+
+    def _prepare_detection(
+        self,
+        photo_directory: Union[Path, Sequence[Path]],
+        pattern: str,
+        kwargs: Mapping[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Collect photos, read EXIF, and cluster into game boundaries.
+
+        Parameters
+        ----------
+        photo_directory : Path or sequence of Path
+            Directories to scan.
+        pattern : str
+            File glob.
+        kwargs : mapping
+            Detection knobs, including optional ``output_dir``.
+
+        Returns
+        -------
+        dict
+            ``success``, and on success ``photo_metadata``, ``boundaries``,
+            and ``games`` (games may be empty).
+        """
+        directories = _normalize_photo_directories(photo_directory)
+        self.logger.info(
+            f"Detecting games in {len(directories)} director"
+            f"{'y' if len(directories) == 1 else 'ies'} with pattern {pattern}"
+        )
+        self._apply_detect_kwargs(kwargs)
+
+        output_dir: Optional[Path] = None
+        if "output_dir" in kwargs and kwargs["output_dir"] is not None:
+            output_dir = Path(kwargs["output_dir"])
+
+        photo_paths = collect_photo_paths(
+            directories, pattern=pattern, output_dir=output_dir
+        )
+        if not photo_paths:
+            return {"success": False, "error": "No photos found"}
+
+        self.logger.info(f"Found {len(photo_paths)} photos")
+        photo_metadata = self._analyze_timestamps(photo_paths)
+        if not photo_metadata:
+            return {"success": False, "error": "No valid EXIF capture times found"}
+
+        boundaries = self._detect_game_boundaries(photo_metadata)
+        games = (
+            self._create_game_sessions(photo_metadata, boundaries) if boundaries else []
+        )
+        self.games = games
+        return {
+            "success": True,
+            "photo_metadata": photo_metadata,
+            "boundaries": boundaries,
+            "games": games,
+        }
+
+    def _build_analysis(
+        self,
+        photo_metadata: List[Dict[str, Any]],
+        games: List[GameSession],
+        boundaries: List[Tuple[int, int]],
+        bin_minutes: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Build histogram and leftover clusters from a finished detection.
+
+        Parameters
+        ----------
+        photo_metadata : list of dict
+            Sorted capture records.
+        games : list of GameSession
+            Detected albums.
+        boundaries : list of tuple of int
+            Inclusive index ranges for those albums.
+        bin_minutes : int, optional
+            Histogram bin width.
+
+        Returns
+        -------
+        dict
+            Analysis payload for the CLI.
+        """
+        total_games = max(len(games), 1)
+        photo_count = len(photo_metadata)
+        assigned: List[Optional[int]] = [None] * photo_count
+        for game, (start_idx, end_idx) in zip(games, boundaries):
+            for index in range(start_idx, end_idx + 1):
+                assigned[index] = game.game_id
+
+        leftover_clusters: List[Dict[str, Any]] = []
+        leftover_photo_count = 0
+        for start_idx, end_idx in leftover_index_ranges(photo_count, boundaries):
+            cluster = photo_metadata[start_idx : end_idx + 1]
+            start_time = cluster[0]["timestamp"]
+            end_time = cluster[-1]["timestamp"]
+            duration_minutes = (end_time - start_time).total_seconds() / 60.0
+            count = len(cluster)
+            leftover_photo_count += count
+            leftover_clusters.append(
+                {
+                    "start_time": start_time.isoformat(),
+                    "end_time": end_time.isoformat(),
+                    "start_label": start_time.strftime("%d %b %Y %H:%M:%S"),
+                    "end_label": end_time.strftime("%H:%M:%S"),
+                    "duration_minutes": round(duration_minutes, 1),
+                    "photo_count": count,
+                    "photos_per_hour": round(
+                        photos_per_hour(count, duration_minutes), 1
+                    ),
+                    "reason": leftover_reason(
+                        count, duration_minutes, self.config
+                    ),
+                }
+            )
+
+        timestamps = [item["timestamp"] for item in photo_metadata]
+        histogram = build_activity_histogram(
+            timestamps, assigned, len(games), bin_minutes=bin_minutes
+        )
+        max_bin = max((int(row["count"]) for row in histogram), default=0)
+        for row in histogram:
+            row["bar"] = histogram_bar(int(row["count"]), max_bin)
+        gap_histogram = build_gap_histogram(
+            timestamps, float(self.config.min_gap_minutes)
+        )
+
+        timeline = self._build_timeline(games, leftover_clusters)
+        first = photo_metadata[0]["timestamp"]
+        last = photo_metadata[-1]["timestamp"]
+        span_minutes = (last - first).total_seconds() / 60.0
+
+        return {
+            "success": True,
+            "games": self._format_games_for_output(games),
+            "unsorted": leftover_clusters,
+            "histogram": histogram,
+            "gap_histogram": gap_histogram,
+            "timeline": timeline,
+            "summary": {
+                "total_games": len(games),
+                "game_photos": sum(game.photo_count for game in games),
+                "unsorted_photos": leftover_photo_count,
+                "total_photos": photo_count,
+                "span_minutes": round(span_minutes, 1),
+                "detected_dates": self._get_detected_dates(photo_metadata),
+                "bin_minutes": histogram[0]["bin_minutes"] if histogram else 1,
+                "min_photos": self.config.min_photos,
+                "min_photos_per_hour": self.config.min_photos_per_hour,
+                "min_gap_minutes": self.config.min_gap_minutes,
+                "min_game_duration_minutes": self.config.min_game_duration_minutes,
+            },
+        }
+
+    def _build_timeline(
+        self,
+        games: List[GameSession],
+        leftover_clusters: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """
+        Interleave games, unsorted clusters, and the gaps between them.
+
+        Parameters
+        ----------
+        games : list of GameSession
+            Detected albums.
+        leftover_clusters : list of dict
+            Clusters that did not become games.
+
+        Returns
+        -------
+        list of dict
+            Ordered ``game``, ``unsorted``, and ``break`` events.
+        """
+        items: List[Dict[str, Any]] = []
+        total_games = max(len(games), 1)
+        for game in games:
+            items.append(
+                {
+                    "kind": "game",
+                    "game_id": game.game_id,
+                    "label": f"Game{format_game_id(game.game_id, total_games)}",
+                    "start": game.start_time,
+                    "end": game.end_time,
+                    "photo_count": game.photo_count,
+                    "duration_minutes": round(
+                        (game.end_time - game.start_time).total_seconds() / 60.0, 1
+                    ),
+                    "photos_per_hour": round(
+                        photos_per_hour(
+                            game.photo_count,
+                            (game.end_time - game.start_time).total_seconds() / 60.0,
+                        ),
+                        1,
+                    ),
+                }
+            )
+        for cluster in leftover_clusters:
+            start_time = datetime.fromisoformat(str(cluster["start_time"]))
+            end_time = datetime.fromisoformat(str(cluster["end_time"]))
+            items.append(
+                {
+                    "kind": "unsorted",
+                    "label": "unsorted",
+                    "start": start_time,
+                    "end": end_time,
+                    "photo_count": cluster["photo_count"],
+                    "duration_minutes": cluster["duration_minutes"],
+                    "photos_per_hour": cluster["photos_per_hour"],
+                    "reason": cluster["reason"],
+                }
+            )
+        items.sort(key=lambda item: item["start"])
+
+        timeline: List[Dict[str, Any]] = []
+        for index, item in enumerate(items):
+            if index > 0:
+                previous = items[index - 1]
+                gap_minutes = (
+                    item["start"] - previous["end"]
+                ).total_seconds() / 60.0
+                timeline.append(
+                    {
+                        "kind": "break",
+                        "gap_minutes": round(gap_minutes, 1),
+                        "after": previous["label"],
+                        "before": item["label"],
+                    }
+                )
+            event = dict(item)
+            event["start_label"] = item["start"].strftime("%d %b %Y %H:%M:%S")
+            event["end_label"] = item["end"].strftime("%H:%M:%S")
+            timeline.append(event)
+        return timeline
+
+    def _apply_detect_kwargs(self, kwargs: Mapping[str, Any]) -> None:
+        """
+        Overlay CLI/core keyword arguments onto the detector config.
+
+        Parameters
+        ----------
+        kwargs : mapping
+            May include ``min_duration``, ``min_gap``, ``min_photos``
+            (absolute count), and ``min_rate`` / ``min_photos_per_hour``,
+            or the config field names. ``None`` or ``0`` disables a floor.
+        """
+        if "min_duration" in kwargs:
+            self.config.min_game_duration_minutes = int(kwargs["min_duration"])
+        if "min_game_duration_minutes" in kwargs:
+            self.config.min_game_duration_minutes = int(
+                kwargs["min_game_duration_minutes"]
+            )
+        if "min_gap" in kwargs:
+            self.config.min_gap_minutes = float(kwargs["min_gap"])
+        if "min_gap_minutes" in kwargs:
+            self.config.min_gap_minutes = float(kwargs["min_gap_minutes"])
+        if "min_photos" in kwargs:
+            self.config.min_photos = _optional_floor(kwargs["min_photos"])
+        if "min_rate" in kwargs:
+            self.config.min_photos_per_hour = _optional_floor(
+                kwargs["min_rate"]
+            )
+        if "min_photos_per_hour" in kwargs:
+            self.config.min_photos_per_hour = _optional_floor(
+                kwargs["min_photos_per_hour"]
+            )
 
     def _analyze_timestamps(self, photo_paths: List[Path]) -> List[Dict[str, Any]]:
         """
@@ -495,7 +1574,7 @@ class GameDetector:
         self, photo_metadata: List[Dict]
     ) -> List[Tuple[int, int]]:
         """Detect game boundaries based on timestamp gaps."""
-        if len(photo_metadata) < self.config.min_photos_per_game:
+        if len(photo_metadata) < 2:
             return []
 
         boundaries = []
@@ -515,30 +1594,27 @@ class GameDetector:
 
             # If gap is large enough, end current game and start new one
             if gap_minutes >= adaptive_gap_threshold:
-                # Check if current game meets minimum duration
                 game_duration_minutes = (
                     prev_time - photo_metadata[current_start]["timestamp"]
                 ).total_seconds() / 60
                 photo_count = i - current_start
 
-                if (
-                    game_duration_minutes >= self.config.min_game_duration_minutes
-                    and photo_count >= self.config.min_photos_per_game
+                if session_meets_thresholds(
+                    photo_count, game_duration_minutes, self.config
                 ):
                     boundaries.append((current_start, i - 1))
 
                 current_start = i
 
         # Add the last game if it meets criteria
-        if current_start < len(photo_metadata) - 1:
+        if current_start < len(photo_metadata):
             last_time = photo_metadata[-1]["timestamp"]
             first_time = photo_metadata[current_start]["timestamp"]
             game_duration_minutes = (last_time - first_time).total_seconds() / 60
             photo_count = len(photo_metadata) - current_start
 
-            if (
-                game_duration_minutes >= self.config.min_game_duration_minutes
-                and photo_count >= self.config.min_photos_per_game
+            if session_meets_thresholds(
+                photo_count, game_duration_minutes, self.config
             ):
                 boundaries.append((current_start, len(photo_metadata) - 1))
 
@@ -564,13 +1640,13 @@ class GameDetector:
         ).total_seconds() / 60
         photo_count = current_index - current_start
         
-        # If this would create a very short game segment, be more lenient
-        if photo_count < self.config.min_photos_per_game:
-            # Increase threshold to avoid splitting short segments
+        # If this would create an under-rate segment, be more lenient
+        if not session_meets_thresholds(photo_count, current_duration, self.config):
+            # Increase threshold to avoid splitting thin segments
             return max(base_threshold * 2, 30)  # At least 30 minutes
         
         # If the current potential game is already long enough, be more strict
-        if current_duration >= self.config.min_game_duration_minutes:
+        if current_duration >= max(float(self.config.min_game_duration_minutes), 30.0):
             # Game is already long enough, use normal threshold
             return base_threshold
         
@@ -642,9 +1718,15 @@ class GameDetector:
                 should_merge = (
                     gap_minutes < 30 and  # Small gap
                     total_duration_minutes < 240 and  # Less than 4 hours total
-                    current_duration >= self.config.min_game_duration_minutes and
-                    next_duration >= self.config.min_game_duration_minutes and
-                    total_photos >= self.config.min_photos_per_game
+                    session_meets_thresholds(
+                        current_end - current_start + 1, current_duration, self.config
+                    )
+                    and session_meets_thresholds(
+                        next_end - next_start + 1, next_duration, self.config
+                    )
+                    and session_meets_thresholds(
+                        total_photos, total_duration_minutes, self.config
+                    )
                 )
                 
                 if should_merge:
@@ -873,7 +1955,10 @@ class GameDetector:
                     if segment_start <= photo_time <= segment_end:
                         segment_photos.append(photo)
 
-                if len(segment_photos) >= self.config.min_photos_per_game:
+                segment_minutes = (segment_end - segment_start).total_seconds() / 60
+                if session_meets_thresholds(
+                    len(segment_photos), segment_minutes, self.config
+                ):
                     # Create new game session for this segment
                     segment_game = GameSession(
                         game_id=len(final_games) + 1,

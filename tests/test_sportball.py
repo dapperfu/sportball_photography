@@ -24,21 +24,17 @@ def test_imports():
 
         print("✅ Main sportball module imported")
 
-        from sportball import SportballCore, SidecarManager
+        from sportball import SportballCore
 
         print("✅ Core classes imported")
 
         from sportball.decorators import (
-            gpu_accelerated,
             parallel_processing,
             progress_tracked,
+            timing_decorator,
         )
 
         print("✅ Decorators imported")
-
-        from sportball.sidecar import SidecarManager
-
-        print("✅ Sidecar module imported")
 
         return True
 
@@ -67,31 +63,6 @@ def test_core_initialization():
 
     except Exception as e:
         print(f"❌ Core initialization failed: {e}")
-        return False
-
-
-def test_sidecar_manager():
-    """Test that SidecarManager works."""
-    print("🔄 Testing sidecar manager...")
-
-    try:
-        from sportball import SidecarManager
-
-        manager = SidecarManager()
-        print("✅ SidecarManager initialized")
-
-        # Test basic operations
-        test_path = Path("test_image.jpg")
-        sidecar_path = manager.get_sidecar_path(test_path, "face_detection")
-        expected_path = Path("test_image_face_detection.json")
-
-        assert sidecar_path.name == expected_path.name
-        print("✅ Sidecar path generation works")
-
-        return True
-
-    except Exception as e:
-        print(f"❌ SidecarManager test failed: {e}")
         return False
 
 
@@ -125,7 +96,7 @@ def test_cli_import():
     print("🔄 Testing CLI import...")
 
     try:
-        from sportball.cli import cli
+        from sportball.cli.ultra_minimal_main import cli
 
         print("✅ CLI module imported")
 
@@ -147,28 +118,20 @@ def main():
     tests = [
         test_imports,
         test_core_initialization,
-        test_sidecar_manager,
         test_decorators,
         test_cli_import,
     ]
 
     passed = 0
-    total = len(tests)
-
     for test in tests:
         if test():
             passed += 1
-        print()  # Add spacing between tests
+        print()
 
-    print(f"📊 Test Results: {passed}/{total} tests passed")
-
-    if passed == total:
-        print("🎉 All tests passed! Sportball package is working correctly.")
-        return 0
-    else:
-        print("❌ Some tests failed. Please check the errors above.")
-        return 1
+    print(f"{passed}/{len(tests)} tests passed")
+    return passed == len(tests)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    success = main()
+    sys.exit(0 if success else 1)

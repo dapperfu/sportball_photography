@@ -2,7 +2,7 @@
 
 VENV := venv
 
-.PHONY: help install install-dev test lint format clean setup build-rust-sidecar test-rust-sidecar bench-rust-sidecar benchmark-rust test-integration
+.PHONY: help install install-dev test lint format clean setup test-integration
 
 # Default target
 help:
@@ -14,11 +14,7 @@ help:
 	@echo "  make format       - Format code"
 	@echo "  make clean        - Clean build artifacts"
 	@echo "  make setup        - Complete setup (install + test)"
-	@echo "  make build-rust-sidecar - Build Rust sidecar tool"
-	@echo "  make test-rust-sidecar  - Test Rust sidecar tool"
-	@echo "  make bench-rust-sidecar - Benchmark Rust sidecar tool"
-	@echo "  make benchmark-rust     - Run Rust sidecar benchmark"
-	@echo "  make test-integration   - Test Python-Rust integration"
+	@echo "  make test-integration   - Smoke-test core import"
 
 # Install the package
 install: venv
@@ -71,10 +67,6 @@ test-cli: install
 quick-test: install
 	${VENV}/bin/python tests/test_sportball.py
 
-# Install with CUDA support
-install-cuda: venv
-	${VENV}/bin/pip install -e .[cuda]
-
 # Show package info
 info: install
 	${VENV}/bin/pip show sportball
@@ -108,33 +100,19 @@ cli-help: install
 	${VENV}/bin/sportball --help
 	@echo ""
 	@echo "Available commands:"
-	${VENV}/bin/sportball face --help
-	${VENV}/bin/sportball object --help
-	${VENV}/bin/sportball games --help
-	${VENV}/bin/sportball ball --help
-	${VENV}/bin/sportball quality --help
+	${VENV}/bin/sportball analyze --help
+	${VENV}/bin/sportball split --help
+	${VENV}/bin/sportball animate --help
 	${VENV}/bin/sportball util --help
 
-# Rust sidecar tool targets
-RUST_SIDECAR_DIR = ../image-sidecar-rust
-RUST_SIDECAR_BINARY = $(RUST_SIDECAR_DIR)/target/release/sportball-sidecar-rust
+# Smoke-test EXIF game split import
+test-integration: install
+	${VENV}/bin/python -c "from sportball import SportballCore; SportballCore(); print('ok')"
 
-# Build Rust sidecar tool
-build-rust-sidecar:
-	cd $(RUST_SIDECAR_DIR) && cargo build --release
+# Native Rust port (see rust/README.md)
+rust-test:
+	${MAKE} -C rust test
 
-# Test Rust sidecar tool
-test-rust-sidecar: build-rust-sidecar
-	cd $(RUST_SIDECAR_DIR) && cargo test
+rust-build:
+	${MAKE} -C rust release
 
-# Benchmark Rust sidecar tool
-bench-rust-sidecar: build-rust-sidecar
-	cd $(RUST_SIDECAR_DIR) && cargo bench
-
-# Run Rust sidecar benchmark
-benchmark-rust: install build-rust-sidecar
-	${VENV}/bin/python -c "from sportball.detection.rust_sidecar import RustSidecarManager; import tempfile; import os; temp_dir = tempfile.mkdtemp(); [open(os.path.join(temp_dir, f'test_{i}.json'), 'w').write('{\"test\": \"data_' + str(i) + '\"}') for i in range(1000)]; manager = RustSidecarManager(); print('Rust available:', manager.rust_available); results = manager.validate_sidecars(temp_dir); print(f'Validated {len(results)} files'); import shutil; shutil.rmtree(temp_dir)"
-
-# Test Python-Rust integration
-test-integration: install build-rust-sidecar
-	${VENV}/bin/python -c "from sportball.sidecar import Sidecar; from pathlib import Path; import tempfile; import os; temp_dir = Path(tempfile.mkdtemp()); [open(temp_dir / f'test_{i}.json', 'w').write('{\"test\": \"data_' + str(i) + '\"}') for i in range(100)]; sidecar = Sidecar(); print('Rust manager available:', sidecar.rust_manager.rust_available if sidecar.rust_manager else False); stats = sidecar.get_statistics(temp_dir); print(f'Statistics: {stats[\"total_sidecars\"]} sidecars'); import shutil; shutil.rmtree(temp_dir)"
