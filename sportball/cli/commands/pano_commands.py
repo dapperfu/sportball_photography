@@ -186,8 +186,8 @@ def _get_table() -> Any:
     default=True,
     show_default=True,
     help=(
-        "After every project is optimized, stitch it with hugin_executor. "
-        "No batch window is opened."
+        "After every project is optimized, stitch it to a JPEG with "
+        "hugin_executor. No batch window is opened."
     ),
 )
 @click.option(
@@ -248,8 +248,8 @@ def pano(
     (5 photos: the 3rd; 4 photos: the 2nd). The project is optimized
     for yaw, pitch, roll, and field of view, and nothing else.
     Stitching is on unless ``--no-stitch`` is passed. Each project is
-    stitched in process with ``hugin_executor``, named like the ``.pto``,
-    with no batch window. Cropping is on unless ``--no-crop`` is
+    stitched to a JPEG in process with ``hugin_executor``, named like
+    the ``.pto``, with no batch window. Cropping is on unless ``--no-crop`` is
     passed. After those images exist it writes
     ``<pano_name>_cropped.jpg`` beside the full stitch, with the black
     canvas removed. The full image stays, so the black border can still
