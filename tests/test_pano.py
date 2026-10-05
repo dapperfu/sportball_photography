@@ -678,13 +678,13 @@ def test_anchor_index_is_the_earlier_middle_photo() -> None:
 
 
 def test_stitch_without_a_project_is_rejected() -> None:
-    """The batch queue is named after the .pto, so stitching needs that project."""
+    """Stitching is named after the .pto, so it needs that project."""
     with pytest.raises(ValueError, match="stitch"):
         detect_panos([], PanoConfig(stitch=True, write_pto=False), _scripted_survey())
 
 
 def _install_fake_hugin(bin_dir: Path) -> None:
-    """Write stand-ins that record positions-and-view and the batch queue."""
+    """Write stand-ins that record positions-and-view and the stitch."""
     bin_dir.mkdir()
     scripts = {
         "pto_var": """#!/usr/bin/env python3
@@ -706,15 +706,26 @@ out = Path(args[args.index("-o") + 1])
 src = Path(args[-1])
 out.write_text(src.read_text() + "\\n# AUTO " + " ".join(args) + "\\n")
 """,
-        "PTBatcherGUI": """#!/usr/bin/env python3
+        "hugin_executor": """#!/usr/bin/env python3
 import sys
 from pathlib import Path
 args = sys.argv[1:]
-if "-b" in args or "--batch" in args:
+if "--batch" in args or "-b" in args:
     raise SystemExit("batch was started")
-if not args or "# AUTO" not in Path(args[0]).read_text(encoding="utf-8"):
-    raise SystemExit("queued before optimisation")
-log = Path(__file__).resolve().with_name("queued.txt")
+if "--stitching" not in args:
+    raise SystemExit("stitching was not requested")
+prefix = next(
+    (arg.split("=", 1)[1] for arg in args if arg.startswith("--prefix=")),
+    None,
+)
+projects = [arg for arg in args if arg.endswith(".pto")]
+if prefix is None or not projects:
+    raise SystemExit("missing prefix or project")
+project = Path(projects[0])
+if "# AUTO" not in project.read_text(encoding="utf-8"):
+    raise SystemExit("stitched before optimisation")
+Path(prefix).with_suffix(".tif").write_bytes(b"stitched")
+log = Path(__file__).resolve().with_name("stitched.txt")
 with log.open("a", encoding="utf-8") as handle:
     handle.write("\\n".join(args) + "\\n")
 """,
@@ -728,11 +739,11 @@ with log.open("a", encoding="utf-8") as handle:
 def test_correction_uses_the_median_and_stitch_matches_the_pto(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The anchor is AC, optimisation is y,p,r,v only, and the queue is last.
+    """The anchor is AC, optimisation is y,p,r,v only, and the stitch is last.
 
-    The output directory is relative, matching ``sb pano -o SomeFolder``.
-    The batch processor is invoked only after optimisation, without
-    ``--batch``, and the prefix matches the project name.
+    The output directory is relative, matching ``sb pano`` on a game folder.
+    ``hugin_executor --stitching`` runs only after optimisation, without
+    a batch flag, and the prefix matches the project name.
     """
     bin_dir = tmp_path / "bin"
     _install_fake_hugin(bin_dir)
@@ -774,12 +785,14 @@ def test_correction_uses_the_median_and_stitch_matches_the_pto(
         assert " -n " in auto
         assert " -m " not in auto
         assert " -a " not in auto
-        assert not project.with_suffix(".tif").exists()
-        queued = (bin_dir / "queued.txt").read_text(encoding="utf-8").splitlines()
-        assert str(project.resolve()) in queued
-        assert str(project.resolve().with_suffix("")) in queued
-        assert "-b" not in queued
-        assert "--batch" not in queued
+        stitched = project.with_suffix(".tif")
+        assert stitched.is_file()
+        log = (bin_dir / "stitched.txt").read_text(encoding="utf-8")
+        assert "--stitching" in log
+        assert str(project.resolve()) in log
+        assert f"--prefix={project.resolve().with_suffix('')}" in log
+        assert "--batch" not in log
+        assert "-b" not in log.split()
         assert list(folder.glob("*.marked.pto")) == []
 
 
@@ -990,10 +1003,10 @@ def test_cli_rejects_a_shared_output_flag(tmp_path: Path) -> None:
     assert "No such option" in result.output
 
 
-def test_stitch_queues_after_every_sibling_is_written(
+def test_stitch_runs_after_every_sibling_is_written(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """One batch queue runs after each input has its own ``-panos`` folder."""
+    """Stitching runs once, after each input has its own ``-panos`` folder."""
     bin_dir = tmp_path / "bin"
     _install_fake_hugin(bin_dir)
     _prefer_tools(monkeypatch, bin_dir)
@@ -1017,7 +1030,7 @@ def test_stitch_queues_after_every_sibling_is_written(
             assert list(sibling.rglob("*.pto"))
         queued.append(list(projects))
 
-    monkeypatch.setattr(pano_mod, "queue_stitch_projects", capture_queue)
+    monkeypatch.setattr(pano_mod, "stitch_projects", capture_queue)
     find_action_panos(
         [str(game) for game in games],
         PanoConfig(stitch=True, write_pto=True, progress=False),

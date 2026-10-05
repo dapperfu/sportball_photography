@@ -5,7 +5,7 @@ Action-panorama commands.
 panoramas (neighbor overlap, no overlap a few frames away), then writes
 symlink folders and a Hugin project optimized for yaw, pitch, roll, and
 field of view. Stitching and a black-canvas crop are on by default.
-``--no-stitch`` skips the Hugin batch queue. ``--no-crop`` skips
+``--no-stitch`` skips the inline stitch. ``--no-crop`` skips
 ``<pano_name>_cropped.jpg``.
 
 Author: Claude Sonnet 4 (claude-3-5-sonnet-20241022)
@@ -186,8 +186,8 @@ def _get_table() -> Any:
     default=True,
     show_default=True,
     help=(
-        "After every project is optimized, add them to Hugin's batch "
-        "processor. Does not start stitching."
+        "After every project is optimized, stitch it with hugin_executor. "
+        "No batch window is opened."
     ),
 )
 @click.option(
@@ -247,10 +247,10 @@ def pano(
     those files. The median photo is the position and exposure anchor
     (5 photos: the 3rd; 4 photos: the 2nd). The project is optimized
     for yaw, pitch, roll, and field of view, and nothing else.
-    Stitching is on unless ``--no-stitch`` is passed. It adds each
-    project to Hugin's batch processor, named like the ``.pto``, and
-    does not start the batch. Cropping is on unless ``--no-crop`` is
-    passed. After the panoramas exist it writes
+    Stitching is on unless ``--no-stitch`` is passed. Each project is
+    stitched in process with ``hugin_executor``, named like the ``.pto``,
+    with no batch window. Cropping is on unless ``--no-crop`` is
+    passed. After those images exist it writes
     ``<pano_name>_cropped.jpg`` beside the full stitch, with the black
     canvas removed. The full image stays, so the black border can still
     be cleaned up by hand.

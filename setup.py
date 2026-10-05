@@ -10,7 +10,7 @@ except ImportError:
     class MockVersioneer:
         @staticmethod
         def get_version():
-            return "1.3.6"
+            return "1.3.8"
 
         @staticmethod
         def get_cmdclass():

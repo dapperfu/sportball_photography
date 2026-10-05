@@ -9,10 +9,10 @@ not. Hugin's ``cpfind`` supplies the control points.
 
 The command writes symlink folders and a ``.pto`` project. Every project
 is optimized for yaw, pitch, roll, and field of view only. Stitching
-and a black-canvas crop are on by default. ``--stitch`` adds the
-projects to Hugin's batch queue and does not start the batch.
-``--crop`` then writes ``<pano_name>_cropped.jpg`` beside each stitched
-panorama, with the black canvas removed.
+and a black-canvas crop are on by default. ``hugin_executor`` stitches
+each project in process, with no batch window. ``--crop`` then writes
+``<pano_name>_cropped.jpg`` beside each stitched panorama, with the
+black canvas removed.
 
 Author: Claude Sonnet 4 (claude-3-5-sonnet-20241022)
 Generated via Cursor IDE (cursor.sh) with AI assistance
@@ -103,8 +103,8 @@ class PanoConfig:
     write_pto : bool
         Write a Hugin project next to the photos.
     stitch : bool
-        After every project is optimized, add them to the Hugin batch
-        queue. The batch is not started.
+        After every project is optimized, stitch it with
+        ``hugin_executor``. No batch window is opened.
     crop : bool
         After the panoramas exist, write ``<pano_name>_cropped.jpg`` for
         each stitched image, dropping the black canvas.
@@ -841,7 +841,7 @@ def resolve_hugin_tool(name: str) -> str:
     """
     found = shutil.which(name)
     if found is None:
-        package = "hugin" if name == "PTBatcherGUI" else "hugin-tools"
+        package = "hugin" if name == "hugin_executor" else "hugin-tools"
         raise RuntimeError(
             f"{name} was not found on PATH. Install the {package} package."
         )
@@ -1378,7 +1378,7 @@ def find_action_panos(
     else:
         matcher = survey
     if config.stitch and not config.dry_run:
-        resolve_hugin_tool("PTBatcherGUI")
+        resolve_hugin_tool("hugin_executor")
 
     all_frames: List[Frame] = []
     all_groups: List[PanoGroup] = []
@@ -1436,7 +1436,7 @@ def find_action_panos(
         _say("Dry run: panorama folders will not be written", show)
     else:
         if config.stitch:
-            queue_stitch_projects(projects, progress=show)
+            stitch_projects(projects, progress=show)
         if config.crop:
             for directory in output_dirs:
                 cropped.extend(crop_panorama_directory(directory, progress=show))
@@ -1548,9 +1548,9 @@ def write_pano_folders(
 
     When a project is written and ``optimize`` is true, yaw, pitch, roll,
     and field of view are optimized with the median image as the position
-    and exposure anchor. ``stitch`` queues those projects in
-    ``PTBatcherGUI`` only after every folder in this call has been
-    written. The batch is not started.
+    and exposure anchor. ``stitch`` runs ``hugin_executor`` on those
+    projects after every folder in this call has been written. No
+    batch window is opened.
 
     Parameters
     ----------
@@ -1566,7 +1566,7 @@ def write_pano_folders(
     progress : bool
         Show a tqdm bar and one line per folder.
     stitch : bool
-        Queue the projects for stitching after the folders are written.
+        Stitch the projects after the folders are written.
     optimize : bool
         Run the positions-and-view correction. Tests that inspect the
         unoptimized project pass False.
@@ -1592,7 +1592,7 @@ def write_pano_folders(
         resolve_hugin_tool("pto_var")
         resolve_hugin_tool("autooptimiser")
     if stitch:
-        resolve_hugin_tool("PTBatcherGUI")
+        resolve_hugin_tool("hugin_executor")
     total = len(accepted)
     output_dir.mkdir(parents=True, exist_ok=True)
     projects: List[Path] = []
@@ -1647,7 +1647,7 @@ def write_pano_folders(
                 _say(f"  {folder_name}  {len(names)} {kind}", progress)
             bar.update(1)
     if stitch:
-        queue_stitch_projects(projects, progress=progress)
+        stitch_projects(projects, progress=progress)
     return projects
 
 
@@ -2019,78 +2019,112 @@ def correct_positions_and_view(
         marked.unlink(missing_ok=True)
 
 
-def queue_stitch_projects(
+def stitch_projects(
     projects: Sequence[Path],
     progress: bool = True,
-) -> None:
+) -> List[Path]:
     """
-    Add projects to Hugin's batch processor without starting it.
+    Stitch each project in process with ``hugin_executor``.
 
-    One ``PTBatcherGUI`` process receives every project after the folders
-    exist. ``--batch`` is not passed, so the queue waits. The output
-    prefix is the project path without ``.pto``, which is the same name
-    in the same folder. If the batch processor is already open, this
-    hands the projects to that window and returns. Otherwise the window
-    stays open with the queue loaded. ``PTBatcherGUI`` is taken from
-    ``PATH``.
+    Projects run one after another. The output prefix is the project
+    path without ``.pto``, in that panorama folder. No batch window is
+    opened, so the stitched image exists before cropping starts.
 
     Parameters
     ----------
     projects : sequence of Path
-        Optimized ``.pto`` files, in the order they should be queued.
+        Optimized ``.pto`` files, in stitch order.
     progress : bool
-        Print the queue list.
+        Print each stitch.
+
+    Returns
+    -------
+    list of Path
+        Stitched images, one per project.
 
     Raises
     ------
     RuntimeError
-        If ``PTBatcherGUI`` is not on ``PATH``, cannot start, or reports
-        an error.
+        If ``hugin_executor`` is not on ``PATH``, fails, or writes no image.
     """
+    written: List[Path] = []
     if not projects:
-        _say("No projects to queue", progress)
-        return
-    command: List[str] = [resolve_hugin_tool("PTBatcherGUI")]
-    for project in projects:
-        absolute = project.resolve()
-        command.append(str(absolute))
-        command.append(str(absolute.with_suffix("")))
-    _say(
-        f"Queuing {len(projects)} projects in PTBatcherGUI. "
-        "Stitching is not started.",
-        progress,
+        _say("No projects to stitch", progress)
+        return written
+    _say(f"Stitching {len(projects)} project(s) with hugin_executor", progress)
+    with _bar(len(projects), "Stitching", progress, unit="pano") as bar:
+        for project in projects:
+            image = _stitch_one_project(project, progress)
+            written.append(image)
+            bar.update(1)
+    return written
+
+
+def _stitch_one_project(project: Path, progress: bool) -> Path:
+    """
+    Run ``hugin_executor --stitching`` on one project.
+
+    Parameters
+    ----------
+    project : Path
+        Optimized ``.pto`` file.
+    progress : bool
+        Print the command and the tool log.
+
+    Returns
+    -------
+    Path
+        The stitched image beside the project.
+
+    Raises
+    ------
+    RuntimeError
+        If the tool is missing, fails, or writes no image.
+    """
+    project = project.resolve()
+    prefix = project.with_suffix("")
+    folder = project.parent
+    _say(f"  hugin_executor --stitching {project.name}", progress)
+    log = _run_hugin(
+        [
+            resolve_hugin_tool("hugin_executor"),
+            "--stitching",
+            f"--prefix={prefix}",
+            str(project),
+        ],
+        cwd=folder,
     )
-    for project in projects:
-        _say(f"  queue {project.resolve()}", progress)
-    log_file = tempfile.TemporaryFile()
-    try:
-        process = subprocess.Popen(
-            command,
-            start_new_session=True,
-            stdin=subprocess.DEVNULL,
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-        )
-    except OSError as exc:
-        log_file.close()
-        raise RuntimeError(f"Failed to run PTBatcherGUI: {exc}") from exc
-    try:
-        code = process.wait(timeout=3)
-    except subprocess.TimeoutExpired:
-        log_file.close()
-        _say(
-            "PTBatcherGUI is open. The projects are queued and stitching "
-            "has not started.",
-            progress,
-        )
-        return
-    log_file.seek(0)
-    output = log_file.read().decode("utf-8", errors="replace").strip()
-    log_file.close()
-    _echo_tool(output, progress)
-    if code != 0 and re.search(r"error|unable|failed", output, re.IGNORECASE):
-        raise RuntimeError(f"PTBatcherGUI failed ({code}): {output}")
-    _say("Projects are in the batch queue. Stitching has not started.", progress)
+    _echo_tool(log, progress)
+    return _stitched_image(prefix)
+
+
+def _stitched_image(prefix: Path) -> Path:
+    """
+    Return the image ``hugin_executor`` wrote for ``prefix``.
+
+    Parameters
+    ----------
+    prefix : Path
+        Project path without the ``.pto`` suffix.
+
+    Returns
+    -------
+    Path
+        ``prefix`` plus a stitch suffix.
+
+    Raises
+    ------
+    RuntimeError
+        If none of the expected images exist.
+    """
+    for suffix in _STITCH_SUFFIXES:
+        image = prefix.with_suffix(suffix)
+        if image.is_file():
+            return image
+    raise RuntimeError(
+        "hugin_executor finished but did not write "
+        + " or ".join(f"{prefix.name}{suffix}" for suffix in _STITCH_SUFFIXES)
+    )
 
 
 def _say(message: str, enabled: bool) -> None:

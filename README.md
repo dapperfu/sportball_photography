@@ -110,7 +110,7 @@ Because the game folders are symlinks, ffmpeg reads the originals. You are not e
 
 ### 4. `sb pano` — action panoramas for Hugin
 
-Needs Hugin's `pto_gen`, `cpfind`, `pto_var`, and `autooptimiser` (`hugin-tools`). Stitching also needs `PTBatcherGUI` (the `hugin` package) and is on by default. Point it at a game folder or a dump of JPEGs. The Hugin project is not cropped or masked. You still choose the regions in Hugin.
+Needs Hugin's `pto_gen`, `cpfind`, `pto_var`, `autooptimiser` (`hugin-tools`), and `hugin_executor` (the `hugin` package). Stitching is on by default and runs in process, with no batch window. Point it at a game folder or a dump of JPEGs. The Hugin project is not cropped or masked. You still choose the regions in Hugin.
 
 Two kinds of folder, numbered together in capture order:
 
@@ -121,7 +121,7 @@ Five shots in 2.5 seconds and five shots in 10 seconds are the same test. A gap 
 
 Each input directory gets its own sibling folder. `Games/Game03_19Sep2026_120915-132501` writes `Games/Game03_19Sep2026_120915-132501-panos/`. Five input folders produce five `-panos` folders, so each game's panoramas stay next to that game. Numbering starts at 01 inside every sibling.
 
-The median photo is the position and exposure anchor: the 3rd of 5, the 2nd of 4. Every project is then optimized for yaw, pitch, roll, and field of view (`y, p, r, v`) and nothing else. Stitching is the next step, unless you pass `--no-stitch`. After every sibling has been written, the projects are added to Hugin's batch processor with the same name as the `.pto`. The batch is not started.
+The median photo is the position and exposure anchor: the 3rd of 5, the 2nd of 4. Every project is then optimized for yaw, pitch, roll, and field of view (`y, p, r, v`) and nothing else. Stitching is the next step, unless you pass `--no-stitch`. After every sibling has been written, `hugin_executor` stitches each project in process. The image is named like the `.pto` and lands in that panorama folder. Nothing is queued, and no batch window opens.
 
 Cropping is also on unless you pass `--no-crop`. After the stitched image exists (`guessed_pano01_20Sep2025_090012-090018.jpg`, or the same name as a TIFF inside the panorama folder), Sportball writes `guessed_pano01_20Sep2025_090012-090018_cropped.jpg` next to the panorama folders. That file is the bounding box of everything that is not black canvas. The full stitch stays, so you can still see the black border and clean it up by hand.
 
@@ -203,7 +203,7 @@ sb split --min-gap 0.25 --min-rate 100 04_Apr 05_May
 
 ## Install
 
-Python 3.10+, a virtual environment, and Rust (EXIF reads go through [fast-exif-rs-py](https://github.com/dapperfu/fast-exif-rs-py); there is no fallback). `sb animate` also needs `ffmpeg`. `sb pano` also needs Hugin (`hugin-tools`: `pto_gen`, `cpfind`, `pto_var`, `autooptimiser`; `--stitch` also uses `PTBatcherGUI` from the `hugin` package).
+Python 3.10+, a virtual environment, and Rust (EXIF reads go through [fast-exif-rs-py](https://github.com/dapperfu/fast-exif-rs-py); there is no fallback). `sb animate` also needs `ffmpeg`. `sb pano` also needs Hugin (`hugin-tools`: `pto_gen`, `cpfind`, `pto_var`, `autooptimiser`; stitching uses `hugin_executor` from the `hugin` package).
 
 ```bash
 git clone <this-repo>
