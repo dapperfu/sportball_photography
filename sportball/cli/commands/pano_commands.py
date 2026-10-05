@@ -195,7 +195,7 @@ def _get_table() -> Any:
     default=True,
     show_default=True,
     help=(
-        "Write <pano_name>_cropped.jpg for each stitched panorama, "
+        "Write <pano_name>_cropped.jpg beside each stitched panorama, "
         "with the black canvas removed."
     ),
 )
@@ -249,11 +249,13 @@ def pano(
     for yaw, pitch, roll, and field of view, and nothing else.
     Stitching is on unless ``--no-stitch`` is passed. Each project is
     stitched to a JPEG in process with ``hugin_executor``, named like
-    the ``.pto``, with no batch window. Cropping is on unless ``--no-crop`` is
-    passed. After those images exist it writes
-    ``<pano_name>_cropped.jpg`` beside the full stitch, with the black
-    canvas removed. The full image stays, so the black border can still
-    be cleaned up by hand.
+    the ``.pto``, with no batch window. A project Hugin cannot stitch
+    is skipped and listed at the end, and the others still run.
+    Cropping is on unless ``--no-crop`` is passed. After those images
+    exist it writes ``<pano_name>_cropped.jpg`` beside the full stitch,
+    in the same panorama folder, with the black canvas removed. The
+    full image stays, so the black border can still be cleaned up by
+    hand.
 
     Examples:
 
@@ -300,7 +302,10 @@ def pano(
         display_pano_result(result, config)
     else:
         accepted = [group for group in result.groups if group.accepted]
-        _get_console().print(f"{len(accepted)} panoramas, {len(result.frames)} photos")
+        summary = f"{len(accepted)} panoramas, {len(result.frames)} photos"
+        if result.unstitched:
+            summary += f", {len(result.unstitched)} not stitched"
+        _get_console().print(summary)
 
 
 def display_pano_result(result: PanoResult, config: PanoConfig) -> None:
@@ -358,7 +363,12 @@ def display_pano_result(result: PanoResult, config: PanoConfig) -> None:
     if result.cropped:
         console.print("\nCropped panoramas (black canvas removed):")
         for path in result.cropped:
-            console.print(f"  {path.name}")
+            console.print(f"  {path}")
+
+    if result.unstitched:
+        console.print("\nNot stitched (Hugin failed; the folder and .pto are kept):")
+        for path in result.unstitched:
+            console.print(f"  {path}", style="yellow")
 
     if not result.groups:
         console.print("\nNo panorama candidates.")

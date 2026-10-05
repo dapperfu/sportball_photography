@@ -44,6 +44,7 @@ from sportball.detectors.pano import (
     parse_pto_control_points,
     render_pto,
     resolve_hugin_tool,
+    stitch_projects,
     survey_control_points,
     write_pano_folders,
 )
@@ -709,6 +710,8 @@ src = Path(args[-1])
 out.write_text(src.read_text() + "\\n# AUTO " + " ".join(args) + "\\n")
 """,
         "hugin_executor": """#!/usr/bin/env python3
+import os
+import shutil
 import sys
 from pathlib import Path
 args = sys.argv[1:]
@@ -729,7 +732,15 @@ if "# AUTO" not in text:
     raise SystemExit("stitched before optimisation")
 if "#hugin_outputImageType jpg" not in text:
     raise SystemExit("stitch output is not jpeg")
-Path(prefix).with_suffix(".jpg").write_bytes(b"stitched")
+fail = os.environ.get("FAKE_STITCH_FAIL")
+if fail and fail in Path(prefix).name:
+    print("enblend: excessive image overlap detected", file=sys.stderr)
+    raise SystemExit(1)
+image = os.environ.get("FAKE_STITCH_IMAGE")
+if image:
+    shutil.copyfile(image, Path(prefix).with_suffix(".jpg"))
+else:
+    Path(prefix).with_suffix(".jpg").write_bytes(b"stitched")
 log = Path(__file__).resolve().with_name("stitched.txt")
 with log.open("a", encoding="utf-8") as handle:
     handle.write("\\n".join(args) + "\\n")
@@ -1030,12 +1041,13 @@ def test_stitch_runs_after_every_sibling_is_written(
     def capture_queue(
         projects: Sequence[Path],
         progress: bool = True,
-    ) -> None:
+    ) -> List[Path]:
         for game in games:
             sibling = tmp_path / f"{game.name}-panos"
             assert sibling.is_dir()
             assert list(sibling.rglob("*.pto"))
         queued.append(list(projects))
+        return []
 
     monkeypatch.setattr(pano_mod, "stitch_projects", capture_queue)
     find_action_panos(
@@ -1047,6 +1059,56 @@ def test_stitch_runs_after_every_sibling_is_written(
     assert {path.parent.parent.name for path in queued[0]} == {
         f"{game.name}-panos" for game in games
     }
+
+
+def test_failed_stitch_is_skipped_and_the_rest_are_cropped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A project Hugin rejects does not stop the next stitch or its crop."""
+    bin_dir = tmp_path / "bin"
+    _install_fake_hugin(bin_dir)
+    _prefer_tools(monkeypatch, bin_dir)
+    canvas = tmp_path / "canvas.jpg"
+    _canvas(canvas, (80, 40), (10, 6, 30, 22), (200, 40, 40))
+    monkeypatch.setenv("FAKE_STITCH_IMAGE", str(canvas))
+    monkeypatch.setenv("FAKE_STITCH_FAIL", "pano01")
+    game = tmp_path / "Game03_19Sep2026_120915-132501"
+    game.mkdir()
+    _stub_detection(
+        monkeypatch,
+        {
+            game: [
+                _accepted_group(game, "guessed", "a.jpg", 0.0),
+                _accepted_group(game, "guessed", "b.jpg", 20.0),
+            ]
+        },
+    )
+
+    result = find_action_panos(
+        [str(game)], PanoConfig(stitch=True, crop=True, progress=False)
+    )
+
+    sibling = tmp_path / f"{game.name}-panos"
+    failed, kept = sorted(path for path in sibling.iterdir() if path.is_dir())
+    assert failed.name.startswith("guessed_pano01_")
+    assert [path.resolve() for path in result.unstitched] == [
+        (failed / f"{failed.name}.pto").resolve()
+    ]
+    assert not (failed / f"{failed.name}.jpg").exists()
+    assert list(failed.glob("*_cropped.jpg")) == []
+    assert (kept / f"{kept.name}.jpg").is_file()
+    cropped = kept / f"{kept.name}_cropped.jpg"
+    assert [path.resolve() for path in result.cropped] == [cropped.resolve()]
+    assert list(sibling.glob("*_cropped.jpg")) == []
+
+
+def test_stitch_without_hugin_executor_still_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only a failed project is skipped. A missing tool stops the stitch."""
+    monkeypatch.setenv("PATH", str(tmp_path))
+    with pytest.raises(RuntimeError, match="hugin_executor"):
+        stitch_projects([tmp_path / "guessed_pano01_x.pto"], progress=False)
 
 
 def test_crop_black_canvas_drops_the_border(tmp_path: Path) -> None:
@@ -1094,6 +1156,28 @@ def test_crop_directory_prefers_jpeg_and_ignores_cropped_files(tmp_path: Path) -
         assert abs(image.size[1] - 16) <= 2
 
 
+def test_crop_lands_beside_the_stitch_in_its_folder(tmp_path: Path) -> None:
+    """The inline stitch is cropped in its own folder, not the -panos root."""
+    name = "known_pano03_20Sep2025_090012-090018"
+    folder = tmp_path / name
+    folder.mkdir()
+    stitched = folder / f"{name}.jpg"
+    _canvas(stitched, (80, 40), (10, 6, 30, 22), (40, 200, 40))
+
+    written = crop_panorama_directory(tmp_path, progress=False)
+    again = crop_panorama_directory(tmp_path, progress=False)
+
+    cropped = folder / f"{name}_cropped.jpg"
+    assert written == [cropped]
+    assert again == [cropped]
+    assert stitched.is_file()
+    assert list(tmp_path.glob("*_cropped.jpg")) == []
+    assert not (folder / f"{name}_cropped_cropped.jpg").exists()
+    with Image.open(cropped) as image:
+        assert abs(image.size[0] - 20) <= 2
+        assert abs(image.size[1] - 16) <= 2
+
+
 def test_all_black_stitch_is_not_cropped(tmp_path: Path) -> None:
     """A frame with no picture does not produce a cropped file."""
     source = tmp_path / "known_pano03_20Sep2025_090012-090018.jpg"
@@ -1127,6 +1211,35 @@ def test_cli_can_turn_stitch_and_crop_off(
     assert result.exit_code == 0, result.output
     assert seen["config"].stitch is False
     assert seen["config"].crop is False
+
+
+def test_report_lists_crops_and_projects_that_did_not_stitch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The summary names each cropped file and each project Hugin rejected."""
+    cropped = Path("g-panos/guessed_pano02_x/guessed_pano02_x_cropped.jpg")
+    unstitched = Path("g-panos/guessed_pano01_y/guessed_pano01_y.pto")
+
+    def fake_find(*args: object, **kwargs: object) -> PanoResult:
+        return PanoResult(
+            frames=[],
+            groups=[],
+            marker_runs=[],
+            skipped_no_exif=0,
+            skipped_undecodable=0,
+            cropped=[cropped],
+            unstitched=[unstitched],
+        )
+
+    monkeypatch.setattr(pano_mod, "find_action_panos", fake_find)
+    result = CliRunner().invoke(pano, [str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert str(cropped) in result.output
+    assert "Not stitched" in result.output
+    assert str(unstitched) in result.output
+    quiet = CliRunner().invoke(pano, [str(tmp_path)], obj={"quiet": True})
+    assert quiet.exit_code == 0, quiet.output
+    assert "1 not stitched" in quiet.output
 
 
 def _canvas(

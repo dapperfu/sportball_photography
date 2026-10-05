@@ -10,9 +10,10 @@ not. Hugin's ``cpfind`` supplies the control points.
 The command writes symlink folders and a ``.pto`` project. Every project
 is optimized for yaw, pitch, roll, and field of view only. Stitching
 and a black-canvas crop are on by default. ``hugin_executor`` stitches
-each project to a JPEG in process, with no batch window. ``--crop`` then writes
-``<pano_name>_cropped.jpg`` beside each stitched panorama, with the
-black canvas removed.
+each project to a JPEG in process, with no batch window. A project it
+cannot stitch is skipped, and the rest still run. ``--crop`` then
+writes ``<pano_name>_cropped.jpg`` beside each stitched panorama, in
+the same folder, with the black canvas removed.
 
 Author: Claude Sonnet 4 (claude-3-5-sonnet-20241022)
 Generated via Cursor IDE (cursor.sh) with AI assistance
@@ -107,8 +108,8 @@ class PanoConfig:
         After every project is optimized, stitch it to a JPEG with
         ``hugin_executor``. No batch window is opened.
     crop : bool
-        After the panoramas exist, write ``<pano_name>_cropped.jpg`` for
-        each stitched image, dropping the black canvas.
+        After the panoramas exist, write ``<pano_name>_cropped.jpg``
+        beside each stitched image, dropping the black canvas.
     dry_run : bool
         Score and match, but do not create folders.
     progress : bool
@@ -302,7 +303,11 @@ class PanoResult:
         Sibling directories that receive each input's panoramas. Listed
         even on a dry run, when nothing is created.
     cropped : list of Path
-        ``<pano_name>_cropped.jpg`` files written from stitched panoramas.
+        ``<pano_name>_cropped.jpg`` files, each beside the stitched
+        panorama it was cut from.
+    unstitched : list of Path
+        Projects that ``hugin_executor`` could not stitch. Their folders
+        and ``.pto`` files are kept.
     """
 
     frames: List[Frame]
@@ -312,6 +317,7 @@ class PanoResult:
     skipped_undecodable: int
     output_dirs: List[Path] = field(default_factory=list)
     cropped: List[Path] = field(default_factory=list)
+    unstitched: List[Path] = field(default_factory=list)
 
 
 SurveyFn = Callable[[Sequence[Frame], int], PairSurvey]
@@ -1200,7 +1206,7 @@ def crop_black_canvas(
         if box is None:
             return None
         destination.parent.mkdir(parents=True, exist_ok=True)
-        rgb.crop(box).save(destination, "JPEG", quality=95)
+        rgb.crop(box).save(destination, "JPEG", quality=DEFAULT_JPEG_QUALITY)
     return box
 
 
@@ -1293,10 +1299,10 @@ def crop_panorama_directory(
     progress: bool = True,
 ) -> List[Path]:
     """
-    Write ``<pano_name>_cropped.jpg`` for each stitched panorama.
+    Write ``<pano_name>_cropped.jpg`` beside each stitched panorama.
 
-    The full image is left in place. The cropped file sits in
-    ``panos_dir`` and drops the black canvas.
+    The full image is left in place. The cropped file goes in the same
+    folder as the image it was cut from, and drops the black canvas.
 
     Parameters
     ----------
@@ -1318,7 +1324,7 @@ def crop_panorama_directory(
         _say(f"No stitched panoramas to crop in {panos_dir}", progress)
         return written
     for source in sources:
-        destination = panos_dir / f"{source.stem}_cropped.jpg"
+        destination = source.with_name(f"{source.stem}_cropped.jpg")
         try:
             box = crop_black_canvas(source, destination, threshold)
         except (OSError, UnidentifiedImageError, ValueError) as exc:
@@ -1438,11 +1444,20 @@ def find_action_panos(
         all_frames, config.marker_var, config.marker_count, config.discontinuity
     )
     cropped: List[Path] = []
+    unstitched: List[Path] = []
     if config.dry_run:
         _say("Dry run: panorama folders will not be written", show)
     else:
         if config.stitch:
-            stitch_projects(projects, progress=show)
+            stitched = {
+                image.with_suffix("")
+                for image in stitch_projects(projects, progress=show)
+            }
+            unstitched = [
+                project
+                for project in projects
+                if project.resolve().with_suffix("") not in stitched
+            ]
         if config.crop:
             for directory in output_dirs:
                 cropped.extend(crop_panorama_directory(directory, progress=show))
@@ -1454,6 +1469,7 @@ def find_action_panos(
         skipped_undecodable=skipped_decode,
         output_dirs=output_dirs,
         cropped=cropped,
+        unstitched=unstitched,
     )
 
 
@@ -2034,34 +2050,41 @@ def stitch_projects(
 
     Projects run one after another. The output is ``<project>.jpg`` in
     that panorama folder. No batch window is opened, so the JPEG
-    exists before cropping starts.
+    exists before cropping starts. A project that Hugin cannot stitch
+    is reported and skipped, and the remaining projects still run.
 
     Parameters
     ----------
     projects : sequence of Path
         Optimized ``.pto`` files, in stitch order.
     progress : bool
-        Print each stitch.
+        Print each stitch, and the tool log of a stitch that failed.
 
     Returns
     -------
     list of Path
-        Stitched images, one per project.
+        Stitched images, in project order. A project that failed has
+        no entry.
 
     Raises
     ------
     RuntimeError
-        If ``hugin_executor`` is not on ``PATH``, fails, or writes no image.
+        If ``hugin_executor`` is not on ``PATH``.
     """
     written: List[Path] = []
     if not projects:
         _say("No projects to stitch", progress)
         return written
+    resolve_hugin_tool("hugin_executor")
     _say(f"Stitching {len(projects)} project(s) with hugin_executor", progress)
     with _bar(len(projects), "Stitching", progress, unit="pano") as bar:
         for project in projects:
-            image = _stitch_one_project(project, progress)
-            written.append(image)
+            try:
+                written.append(_stitch_one_project(project, progress))
+            except RuntimeError as exc:
+                logger.warning(f"Could not stitch {project}: {exc}")
+                _echo_tool(str(exc), progress)
+                _say(f"  skip stitch {project.name}", progress)
             bar.update(1)
     return written
 

@@ -97,8 +97,8 @@ STATUS: Implemented
 [REQUIREMENT]
 UID: AP-009
 TITLE: Inline Stitch
-STATEMENT: Stitching SHALL be on by default. After all panorama folders have been written, Sportball SHALL run hugin_executor --stitching on each optimized project, one after another, and SHALL NOT open PTBatcherGUI. The stitched image SHALL be a JPEG named like the project, in that panorama folder. ``--no-stitch`` SHALL skip stitching. The JPEG SHALL exist before the cropped copy is written.
-RATIONALE: An inline JPEG stitch needs no batch window and leaves an image for the crop in the same run. The command works headless.
+STATEMENT: Stitching SHALL be on by default. After all panorama folders have been written, Sportball SHALL run hugin_executor --stitching on each optimized project, one after another, and SHALL NOT open PTBatcherGUI. The stitched image SHALL be a JPEG named like the project, in that panorama folder. ``--no-stitch`` SHALL skip stitching. The JPEG SHALL exist before the cropped copy is written. A project that hugin_executor cannot stitch SHALL be reported and skipped, the remaining projects SHALL still be stitched and cropped, and the skipped folder and its .pto SHALL be kept. A missing hugin_executor SHALL still stop the command.
+RATIONALE: An inline JPEG stitch needs no batch window and leaves an image for the crop in the same run. The command works headless. One pan that Hugin rejects does not cost the rest of the game its panoramas.
 PRIORITY: Medium
 STATUS: Implemented
 
@@ -113,7 +113,7 @@ STATUS: Implemented
 [REQUIREMENT]
 UID: AP-011
 TITLE: Cropped Stitch
-STATEMENT: Cropping SHALL be on by default and SHALL be pure Python. After the panorama directory exists, Sportball SHALL write one <pano_name>_cropped.jpg for each stitched panorama it finds there. The crop box SHALL be the bounding box of pixels that are not black canvas. The full stitch SHALL be left in place. --no-crop SHALL skip that file. A dry run SHALL NOT write it. A frame that is entirely black SHALL NOT produce a cropped file. A file already named _cropped SHALL NOT be cropped again.
+STATEMENT: Cropping SHALL be on by default and SHALL be pure Python. After the panorama directory exists, Sportball SHALL write one <pano_name>_cropped.jpg for each stitched panorama it finds there, in the same folder as that stitched image. The crop box SHALL be the bounding box of pixels that are not black canvas. The full stitch SHALL be left in place. --no-crop SHALL skip that file. A dry run SHALL NOT write it. A frame that is entirely black SHALL NOT produce a cropped file. A file already named _cropped SHALL NOT be cropped again.
 RATIONALE: The full stitch shows the black canvas and whether the edges can be cleaned up by hand. The cropped file is the picture without that canvas.
 PRIORITY: High
 STATUS: Implemented
