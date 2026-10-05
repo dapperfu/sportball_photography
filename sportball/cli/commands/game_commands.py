@@ -449,13 +449,6 @@ def analyze(
     is_flag=True,
     help="Show planned encodes without running ffmpeg",
 )
-@click.option(
-    "--ffmpeg",
-    "ffmpeg_bin",
-    type=click.Path(path_type=Path),
-    default=None,
-    help="Path to ffmpeg (default: look up on PATH)",
-)
 def animate(
     inputs: Tuple[str, ...],
     duration_seconds: Optional[float],
@@ -464,7 +457,6 @@ def animate(
     workers: int,
     force: bool,
     dry_run: bool,
-    ffmpeg_bin: Optional[Path],
 ) -> None:
     """
     Encode each Game## album into a matching .mp4 with ffmpeg.
@@ -515,12 +507,9 @@ def animate(
             raise click.BadParameter(str(exc), param_hint="--size") from exc
 
     input_paths = [Path(item) for item in inputs]
-    ffmpeg_path: Optional[str] = None
-    if ffmpeg_bin is not None:
-        ffmpeg_path = str(ffmpeg_bin)
-    elif not dry_run:
+    if not dry_run:
         try:
-            ffmpeg_path = find_ffmpeg()
+            find_ffmpeg()
         except RuntimeError as exc:
             raise click.ClickException(str(exc)) from exc
 
@@ -548,7 +537,6 @@ def animate(
             workers=workers,
             force=force,
             dry_run=dry_run,
-            ffmpeg_bin=ffmpeg_path,
             on_progress=_on_progress,
         )
     except ValueError as exc:

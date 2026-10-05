@@ -32,17 +32,17 @@ ELEMENTS:
 
 [REQUIREMENT]
 UID: AP-001
-TITLE: Black Frame Marker
-STATEMENT: Sportball SHALL score each decoded photo as mean(pixel^2) on a fixed-size grayscale thumbnail. A run of at least a configurable count of consecutive frames at or below a configurable score SHALL be a known-panorama marker. The default count SHALL be 2 and the default score SHALL be 100.
-RATIONALE: A covered lens is the photographer's mark that the preceding pan is worth stitching. Mean squared error on a fixed thumbnail keeps the threshold independent of file resolution.
+TITLE: Uniform Frame Marker
+STATEMENT: Sportball SHALL score each decoded photo on a fixed-size grayscale thumbnail by its mean gray level and the variance of pixels around that mean. A run of at least a configurable count of consecutive frames whose variance is at or below a configurable score SHALL be a known-panorama marker. The default count SHALL be 2 and the default variance SHALL be 100. A marker MAY be a covered lens, a frame of sky, or a zoomed frame of ground.
+RATIONALE: The photographer marks the end of a pan with a nearly uniform frame. Variance around the grayscale mean accepts black, sky, and ground alike, and stays independent of file resolution.
 PRIORITY: High
 STATUS: Implemented
 
 [REQUIREMENT]
 UID: AP-002
 TITLE: Known Panorama Walk-Back
-STATEMENT: From the frame immediately before a black-frame marker, Sportball SHALL walk backward while each gap is at most a configurable discontinuity (default 10 seconds). Inside that window it SHALL run cpfind and cut the panorama at a configurable weak-link rule. The default rule SHALL cut at the weak link with the largest time gap, breaking ties toward the black frames. A link SHALL be weak when its control-point count is at most a configurable split threshold (default 0). The whole window SHALL be kept when no link is weak.
-RATIONALE: The pan just finished is the suffix before the covered-lens pair. A long gap with no overlap is the start of that pan. A gap over 10 seconds is a different shot.
+STATEMENT: From the frame immediately before a uniform-frame marker, Sportball SHALL walk backward while each gap is at most a configurable discontinuity (default 10 seconds). Inside that window it SHALL run cpfind and cut the panorama at a configurable weak-link rule. The default rule SHALL cut at the weak link with the largest time gap, breaking ties toward the marker frames. A link SHALL be weak when its control-point count is at most a configurable split threshold (default 0). The whole window SHALL be kept when no link is weak.
+RATIONALE: The pan just finished is the suffix before the uniform pair. A long gap with no overlap is the start of that pan. A gap over 10 seconds is a different shot.
 PRIORITY: High
 STATUS: Implemented
 
@@ -65,7 +65,7 @@ STATUS: Implemented
 [REQUIREMENT]
 UID: AP-005
 TITLE: Hugin Project Output
-STATEMENT: Each accepted panorama SHALL be written as a folder of symlinks (or copies when requested) plus one Hugin .pto project inside that folder. Black marker frames SHALL NOT be placed in the folder. Folder names SHALL be known_pano or guessed_pano, numbered together in capture order, with the same date and time suffix pattern as game folders. The .pto SHALL reference those folder entries. Control points SHALL be detected on previews and scaled to full resolution. Sportball SHALL NOT mask or crop the panorama, and SHALL NOT write per-image sidecar documents.
+STATEMENT: Each accepted panorama SHALL be written as a folder of symlinks (or copies when requested) plus one Hugin .pto project inside that folder. Uniform marker frames SHALL NOT be placed in the folder. Folder names SHALL be known_pano or guessed_pano, numbered together in capture order, with the same date and time suffix pattern as game folders. The .pto SHALL reference those folder entries. Control points SHALL be detected on previews and scaled to full resolution. Sportball SHALL NOT mask or crop images inside the Hugin project, and SHALL NOT write per-image sidecar documents.
 RATIONALE: The photographer includes and excludes regions in Hugin. The .pto is the stitch project, not a metadata sidecar.
 PRIORITY: High
 STATUS: Implemented
@@ -81,8 +81,8 @@ STATUS: Implemented
 [REQUIREMENT]
 UID: AP-007
 TITLE: Dry Run
-STATEMENT: A dry run SHALL print each decoded photo's blackness score, each black-frame marker, and the control-point count of each link in every accepted or rejected run. It SHALL NOT create panorama folders.
-RATIONALE: The blackness and overlap thresholds are tuned on a real game before anything is written.
+STATEMENT: A dry run SHALL print each decoded photo's grayscale mean and variance, each uniform-frame marker, and the control-point count of each link in every accepted or rejected run. It SHALL NOT create panorama folders.
+RATIONALE: The variance and overlap thresholds are tuned on a real game before anything is written.
 PRIORITY: Medium
 STATUS: Implemented
 
@@ -97,7 +97,7 @@ STATUS: Implemented
 [REQUIREMENT]
 UID: AP-009
 TITLE: Batch Queue
-STATEMENT: When stitching is requested, Sportball SHALL add every optimized project to Hugin's batch processor only after all panorama folders have been written. It SHALL pass PTBatcherGUI the project and an output prefix with the same name, and SHALL NOT pass --batch. Stitching SHALL NOT start. The output prefix SHALL be the project path without the .pto suffix, in that panorama folder.
+STATEMENT: Stitching SHALL be on by default. Sportball SHALL add every optimized project to Hugin's batch processor only after all panorama folders have been written. It SHALL pass PTBatcherGUI the project and an output prefix with the same name, and SHALL NOT pass --batch. Stitching SHALL NOT start. The output prefix SHALL be the project path without the .pto suffix, in that panorama folder. ``--no-stitch`` SHALL skip the batch queue.
 RATIONALE: The batch processor is where the stitch is reviewed and started. Sportball only lines up the projects.
 PRIORITY: Medium
 STATUS: Implemented
@@ -107,5 +107,13 @@ UID: AP-010
 TITLE: Per-Input Panorama Folder
 STATEMENT: Each input directory SHALL receive its own panorama directory, a sibling whose name is the input directory name plus -panos. Five input directories SHALL produce five -panos directories. Panoramas from one input SHALL stay in that input's sibling and SHALL NOT be written into a shared output directory. Numbering SHALL restart in each sibling. A directory that is the -panos sibling of another selected input SHALL NOT be scanned. A dry run SHALL NOT create those sibling directories.
 RATIONALE: Panoramas stay next to the game folder they came from. A shared dump folder separates them from that source.
+PRIORITY: High
+STATUS: Implemented
+
+[REQUIREMENT]
+UID: AP-011
+TITLE: Cropped Stitch
+STATEMENT: Cropping SHALL be on by default and SHALL be pure Python. After the panorama directory exists, Sportball SHALL write one <pano_name>_cropped.jpg for each stitched panorama it finds there. The crop box SHALL be the bounding box of pixels that are not black canvas. The full stitch SHALL be left in place. --no-crop SHALL skip that file. A dry run SHALL NOT write it. A frame that is entirely black SHALL NOT produce a cropped file. A file already named _cropped SHALL NOT be cropped again.
+RATIONALE: The full stitch shows the black canvas and whether the edges can be cleaned up by hand. The cropped file is the picture without that canvas.
 PRIORITY: High
 STATUS: Implemented

@@ -81,6 +81,7 @@ def system_info(ctx: click.Context):
     import sys
     import os
 
+    Table = _get_table()
     info_table = Table(title="System Information")
     info_table.add_column("Property", style="cyan")
     info_table.add_column("Value", style="green")

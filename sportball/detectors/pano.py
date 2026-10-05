@@ -2,14 +2,17 @@
 Action-panorama detection.
 
 Finds stitchable pans in a burst of sports photos. A known panorama is the
-run of frames before a pair of black frames (lens covered). A guessed
-panorama has no marker: neighboring frames share control points, and frames
-a few shots apart do not. Hugin's ``cpfind`` supplies the control points.
+run of frames before a pair of nearly uniform frames (lens covered, a shot
+of sky, or a zoom into the ground). A guessed panorama has no marker:
+neighboring frames share control points, and frames a few shots apart do
+not. Hugin's ``cpfind`` supplies the control points.
 
 The command writes symlink folders and a ``.pto`` project. Every project
-is optimized for yaw, pitch, roll, and field of view only. ``--stitch``
-adds those projects to Hugin's batch queue after that, and does not
-start the batch.
+is optimized for yaw, pitch, roll, and field of view only. Stitching
+and a black-canvas crop are on by default. ``--stitch`` adds the
+projects to Hugin's batch queue and does not start the batch.
+``--crop`` then writes ``<pano_name>_cropped.jpg`` beside each stitched
+panorama, with the black canvas removed.
 
 Author: Claude Sonnet 4 (claude-3-5-sonnet-20241022)
 Generated via Cursor IDE (cursor.sh) with AI assistance
@@ -28,7 +31,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, cast
 
 from loguru import logger
-from PIL import Image, ImageStat, UnidentifiedImageError
+from PIL import Image, ImageChops, ImageStat, UnidentifiedImageError
 from tqdm import tqdm
 
 from .game import (
@@ -38,9 +41,9 @@ from .game import (
     timestamp_from_exif_tags,
 )
 
-DEFAULT_BLACK_MSE = 100.0
-DEFAULT_BLACK_SAMPLE = 64
-DEFAULT_BLACK_COUNT = 2
+DEFAULT_MARKER_VAR = 100.0
+DEFAULT_MARKER_SAMPLE = 64
+DEFAULT_MARKER_COUNT = 2
 DEFAULT_DISCONTINUITY_SECONDS = 10.0
 DEFAULT_SPLIT_POINTS = 0
 DEFAULT_STRIDE = 3
@@ -49,7 +52,10 @@ DEFAULT_FAR_POINTS = 0
 DEFAULT_MIN_FRAMES = 5
 POSITION_VIEW_VARIABLES = "y,p,r,v"
 DEFAULT_CP_EDGE = 1600
+DEFAULT_CROP_THRESHOLD = 8
 PANOS_SUFFIX = "-panos"
+_STITCH_SUFFIXES = (".jpg", ".jpeg", ".tif", ".tiff")
+_PANO_STEM_RE = re.compile(r"^(?:known_pano|guessed_pano)\d+_.+")
 
 _IMAGE_LINE_RE = re.compile(r'^i\b.*\bn"([^"]*)"')
 _CONTROL_POINT_RE = re.compile(
@@ -60,22 +66,23 @@ _CONTROL_POINT_RE = re.compile(
 @dataclass(frozen=True)
 class PanoConfig:
     """
-    Thresholds for black-frame markers and stitch geometry.
+    Thresholds for uniform-frame markers and stitch geometry.
 
     Parameters
     ----------
-    black_mse : float
-        Maximum ``mean(pixel^2)`` on the blackness sample for a frame to
-        count as black.
-    black_sample : int
-        Edge length of the grayscale thumbnail used for that mean.
-    black_count : int
-        Consecutive black frames that mark a known panorama.
+    marker_var : float
+        Maximum variance of the grayscale thumbnail around its mean. At or
+        below this, a frame is a marker. Covered-lens, sky, and zoomed
+        ground frames are all low.
+    marker_sample : int
+        Edge length of the grayscale thumbnail used for that variance.
+    marker_count : int
+        Consecutive uniform frames that mark a known panorama.
     discontinuity : float
         Seconds. A larger gap is two different shots.
     split_points : int
         A consecutive pair with this many control points or fewer is a
-        candidate cut while walking back from a black marker.
+        candidate cut while walking back from a uniform marker.
     boundary : str
         ``largest-gap`` or ``first``.
     guess : bool
@@ -98,15 +105,18 @@ class PanoConfig:
     stitch : bool
         After every project is optimized, add them to the Hugin batch
         queue. The batch is not started.
+    crop : bool
+        After the panoramas exist, write ``<pano_name>_cropped.jpg`` for
+        each stitched image, dropping the black canvas.
     dry_run : bool
         Score and match, but do not create folders.
     progress : bool
         Print a tqdm bar and a line for each frame, survey, and decision.
     """
 
-    black_mse: float = DEFAULT_BLACK_MSE
-    black_sample: int = DEFAULT_BLACK_SAMPLE
-    black_count: int = DEFAULT_BLACK_COUNT
+    marker_var: float = DEFAULT_MARKER_VAR
+    marker_sample: int = DEFAULT_MARKER_SAMPLE
+    marker_count: int = DEFAULT_MARKER_COUNT
     discontinuity: float = DEFAULT_DISCONTINUITY_SECONDS
     split_points: int = DEFAULT_SPLIT_POINTS
     boundary: str = "largest-gap"
@@ -118,7 +128,8 @@ class PanoConfig:
     cp_edge: int = DEFAULT_CP_EDGE
     copy_files: bool = False
     write_pto: bool = True
-    stitch: bool = False
+    stitch: bool = True
+    crop: bool = True
     dry_run: bool = False
     progress: bool = True
 
@@ -134,19 +145,22 @@ class Frame:
         Image file.
     timestamp : datetime
         EXIF capture time.
-    black_mse : float
-        ``mean(pixel^2)`` against black on the sample thumbnail.
+    variation : float
+        Variance of the grayscale thumbnail around its mean.
     width : int
         Full-resolution width in pixels.
     height : int
         Full-resolution height in pixels.
+    mean : float
+        Mean gray level of that thumbnail, 0 to 255.
     """
 
     path: Path
     timestamp: datetime
-    black_mse: float
+    variation: float
     width: int
     height: int
+    mean: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -235,7 +249,7 @@ class PanoGroup:
     reason : str
         Why the run was accepted or rejected.
     frames : list of Frame
-        Photos that belong in the stitch, excluding black markers.
+        Photos that belong in the stitch, excluding uniform markers.
     marker : list of Frame
         Black frames that ended a known panorama. Empty otherwise.
     neighbor_links : list of LinkReport
@@ -277,8 +291,8 @@ class PanoResult:
         Decoded photos in capture order.
     groups : list of PanoGroup
         Accepted and rejected runs.
-    black_runs : list of tuple of int
-        Inclusive index ranges of black markers inside ``frames``.
+    marker_runs : list of tuple of int
+        Inclusive index ranges of uniform markers inside ``frames``.
     skipped_no_exif : int
         Files with no usable capture time.
     skipped_undecodable : int
@@ -286,14 +300,17 @@ class PanoResult:
     output_dirs : list of Path
         Sibling directories that receive each input's panoramas. Listed
         even on a dry run, when nothing is created.
+    cropped : list of Path
+        ``<pano_name>_cropped.jpg`` files written from stitched panoramas.
     """
 
     frames: List[Frame]
     groups: List[PanoGroup]
-    black_runs: List[Tuple[int, int]]
+    marker_runs: List[Tuple[int, int]]
     skipped_no_exif: int
     skipped_undecodable: int
     output_dirs: List[Path] = field(default_factory=list)
+    cropped: List[Path] = field(default_factory=list)
 
 
 SurveyFn = Callable[[Sequence[Frame], int], PairSurvey]
@@ -313,12 +330,12 @@ def validate_config(config: PanoConfig) -> None:
     ValueError
         If a threshold is out of range or ``boundary`` is unknown.
     """
-    if config.black_mse < 0.0:
-        raise ValueError("--black-mse must be zero or positive")
-    if config.black_sample < 1:
-        raise ValueError("--black-sample must be at least 1")
-    if config.black_count < 1:
-        raise ValueError("--black-count must be at least 1")
+    if config.marker_var < 0.0:
+        raise ValueError("--marker-var must be zero or positive")
+    if config.marker_sample < 1:
+        raise ValueError("--marker-sample must be at least 1")
+    if config.marker_count < 1:
+        raise ValueError("--marker-count must be at least 1")
     if config.discontinuity < 0.0:
         raise ValueError("--discontinuity must be zero or positive")
     if config.split_points < 0:
@@ -339,13 +356,14 @@ def validate_config(config: PanoConfig) -> None:
         raise ValueError("--stitch requires the Hugin project (--pto)")
 
 
-def measure_black_mse(path: Path, sample: int) -> Tuple[float, int, int]:
+def measure_marker_variation(path: Path, sample: int) -> Tuple[float, float, int, int]:
     """
-    Score how close an image is to pure black.
+    Score how uniform a frame is, at any brightness.
 
-    The score is the mean of squared pixel values on a grayscale thumbnail
-    of ``sample`` by ``sample`` pixels. Pure black is 0. An 8-bit frame
-    whose pixels are all ``N`` scores ``N * N``.
+    The thumbnail is ``sample`` by ``sample`` grayscale pixels. The mean
+    is the average gray level. The variation is the mean squared deviation
+    from that mean. A covered lens, a frame of sky, and a zoomed frame of
+    ground all score near 0. A detailed frame scores high.
 
     Parameters
     ----------
@@ -356,8 +374,8 @@ def measure_black_mse(path: Path, sample: int) -> Tuple[float, int, int]:
 
     Returns
     -------
-    tuple of float, int, int
-        Mean squared error, full width, and full height.
+    tuple of float, float, int, int
+        Variation, mean gray level, full width, and full height.
 
     Raises
     ------
@@ -369,7 +387,7 @@ def measure_black_mse(path: Path, sample: int) -> Tuple[float, int, int]:
         If Pillow does not recognize the file.
     """
     if sample < 1:
-        raise ValueError("black sample edge must be at least 1")
+        raise ValueError("marker sample edge must be at least 1")
     with Image.open(path) as image:
         width, height = image.size
         image.draft("L", (sample, sample))
@@ -377,30 +395,31 @@ def measure_black_mse(path: Path, sample: int) -> Tuple[float, int, int]:
         if gray.size != (sample, sample):
             gray = gray.resize((sample, sample), Image.Resampling.BOX)
         stat = ImageStat.Stat(gray)
-        mse = float(stat.sum2[0]) / float(sample * sample)
-    return mse, int(width), int(height)
+        mean = float(stat.mean[0])
+        variation = float(stat.var[0])
+    return variation, mean, int(width), int(height)
 
 
-def find_black_runs(
+def find_marker_runs(
     frames: Sequence[Frame],
-    black_mse: float,
-    black_count: int,
+    marker_var: float,
+    marker_count: int,
     discontinuity: float,
 ) -> List[Tuple[int, int]]:
     """
-    Find runs of consecutive black frames.
+    Find runs of consecutive uniform frames.
 
-    A run breaks when a frame is brighter than ``black_mse`` or the gap
-    since the previous frame is greater than ``discontinuity`` seconds.
-    Runs shorter than ``black_count`` are ignored.
+    A run breaks when a frame's variation is above ``marker_var`` or the
+    gap since the previous frame is greater than ``discontinuity`` seconds.
+    Runs shorter than ``marker_count`` are ignored.
 
     Parameters
     ----------
     frames : sequence of Frame
         Photos in capture order.
-    black_mse : float
-        Maximum blackness score, inclusive.
-    black_count : int
+    marker_var : float
+        Maximum grayscale variance, inclusive.
+    marker_count : int
         Minimum run length.
     discontinuity : float
         Maximum seconds between frames that still belong to one run.
@@ -413,21 +432,21 @@ def find_black_runs(
     runs: List[Tuple[int, int]] = []
     start: Optional[int] = None
     for index, frame in enumerate(frames):
-        is_black = frame.black_mse <= black_mse
-        if start is not None and is_black:
+        is_marker = frame.variation <= marker_var
+        if start is not None and is_marker:
             gap = _gap_seconds(frames[index - 1], frame)
             if gap > discontinuity:
-                _close_black_run(runs, start, index - 1, black_count)
+                _close_marker_run(runs, start, index - 1, marker_count)
                 start = index
             continue
-        if is_black:
+        if is_marker:
             start = index
             continue
         if start is not None:
-            _close_black_run(runs, start, index - 1, black_count)
+            _close_marker_run(runs, start, index - 1, marker_count)
             start = None
     if start is not None:
-        _close_black_run(runs, start, len(frames) - 1, black_count)
+        _close_marker_run(runs, start, len(frames) - 1, marker_count)
     return runs
 
 
@@ -435,25 +454,25 @@ def known_window_indices(
     frames: Sequence[Frame],
     marker_start: int,
     discontinuity: float,
-    black_mse: float,
+    marker_var: float,
     claimed: Mapping[int, bool],
 ) -> List[int]:
     """
-    Collect the frames immediately before a black-frame marker.
+    Collect the frames immediately before a uniform-frame marker.
 
     Walking stops at a gap greater than ``discontinuity`` seconds, at a
-    black frame, or at an index already claimed by a later panorama.
+    uniform frame, or at an index already claimed by a later panorama.
 
     Parameters
     ----------
     frames : sequence of Frame
         Photos in capture order.
     marker_start : int
-        Index of the first black frame in the marker.
+        Index of the first uniform frame in the marker.
     discontinuity : float
         Maximum seconds that still count as the same shot.
-    black_mse : float
-        Blackness threshold used to recognize marker frames.
+    marker_var : float
+        Variance threshold used to recognize marker frames.
     claimed : mapping
         Indexes that a later marker already took. Presence means claimed.
 
@@ -466,7 +485,7 @@ def known_window_indices(
     end = marker_start - 1
     if end < 0:
         return []
-    if end in claimed or frames[end].black_mse <= black_mse:
+    if end in claimed or frames[end].variation <= marker_var:
         return []
     start = end
     index = end
@@ -475,7 +494,7 @@ def known_window_indices(
         gap = _gap_seconds(frames[previous], frames[index])
         if gap > discontinuity:
             break
-        if previous in claimed or frames[previous].black_mse <= black_mse:
+        if previous in claimed or frames[previous].variation <= marker_var:
             break
         start = previous
         index = previous
@@ -496,9 +515,9 @@ def cut_known_start(
     is a weak link.
 
     ``largest-gap`` cuts at the weak link with the largest time gap. Equal
-    gaps keep the link closer to the black frames (the higher index), so
+    gaps keep the link closer to the marker frames (the higher index), so
     the folder is the pan just finished. ``first`` cuts at the weak link
-    closest to the black frames. No weak link keeps the whole window.
+    closest to the marker frames. No weak link keeps the whole window.
 
     Parameters
     ----------
@@ -953,7 +972,7 @@ def detect_panos(
     Returns
     -------
     tuple
-        Groups (accepted and rejected) and inclusive black-run indexes.
+        Groups (accepted and rejected) and inclusive marker-run indexes.
 
     Raises
     ------
@@ -962,12 +981,12 @@ def detect_panos(
     """
     validate_config(config)
     show = config.progress
-    runs = find_black_runs(
-        frames, config.black_mse, config.black_count, config.discontinuity
+    runs = find_marker_runs(
+        frames, config.marker_var, config.marker_count, config.discontinuity
     )
     _say(
-        f"{len(runs)} black marker(s) in {len(frames)} frames "
-        f"(mse<={config.black_mse:g}, count>={config.black_count})",
+        f"{len(runs)} uniform marker(s) in {len(frames)} frames "
+        f"(var<={config.marker_var:g}, count>={config.marker_count})",
         show,
     )
     for start, end in runs:
@@ -985,7 +1004,7 @@ def detect_panos(
             marker_frames = [frames[index] for index in range(start, end + 1)]
             bar.set_postfix_str(marker_frames[0].path.name)
             window = known_window_indices(
-                frames, start, config.discontinuity, config.black_mse, claimed
+                frames, start, config.discontinuity, config.marker_var, claimed
             )
             if not window:
                 _say(f"No frames before {_span_names(marker_frames)}", show)
@@ -1109,6 +1128,210 @@ def _drop_generated_pano_dirs(directories: Sequence[Path]) -> List[Path]:
     return kept
 
 
+def content_box(
+    image: Image.Image, threshold: int = DEFAULT_CROP_THRESHOLD
+) -> Optional[Tuple[int, int, int, int]]:
+    """
+    Bound the pixels that are not black canvas.
+
+    A pixel counts as canvas when every channel is at or below
+    ``threshold``. The box is Pillow's crop box: left and top are
+    inclusive, right and bottom are exclusive. Black wedges in the
+    corners stay when the picture already touches every edge.
+
+    Parameters
+    ----------
+    image : Image.Image
+        Stitched panorama.
+    threshold : int
+        Maximum channel value that still counts as black.
+
+    Returns
+    -------
+    tuple of int or None
+        ``(left, top, right, bottom)``. None when every pixel is black.
+    """
+    rgb = image.convert("RGB")
+    red, green, blue = rgb.split()
+    brightest = ImageChops.lighter(red, ImageChops.lighter(green, blue))
+    mask = brightest.point(lambda value: 255 if int(value) > threshold else 0)
+    return mask.getbbox()
+
+
+def crop_black_canvas(
+    source: Path,
+    destination: Path,
+    threshold: int = DEFAULT_CROP_THRESHOLD,
+) -> Optional[Tuple[int, int, int, int]]:
+    """
+    Write a JPEG of ``source`` with the black canvas removed.
+
+    Parameters
+    ----------
+    source : Path
+        Stitched panorama.
+    destination : Path
+        ``<pano_name>_cropped.jpg``.
+    threshold : int
+        Maximum channel value that still counts as black.
+
+    Returns
+    -------
+    tuple of int or None
+        The crop box. None when the frame is entirely black, in which
+        case nothing is written.
+
+    Raises
+    ------
+    OSError
+        If the file cannot be read or written.
+    UnidentifiedImageError
+        If Pillow does not recognize ``source``.
+    """
+    with Image.open(source) as image:
+        rgb = image.convert("RGB")
+        box = content_box(rgb, threshold)
+        if box is None:
+            return None
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        rgb.crop(box).save(destination, "JPEG", quality=95)
+    return box
+
+
+def _stitch_rank(panos_dir: Path, path: Path) -> Tuple[int, int]:
+    """
+    Prefer a JPEG in the panorama directory over a TIFF inside a folder.
+
+    Parameters
+    ----------
+    panos_dir : Path
+        Directory that holds the panorama folders.
+    path : Path
+        One candidate stitch.
+
+    Returns
+    -------
+    tuple of int
+        Sort key. Lower is the file to crop.
+    """
+    suffix_rank = {".jpg": 0, ".jpeg": 1, ".tif": 2, ".tiff": 3}
+    depth = 0 if path.parent == panos_dir else 1
+    return (suffix_rank.get(path.suffix.lower(), 9), depth)
+
+
+def stitched_panorama_images(panos_dir: Path) -> List[Path]:
+    """
+    Find one stitched image per panorama name.
+
+    A loose ``guessed_pano*.jpg`` or ``known_pano*.jpg`` in ``panos_dir``
+    wins over ``<name>/<name>.tif`` inside the folder. Files already
+    named ``_cropped`` are not sources.
+
+    Parameters
+    ----------
+    panos_dir : Path
+        Sibling directory written by ``sb pano``.
+
+    Returns
+    -------
+    list of Path
+        Chosen stitch files, sorted by name.
+    """
+    if not panos_dir.is_dir():
+        return []
+    chosen: Dict[str, Path] = {}
+    candidates: List[Path] = []
+    for path in panos_dir.iterdir():
+        if path.is_file() and _is_stitch_image(path):
+            candidates.append(path)
+            continue
+        if not path.is_dir() or _PANO_STEM_RE.fullmatch(path.name) is None:
+            continue
+        for suffix in _STITCH_SUFFIXES:
+            inner = path / f"{path.name}{suffix}"
+            if inner.is_file():
+                candidates.append(inner)
+    for path in candidates:
+        current = chosen.get(path.stem)
+        if current is None or _stitch_rank(panos_dir, path) < _stitch_rank(
+            panos_dir, current
+        ):
+            chosen[path.stem] = path
+    return [chosen[stem] for stem in sorted(chosen)]
+
+
+def _is_stitch_image(path: Path) -> bool:
+    """
+    Return whether ``path`` is a full stitched panorama, not a crop.
+
+    Parameters
+    ----------
+    path : Path
+        File in a panorama directory.
+
+    Returns
+    -------
+    bool
+        True for ``known_pano`` and ``guessed_pano`` images.
+    """
+    if path.suffix.lower() not in _STITCH_SUFFIXES:
+        return False
+    if path.stem.endswith("_cropped"):
+        return False
+    return _PANO_STEM_RE.fullmatch(path.stem) is not None
+
+
+def crop_panorama_directory(
+    panos_dir: Path,
+    threshold: int = DEFAULT_CROP_THRESHOLD,
+    progress: bool = True,
+) -> List[Path]:
+    """
+    Write ``<pano_name>_cropped.jpg`` for each stitched panorama.
+
+    The full image is left in place. The cropped file sits in
+    ``panos_dir`` and drops the black canvas.
+
+    Parameters
+    ----------
+    panos_dir : Path
+        Sibling directory written by ``sb pano``.
+    threshold : int
+        Maximum channel value that still counts as black.
+    progress : bool
+        Print one line per cropped file.
+
+    Returns
+    -------
+    list of Path
+        Cropped JPEGs that were written.
+    """
+    written: List[Path] = []
+    sources = stitched_panorama_images(panos_dir)
+    if not sources:
+        _say(f"No stitched panoramas to crop in {panos_dir}", progress)
+        return written
+    for source in sources:
+        destination = panos_dir / f"{source.stem}_cropped.jpg"
+        try:
+            box = crop_black_canvas(source, destination, threshold)
+        except (OSError, UnidentifiedImageError, ValueError) as exc:
+            logger.warning(f"Could not crop {source}: {exc}")
+            _say(f"  skip crop {source.name}: {exc}", progress)
+            continue
+        if box is None:
+            _say(f"  skip crop {source.name}: frame is black", progress)
+            continue
+        width = box[2] - box[0]
+        height = box[3] - box[1]
+        _say(
+            f"  cropped {source.name} -> {destination.name} ({width}x{height})",
+            progress,
+        )
+        written.append(destination)
+    return written
+
+
 def find_action_panos(
     inputs: Sequence[str],
     config: PanoConfig,
@@ -1154,9 +1377,8 @@ def find_action_panos(
         matcher: SurveyFn = _hugin_survey(config)
     else:
         matcher = survey
-    batcher_bin: Optional[str] = None
     if config.stitch and not config.dry_run:
-        batcher_bin = resolve_hugin_tool("PTBatcherGUI")
+        resolve_hugin_tool("PTBatcherGUI")
 
     all_frames: List[Frame] = []
     all_groups: List[PanoGroup] = []
@@ -1177,9 +1399,9 @@ def find_action_panos(
         )
         frames, skipped_here, undecodable_here = load_frames(
             photos,
-            config.black_sample,
+            config.marker_sample,
             progress=show,
-            black_mse=config.black_mse,
+            marker_var=config.marker_var,
         )
         skipped_exif += skipped_here
         skipped_decode += undecodable_here
@@ -1206,21 +1428,26 @@ def find_action_panos(
             group.kind,
         )
     )
-    black_runs = find_black_runs(
-        all_frames, config.black_mse, config.black_count, config.discontinuity
+    marker_runs = find_marker_runs(
+        all_frames, config.marker_var, config.marker_count, config.discontinuity
     )
+    cropped: List[Path] = []
     if config.dry_run:
         _say("Dry run: panorama folders will not be written", show)
-    elif config.stitch:
-        assert batcher_bin is not None
-        queue_stitch_projects(projects, batcher_bin, progress=show)
+    else:
+        if config.stitch:
+            queue_stitch_projects(projects, progress=show)
+        if config.crop:
+            for directory in output_dirs:
+                cropped.extend(crop_panorama_directory(directory, progress=show))
     return PanoResult(
         frames=all_frames,
         groups=all_groups,
-        black_runs=black_runs,
+        marker_runs=marker_runs,
         skipped_no_exif=skipped_exif,
         skipped_undecodable=skipped_decode,
         output_dirs=output_dirs,
+        cropped=cropped,
     )
 
 
@@ -1228,21 +1455,21 @@ def load_frames(
     photos: Sequence[Path],
     sample: int,
     progress: bool = True,
-    black_mse: Optional[float] = None,
+    marker_var: Optional[float] = None,
 ) -> Tuple[List[Frame], int, int]:
     """
-    Read capture times and blackness for each photo.
+    Read capture times and grayscale variation for each photo.
 
     Parameters
     ----------
     photos : sequence of Path
         Candidate images.
     sample : int
-        Blackness thumbnail edge.
+        Thumbnail edge used for the mean and the variance.
     progress : bool
         Show a tqdm bar and one line per photo.
-    black_mse : float, optional
-        When set, lines at or below this score are marked BLACK.
+    marker_var : float, optional
+        When set, lines at or below this variance are marked MARKER.
 
     Returns
     -------
@@ -1259,8 +1486,8 @@ def load_frames(
     frames: List[Frame] = []
     skipped_exif = 0
     skipped_decode = 0
-    _say(f"Scoring blackness on a {sample}px sample", progress)
-    with _bar(len(photos), "Blackness", progress) as bar:
+    _say(f"Scoring grayscale variation on a {sample}px sample", progress)
+    with _bar(len(photos), "Variation", progress) as bar:
         for photo, tags in zip(photos, tag_maps):
             bar.set_postfix_str(photo.name)
             timestamp = timestamp_from_exif_tags(tags)
@@ -1270,7 +1497,9 @@ def load_frames(
                 bar.update(1)
                 continue
             try:
-                mse, width, height = measure_black_mse(photo, sample)
+                variation, mean, width, height = measure_marker_variation(
+                    photo, sample
+                )
             except (OSError, UnidentifiedImageError, ValueError) as exc:
                 logger.warning(f"Skipping undecodable image {photo}: {exc}")
                 skipped_decode += 1
@@ -1278,20 +1507,21 @@ def load_frames(
                 bar.update(1)
                 continue
             mark = ""
-            if black_mse is not None and mse <= black_mse:
-                mark = "  BLACK"
+            if marker_var is not None and variation <= marker_var:
+                mark = "  MARKER"
             _say(
                 f"  {timestamp:%H:%M:%S}  {photo.name}  "
-                f"mse={mse:.1f}  {width}x{height}{mark}",
+                f"mean={mean:.1f}  var={variation:.1f}  {width}x{height}{mark}",
                 progress,
             )
             frames.append(
                 Frame(
                     path=photo,
                     timestamp=timestamp,
-                    black_mse=mse,
+                    variation=variation,
                     width=width,
                     height=height,
+                    mean=mean,
                 )
             )
             bar.update(1)
@@ -1358,14 +1588,11 @@ def write_pano_folders(
         output_dir.mkdir(parents=True, exist_ok=True)
         _say(f"No panorama folders to write under {output_dir}", progress)
         return []
-    resolved_var: Optional[str] = None
-    resolved_opt: Optional[str] = None
-    batcher_bin: Optional[str] = None
     if write_pto and optimize:
-        resolved_var = resolve_hugin_tool("pto_var")
-        resolved_opt = resolve_hugin_tool("autooptimiser")
+        resolve_hugin_tool("pto_var")
+        resolve_hugin_tool("autooptimiser")
     if stitch:
-        batcher_bin = resolve_hugin_tool("PTBatcherGUI")
+        resolve_hugin_tool("PTBatcherGUI")
     total = len(accepted)
     output_dir.mkdir(parents=True, exist_ok=True)
     projects: List[Path] = []
@@ -1405,13 +1632,9 @@ def write_pano_folders(
                     progress,
                 )
                 if optimize:
-                    assert resolved_var is not None
-                    assert resolved_opt is not None
                     correct_positions_and_view(
                         pto_path,
                         anchor,
-                        resolved_var,
-                        resolved_opt,
                         progress=progress,
                     )
                 projects.append(pto_path)
@@ -1424,8 +1647,7 @@ def write_pano_folders(
                 _say(f"  {folder_name}  {len(names)} {kind}", progress)
             bar.update(1)
     if stitch:
-        assert batcher_bin is not None
-        queue_stitch_projects(projects, batcher_bin, progress=progress)
+        queue_stitch_projects(projects, progress=progress)
     return projects
 
 
@@ -1465,24 +1687,24 @@ def format_pano_folder(
     return f"{prefix}{label}_{date_str}_{start_clock}-{end_clock}"
 
 
-def _close_black_run(
-    runs: List[Tuple[int, int]], start: int, end: int, black_count: int
+def _close_marker_run(
+    runs: List[Tuple[int, int]], start: int, end: int, marker_count: int
 ) -> None:
     """
-    Append a black run when it is long enough.
+    Append a uniform run when it is long enough.
 
     Parameters
     ----------
     runs : list
         Accumulator of inclusive ranges.
     start : int
-        First black index.
+        First marker index.
     end : int
-        Last black index.
-    black_count : int
+        Last marker index.
+    marker_count : int
         Minimum length.
     """
-    if end - start + 1 >= black_count:
+    if end - start + 1 >= marker_count:
         runs.append((start, end))
 
 
@@ -1737,8 +1959,6 @@ def _echo_tool(output: str, progress: bool) -> None:
 def correct_positions_and_view(
     pto_path: Path,
     anchor: int,
-    pto_var_bin: str,
-    autooptimiser_bin: str,
     progress: bool = True,
 ) -> None:
     """
@@ -1747,7 +1967,8 @@ def correct_positions_and_view(
     The anchor image keeps yaw, pitch, and roll at zero. Its field of
     view is still optimized. The same image is the exposure anchor, so
     Hugin marks it AC. Exposure, white balance, vignetting, and
-    distortion are not variables in this pass.
+    distortion are not variables in this pass. ``pto_var`` and
+    ``autooptimiser`` are taken from ``PATH``.
 
     Parameters
     ----------
@@ -1756,18 +1977,16 @@ def correct_positions_and_view(
         project.
     anchor : int
         Zero-based median image.
-    pto_var_bin : str
-        Path to ``pto_var``.
-    autooptimiser_bin : str
-        Path to ``autooptimiser``.
     progress : bool
         Print each tool's log.
 
     Raises
     ------
     RuntimeError
-        If either tool fails.
+        If either tool is missing from ``PATH`` or fails.
     """
+    pto_var_bin = resolve_hugin_tool("pto_var")
+    autooptimiser_bin = resolve_hugin_tool("autooptimiser")
     pto_path = pto_path.resolve()
     folder = pto_path.parent
     marked = pto_path.with_name(f"{pto_path.stem}.marked.pto")
@@ -1802,7 +2021,6 @@ def correct_positions_and_view(
 
 def queue_stitch_projects(
     projects: Sequence[Path],
-    batcher_bin: str,
     progress: bool = True,
 ) -> None:
     """
@@ -1813,26 +2031,26 @@ def queue_stitch_projects(
     prefix is the project path without ``.pto``, which is the same name
     in the same folder. If the batch processor is already open, this
     hands the projects to that window and returns. Otherwise the window
-    stays open with the queue loaded.
+    stays open with the queue loaded. ``PTBatcherGUI`` is taken from
+    ``PATH``.
 
     Parameters
     ----------
     projects : sequence of Path
         Optimized ``.pto`` files, in the order they should be queued.
-    batcher_bin : str
-        Path to ``PTBatcherGUI``.
     progress : bool
         Print the queue list.
 
     Raises
     ------
     RuntimeError
-        If ``PTBatcherGUI`` cannot start or reports an error.
+        If ``PTBatcherGUI`` is not on ``PATH``, cannot start, or reports
+        an error.
     """
     if not projects:
         _say("No projects to queue", progress)
         return
-    command: List[str] = [batcher_bin]
+    command: List[str] = [resolve_hugin_tool("PTBatcherGUI")]
     for project in projects:
         absolute = project.resolve()
         command.append(str(absolute))
@@ -2076,7 +2294,7 @@ def _known_group_from_window(
     config: PanoConfig,
 ) -> PanoGroup:
     """
-    Cut one known panorama out of the window before a black marker.
+    Cut one known panorama out of the window before a uniform marker.
 
     Parameters
     ----------
@@ -2085,7 +2303,7 @@ def _known_group_from_window(
     window : sequence of int
         Indexes before the marker.
     marker : sequence of Frame
-        The black frames that ended this panorama.
+        The uniform frames that ended this panorama.
     surveyed : PairSurvey
         Control points for ``window``, already computed.
     config : PanoConfig
@@ -2120,20 +2338,20 @@ def _known_group_from_window(
         )
     accepted = len(kept_frames) >= config.min_frames
     if cut_link is None:
-        reason = "black marker; control points stay above the split threshold"
+        reason = "uniform marker; control points stay above the split threshold"
     elif config.boundary == "first":
         reason = (
-            "black marker; cut at the first weak link "
+            "uniform marker; cut at the first weak link "
             f"({cut_link.gap_seconds:.1f}s, {cut_link.control_points} control points)"
         )
     else:
         reason = (
-            "black marker; cut at the largest weak gap "
+            "uniform marker; cut at the largest weak gap "
             f"({cut_link.gap_seconds:.1f}s, {cut_link.control_points} control points)"
         )
     if not accepted:
         reason = (
-            f"only {len(kept_frames)} frame(s) before the black marker; "
+            f"only {len(kept_frames)} frame(s) before the uniform marker; "
             f"need {config.min_frames}. {reason}"
         )
     return PanoGroup(
@@ -2390,7 +2608,7 @@ def _remaining_bursts(
     config: PanoConfig,
 ) -> List[List[int]]:
     """
-    Group unclaimed, non-black frames into time bursts.
+    Group unclaimed, non-marker frames into time bursts.
 
     Parameters
     ----------
@@ -2399,7 +2617,7 @@ def _remaining_bursts(
     claimed : mapping
         Indexes already taken by a marker or a known window.
     config : PanoConfig
-        Supplies the blackness threshold and the discontinuity gap.
+        Supplies the variance threshold and the discontinuity gap.
 
     Returns
     -------
@@ -2409,7 +2627,7 @@ def _remaining_bursts(
     bursts: List[List[int]] = []
     current: List[int] = []
     for index, frame in enumerate(frames):
-        if index in claimed or frame.black_mse <= config.black_mse:
+        if index in claimed or frame.variation <= config.marker_var:
             if current:
                 bursts.append(current)
                 current = []

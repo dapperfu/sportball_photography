@@ -9,10 +9,15 @@ from pathlib import Path
 from typing import List
 from unittest.mock import MagicMock, patch
 
+import pytest
+from click.testing import CliRunner
+
+from sportball.cli.commands.game_commands import animate
 from sportball.detectors.animate import (
     build_ffmpeg_command,
     discover_game_folders,
     encode_game_video,
+    find_ffmpeg,
     is_game_folder,
     list_game_photos,
     parse_video_size,
@@ -96,6 +101,22 @@ def test_encode_game_video_dry_run_and_skip(tmp_path: Path) -> None:
     skipped = encode_game_video(plan, dry_run=False)
     assert skipped.skipped
     assert "exists" in skipped.message
+
+
+def test_find_ffmpeg_requires_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ffmpeg is the command name. A missing PATH entry is an error."""
+    monkeypatch.setenv("PATH", str(tmp_path))
+    with pytest.raises(RuntimeError, match="not found on PATH"):
+        find_ffmpeg()
+
+
+def test_animate_rejects_an_ffmpeg_path(tmp_path: Path) -> None:
+    """There is no flag for a binary path."""
+    result = CliRunner().invoke(animate, ["--ffmpeg", "/usr/bin/ffmpeg", str(tmp_path)])
+    assert result.exit_code != 0
+    assert "No such option" in result.output
 
 
 def test_encode_game_video_invokes_ffmpeg(tmp_path: Path) -> None:

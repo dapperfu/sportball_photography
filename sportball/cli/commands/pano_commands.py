@@ -1,11 +1,12 @@
 """
 Action-panorama commands.
 
-``sb pano`` finds known panoramas (ended by black frames) and guessed
+``sb pano`` finds known panoramas (ended by uniform frames) and guessed
 panoramas (neighbor overlap, no overlap a few frames away), then writes
 symlink folders and a Hugin project optimized for yaw, pitch, roll, and
-field of view. ``--stitch`` then adds the projects to Hugin's batch
-queue and does not start stitching.
+field of view. Stitching and a black-canvas crop are on by default.
+``--no-stitch`` skips the Hugin batch queue. ``--no-crop`` skips
+``<pano_name>_cropped.jpg``.
 
 Author: Claude Sonnet 4 (claude-3-5-sonnet-20241022)
 Generated via Cursor IDE (cursor.sh) with AI assistance
@@ -17,9 +18,9 @@ from typing import Any, Tuple
 import click
 
 from sportball.detectors.pano import (
-    DEFAULT_BLACK_COUNT,
-    DEFAULT_BLACK_MSE,
-    DEFAULT_BLACK_SAMPLE,
+    DEFAULT_MARKER_COUNT,
+    DEFAULT_MARKER_SAMPLE,
+    DEFAULT_MARKER_VAR,
     DEFAULT_CP_EDGE,
     DEFAULT_DISCONTINUITY_SECONDS,
     DEFAULT_FAR_POINTS,
@@ -73,28 +74,28 @@ def _get_table() -> Any:
     help="File pattern to match",
 )
 @click.option(
-    "--black-mse",
+    "--marker-var",
     type=float,
-    default=DEFAULT_BLACK_MSE,
+    default=DEFAULT_MARKER_VAR,
     show_default=True,
     help=(
-        "Max mean(pixel^2) on the blackness sample. "
-        "At or below this, a frame is black."
+        "Max variance of the grayscale thumbnail around its mean. "
+        "At or below this, a frame is a marker (lens covered, sky, or ground)."
     ),
 )
 @click.option(
-    "--black-sample",
+    "--marker-sample",
     type=int,
-    default=DEFAULT_BLACK_SAMPLE,
+    default=DEFAULT_MARKER_SAMPLE,
     show_default=True,
-    help="Edge of the grayscale thumbnail used for the blackness score",
+    help="Edge of the grayscale thumbnail used for the mean and the variance",
 )
 @click.option(
-    "--black-count",
+    "--marker-count",
     type=int,
-    default=DEFAULT_BLACK_COUNT,
+    default=DEFAULT_MARKER_COUNT,
     show_default=True,
-    help="Consecutive black frames that mark a known panorama",
+    help="Consecutive uniform frames that mark a known panorama",
 )
 @click.option(
     "--discontinuity",
@@ -109,7 +110,7 @@ def _get_table() -> Any:
     default=DEFAULT_SPLIT_POINTS,
     show_default=True,
     help=(
-        "Walking back from a black marker, a pair with this many "
+        "Walking back from a uniform marker, a pair with this many "
         "control points or fewer is a cut"
     ),
 )
@@ -120,14 +121,14 @@ def _get_table() -> Any:
     show_default=True,
     help=(
         "largest-gap cuts the known panorama at the weak link with the "
-        "biggest time gap. first cuts at the weak link nearest the black frames."
+        "biggest time gap. first cuts at the weak link nearest the marker frames."
     ),
 )
 @click.option(
     "--guess/--no-guess",
     default=True,
     show_default=True,
-    help="Also search for panoramas that were not marked with black frames",
+    help="Also search for panoramas that were not marked with uniform frames",
 )
 @click.option(
     "--stride",
@@ -181,26 +182,36 @@ def _get_table() -> Any:
     help="Write a Hugin .pto project inside each panorama folder",
 )
 @click.option(
-    "--stitch",
-    is_flag=True,
+    "--stitch/--no-stitch",
+    default=True,
+    show_default=True,
     help=(
         "After every project is optimized, add them to Hugin's batch "
         "processor. Does not start stitching."
     ),
 )
 @click.option(
+    "--crop/--no-crop",
+    default=True,
+    show_default=True,
+    help=(
+        "Write <pano_name>_cropped.jpg for each stitched panorama, "
+        "with the black canvas removed."
+    ),
+)
+@click.option(
     "--dry-run",
     is_flag=True,
-    help="Print blackness scores and control points without writing folders",
+    help="Print grayscale mean, variance, and control points without writing folders",
 )
 @click.pass_context
 def pano(
     ctx: click.Context,
     inputs: Tuple[str, ...],
     pattern: str,
-    black_mse: float,
-    black_sample: int,
-    black_count: int,
+    marker_var: float,
+    marker_sample: int,
+    marker_count: int,
     discontinuity: float,
     split_points: int,
     boundary: str,
@@ -213,21 +224,22 @@ def pano(
     copy_files: bool,
     write_pto: bool,
     stitch: bool,
+    crop: bool,
     dry_run: bool,
 ) -> None:
     """
     Find action panoramas and write Hugin projects.
 
     INPUTS are dump directories, game folders, or globs. A known panorama
-    is the run of frames before two black frames (lens covered). A guessed
-    panorama has no marker: neighbors share control points, and frames
-    ``--stride`` apart (default 3) do not.
+    is the run of frames before two uniform frames (lens covered, sky, or
+    a zoom into the ground). A guessed panorama has no marker: neighbors
+    share control points, and frames ``--stride`` apart (default 3) do not.
 
     Five frames in 2.5 seconds and five frames in 10 seconds are the same
     test. A gap longer than ``--discontinuity`` seconds (default 10) is
     two different shots.
 
-    Black frames stay out of the folder. Each accepted run becomes
+    Marker frames stay out of the folder. Each accepted run becomes
     ``known_pano01_20Sep2025_090012-090018`` or ``guessed_pano02_...``
     inside a sibling of that input named ``{input}-panos``. Five input
     folders produce five ``-panos`` folders, each numbered from 01.
@@ -235,26 +247,30 @@ def pano(
     those files. The median photo is the position and exposure anchor
     (5 photos: the 3rd; 4 photos: the 2nd). The project is optimized
     for yaw, pitch, roll, and field of view, and nothing else.
-    ``--stitch`` is the last step: it adds each project to Hugin's
-    batch processor, named like the ``.pto``, and does not start the
-    batch.
+    Stitching is on unless ``--no-stitch`` is passed. It adds each
+    project to Hugin's batch processor, named like the ``.pto``, and
+    does not start the batch. Cropping is on unless ``--no-crop`` is
+    passed. After the panoramas exist it writes
+    ``<pano_name>_cropped.jpg`` beside the full stitch, with the black
+    canvas removed. The full image stays, so the black border can still
+    be cleaned up by hand.
 
     Examples:
 
     \b
     sb pano Games/Game03_19Sep2026_120915-132501
     sb pano Game01 Game02 Game03 Game04 Game05
-    sb pano --stitch Games/Game03_19Sep2026_120915-132501
+    sb pano --no-stitch --no-crop Games/Game03_19Sep2026_120915-132501
     sb pano --dry-run Games/Game03_19Sep2026_120915-132501
-    sb pano --black-mse 80 --split-points 0 --overlap-points 15 Games
+    sb pano --marker-var 80 --split-points 0 --overlap-points 15 Games
     """
     from sportball.detectors.pano import find_action_panos
 
     quiet = bool(ctx.obj and ctx.obj.get("quiet"))
     config = PanoConfig(
-        black_mse=black_mse,
-        black_sample=black_sample,
-        black_count=black_count,
+        marker_var=marker_var,
+        marker_sample=marker_sample,
+        marker_count=marker_count,
         discontinuity=discontinuity,
         split_points=split_points,
         boundary=boundary.lower(),
@@ -267,6 +283,7 @@ def pano(
         copy_files=copy_files,
         write_pto=write_pto,
         stitch=stitch,
+        crop=crop,
         dry_run=dry_run,
         progress=not quiet,
     )
@@ -288,14 +305,14 @@ def pano(
 
 def display_pano_result(result: PanoResult, config: PanoConfig) -> None:
     """
-    Print blackness scores, black runs, and per-link control points.
+    Print grayscale mean, variance, marker runs, and per-link control points.
 
     Parameters
     ----------
     result : PanoResult
         Detection output.
     config : PanoConfig
-        Thresholds, used to label black frames and to note a dry run.
+        Thresholds, used to label uniform frames and to note a dry run.
     """
     console = _get_console()
     Table = _get_table()
@@ -311,30 +328,37 @@ def display_pano_result(result: PanoResult, config: PanoConfig) -> None:
         f"{known} known, {guessed} guessed, {held} held ({mode})"
     )
 
-    photo_table = Table(title="Blackness (mean of squared sample pixels)")
+    photo_table = Table(title="Uniformity (grayscale mean and variance)")
     photo_table.add_column("File", style="cyan")
     photo_table.add_column("When", style="green")
-    photo_table.add_column("MSE", justify="right", style="magenta")
-    photo_table.add_column("Black", style="yellow")
+    photo_table.add_column("Mean", justify="right", style="magenta")
+    photo_table.add_column("Var", justify="right", style="magenta")
+    photo_table.add_column("Marker", style="yellow")
     for frame in result.frames:
         photo_table.add_row(
             frame.path.name,
             _format_timestamp(frame.timestamp),
-            f"{frame.black_mse:.1f}",
-            "yes" if frame.black_mse <= config.black_mse else "",
+            f"{frame.mean:.1f}",
+            f"{frame.variation:.1f}",
+            "yes" if frame.variation <= config.marker_var else "",
         )
     console.print()
     console.print(photo_table)
 
-    if result.black_runs:
-        console.print("\nBlack markers (not included in a folder):")
-        for start, end in result.black_runs:
+    if result.marker_runs:
+        console.print("\nUniform markers (not included in a folder):")
+        for start, end in result.marker_runs:
             names = ", ".join(
                 result.frames[index].path.name for index in range(start, end + 1)
             )
             console.print(f"  {names}")
     else:
-        console.print("\nNo black-frame markers.")
+        console.print("\nNo uniform-frame markers.")
+
+    if result.cropped:
+        console.print("\nCropped panoramas (black canvas removed):")
+        for path in result.cropped:
+            console.print(f"  {path.name}")
 
     if not result.groups:
         console.print("\nNo panorama candidates.")

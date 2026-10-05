@@ -32,12 +32,15 @@ from sportball.detectors.pano import (
     anchor_index,
     classify_burst_ranges,
     cut_known_start,
+    content_box,
+    crop_black_canvas,
+    crop_panorama_directory,
     detect_panos,
     find_action_panos,
-    find_black_runs,
+    find_marker_runs,
     format_pano_folder,
     known_window_indices,
-    measure_black_mse,
+    measure_marker_variation,
     parse_pto_control_points,
     render_pto,
     resolve_hugin_tool,
@@ -61,7 +64,7 @@ def _frame(
     return Frame(
         path=path,
         timestamp=base + timedelta(seconds=offset),
-        black_mse=mse,
+        variation=mse,
         width=size[0],
         height=size[1],
     )
@@ -95,35 +98,54 @@ def _scripted_survey(
     return survey
 
 
-def test_measure_black_mse_is_mean_square_on_the_sample(tmp_path: Path) -> None:
-    """Uniform gray N scores N squared, independent of the file size."""
+def test_measure_marker_variation_ignores_brightness(tmp_path: Path) -> None:
+    """A flat frame scores near 0 at any brightness. A split frame does not."""
     black = tmp_path / "black.png"
     gray = tmp_path / "gray.png"
     white = tmp_path / "white.png"
+    sky = tmp_path / "sky.png"
+    ground = tmp_path / "ground.png"
     Image.new("L", (32, 16), 0).save(black)
     Image.new("L", (32, 16), 10).save(gray)
     Image.new("L", (8, 8), 255).save(white)
+    Image.new("RGB", (32, 16), (120, 180, 230)).save(sky)
+    Image.new("RGB", (32, 16), (70, 110, 40)).save(ground)
 
-    black_score, width, height = measure_black_mse(black, 8)
-    gray_score, _, _ = measure_black_mse(gray, 4)
-    white_score, _, _ = measure_black_mse(white, 4)
+    black_var, black_mean, width, height = measure_marker_variation(black, 8)
+    gray_var, gray_mean, _, _ = measure_marker_variation(gray, 4)
+    white_var, white_mean, _, _ = measure_marker_variation(white, 4)
+    sky_var, _, _, _ = measure_marker_variation(sky, 8)
+    ground_var, _, _, _ = measure_marker_variation(ground, 8)
 
-    assert black_score == pytest.approx(0.0)
     assert (width, height) == (32, 16)
-    assert gray_score == pytest.approx(100.0)
-    assert white_score == pytest.approx(255.0 * 255.0)
+    assert black_var == pytest.approx(0.0)
+    assert black_mean == pytest.approx(0.0)
+    assert gray_var == pytest.approx(0.0)
+    assert gray_mean == pytest.approx(10.0)
+    assert white_var == pytest.approx(0.0)
+    assert white_mean == pytest.approx(255.0)
+    assert sky_var == pytest.approx(0.0, abs=1e-6)
+    assert ground_var == pytest.approx(0.0, abs=1e-6)
+
+    split = tmp_path / "split.png"
+    image = Image.new("L", (8, 8), 0)
+    image.paste(255, (4, 0, 8, 8))
+    image.save(split)
+    split_var, split_mean, _, _ = measure_marker_variation(split, 8)
+    assert split_mean == pytest.approx(127.5)
+    assert split_var == pytest.approx(127.5**2)
 
 
-def test_measure_black_mse_rejects_garbage(tmp_path: Path) -> None:
+def test_measure_marker_variation_rejects_garbage(tmp_path: Path) -> None:
     """A non-image is undecodable."""
     path = tmp_path / "notes.jpg"
     path.write_bytes(b"this is not a photo")
     with pytest.raises(UnidentifiedImageError):
-        measure_black_mse(path, 8)
+        measure_marker_variation(path, 8)
 
 
-def test_find_black_runs_needs_two_close_frames(tmp_path: Path) -> None:
-    """One black frame is not a marker. A pair split by 11s is two shorts."""
+def test_find_marker_runs_needs_two_close_frames(tmp_path: Path) -> None:
+    """One flat frame is not a marker. A pair split by 11s is two shorts."""
     frames = [
         _frame(tmp_path, "a.jpg", 0.0, 400.0),
         _frame(tmp_path, "b.jpg", 1.0, 0.0),
@@ -133,7 +155,9 @@ def test_find_black_runs_needs_two_close_frames(tmp_path: Path) -> None:
         _frame(tmp_path, "f.jpg", 20.0, 0.0),
         _frame(tmp_path, "g.jpg", 21.0, 0.0),
     ]
-    runs = find_black_runs(frames, black_mse=100.0, black_count=2, discontinuity=10.0)
+    runs = find_marker_runs(
+        frames, marker_var=100.0, marker_count=2, discontinuity=10.0
+    )
     assert runs == [(3, 4), (5, 6)]
 
 
@@ -178,7 +202,7 @@ def test_classify_burst_guessed_held_and_open() -> None:
 
 
 def test_known_and_guessed_share_one_sequence(tmp_path: Path) -> None:
-    """The weak link before the blacks starts the known pan. The prefix is guessed."""
+    """The weak link before the markers starts the known pan. The prefix is guessed."""
     specs = [
         ("f00.jpg", 0.0),
         ("f01.jpg", 0.5),
@@ -225,12 +249,12 @@ def test_discontinuity_splits_a_marked_pan_from_an_earlier_one(tmp_path: Path) -
         _frame(tmp_path, f"b{index}.jpg", 13.0 + index * 0.5, 400.0)
         for index in range(5)
     ]
-    blacks = [
+    markers = [
         _frame(tmp_path, "k0.jpg", 16.0, 0.0),
         _frame(tmp_path, "k1.jpg", 16.2, 0.0),
     ]
     groups, _runs = detect_panos(
-        early + late + blacks, PanoConfig(), _scripted_survey()
+        early + late + markers, PanoConfig(), _scripted_survey()
     )
     accepted = [group for group in groups if group.accepted]
     names = [
@@ -280,8 +304,8 @@ def test_static_hold_is_not_a_panorama(tmp_path: Path) -> None:
     assert groups[0].accepted is False
 
 
-def test_one_black_frame_does_not_mark_a_known_panorama(tmp_path: Path) -> None:
-    """A single dark frame is not the covered-lens signal."""
+def test_one_flat_frame_does_not_mark_a_known_panorama(tmp_path: Path) -> None:
+    """A single uniform frame is not the marker signal."""
     frames = [
         _frame(tmp_path, f"p{index}.jpg", float(index), 400.0) for index in range(5)
     ]
@@ -312,7 +336,7 @@ def test_short_known_run_is_rejected(tmp_path: Path) -> None:
 
 
 def test_first_boundary_keeps_only_the_suffix(tmp_path: Path) -> None:
-    """``first`` stops at the weak link nearest the black frames."""
+    """``first`` stops at the weak link nearest the marker frames."""
     frames = [
         _frame(tmp_path, f"f{index}.jpg", float(index), 400.0) for index in range(6)
     ]
@@ -362,7 +386,7 @@ def test_render_and_parse_pto_round_trip(tmp_path: Path) -> None:
     assert "black" not in text
 
 
-def test_write_folders_skip_black_frames_and_symlink(tmp_path: Path) -> None:
+def test_write_folders_skip_marker_frames_and_symlink(tmp_path: Path) -> None:
     """Accepted folders link the stitch frames and store a project."""
     frames = [
         _frame(tmp_path, f"f{index:02d}.jpg", index * 0.5, 400.0) for index in range(5)
@@ -531,12 +555,12 @@ def test_dry_run_writes_nothing(
 
 
 def test_cli_help_lists_thresholds() -> None:
-    """The command advertises the blackness and overlap flags."""
+    """The command advertises the variance and overlap flags."""
     result = CliRunner().invoke(pano, ["--help"])
     assert result.exit_code == 0
     for flag in (
-        "--black-mse",
-        "--black-count",
+        "--marker-var",
+        "--marker-count",
         "--discontinuity",
         "--split-points",
         "--boundary",
@@ -545,17 +569,20 @@ def test_cli_help_lists_thresholds() -> None:
         "--far-points",
         "--dry-run",
         "--stitch",
+        "--no-stitch",
+        "--crop",
+        "--no-crop",
     ):
         assert flag in result.output
     assert "--output" not in result.output
     assert "-panos" in result.output
 
 
-def test_cli_rejects_a_zero_black_count() -> None:
-    """--black-count 0 is not a marker."""
-    result = CliRunner().invoke(pano, ["--black-count", "0", "photos"])
+def test_cli_rejects_a_zero_marker_count() -> None:
+    """--marker-count 0 is not a marker."""
+    result = CliRunner().invoke(pano, ["--marker-count", "0", "photos"])
     assert result.exit_code != 0
-    assert "black-count" in result.output
+    assert "marker-count" in result.output
 
 
 def test_cli_dry_run_report_includes_control_points(
@@ -581,7 +608,7 @@ def test_cli_dry_run_report_includes_control_points(
         return PanoResult(
             frames=[first, second],
             groups=[group],
-            black_runs=[(0, 0)],
+            marker_runs=[(0, 0)],
             skipped_no_exif=0,
             skipped_undecodable=0,
         )
@@ -769,7 +796,7 @@ def test_cli_stitch_uses_five_frame_minimum(
         return PanoResult(
             frames=[],
             groups=[],
-            black_runs=[],
+            marker_runs=[],
             skipped_no_exif=0,
             skipped_undecodable=0,
         )
@@ -778,6 +805,7 @@ def test_cli_stitch_uses_five_frame_minimum(
     result = CliRunner().invoke(pano, ["--stitch", str(tmp_path)])
     assert result.exit_code == 0, result.output
     assert seen["config"].stitch is True
+    assert seen["config"].crop is True
     assert seen["config"].min_frames == 5
     assert not (tmp_path.parent / f"{tmp_path.name}-panos").exists()
 
@@ -803,7 +831,7 @@ def _stub_detection(
         photos: Sequence[Path],
         sample: int,
         progress: bool = True,
-        black_mse: Optional[float] = None,
+        marker_var: Optional[float] = None,
     ) -> Tuple[List[Frame], int, int]:
         if not photos:
             return [], 0, 0
@@ -841,7 +869,7 @@ def test_one_input_writes_a_panos_sibling(
     )
     result = find_action_panos(
         [str(game)],
-        PanoConfig(write_pto=False, progress=False),
+        PanoConfig(write_pto=False, stitch=False, progress=False),
     )
     sibling = tmp_path / "Game03_19Sep2026_120915-132501-panos"
     assert [path.resolve() for path in result.output_dirs] == [sibling.resolve()]
@@ -872,7 +900,7 @@ def test_five_inputs_each_get_a_panos_sibling(
     _stub_detection(monkeypatch, grouped)
     result = find_action_panos(
         [str(game) for game in games],
-        PanoConfig(write_pto=False, progress=False),
+        PanoConfig(write_pto=False, stitch=False, progress=False),
     )
     assert len(result.output_dirs) == 5
     assert not (tmp_path / "Panos").exists()
@@ -903,7 +931,7 @@ def test_dry_run_does_not_create_the_sibling(
     sibling = tmp_path / f"{game.name}-panos"
     result = find_action_panos(
         [str(game)],
-        PanoConfig(dry_run=True, write_pto=False, progress=False),
+        PanoConfig(dry_run=True, write_pto=False, stitch=False, progress=False),
     )
     assert not sibling.exists()
     assert [path.resolve() for path in result.output_dirs] == [sibling.resolve()]
@@ -932,7 +960,7 @@ def test_glob_skips_an_existing_panos_sibling(
         photos: Sequence[Path],
         sample: int,
         progress: bool = True,
-        black_mse: Optional[float] = None,
+        marker_var: Optional[float] = None,
     ) -> Tuple[List[Frame], int, int]:
         return [], 0, 0
 
@@ -949,7 +977,7 @@ def test_glob_skips_an_existing_panos_sibling(
     monkeypatch.setattr(pano_mod, "detect_panos", detect)
     result = find_action_panos(
         ["*"],
-        PanoConfig(dry_run=True, write_pto=False, progress=False),
+        PanoConfig(dry_run=True, write_pto=False, stitch=False, progress=False),
     )
     assert [path.resolve() for path in seen] == [game.resolve()]
     assert [path.resolve() for path in result.output_dirs] == [sibling.resolve()]
@@ -981,7 +1009,6 @@ def test_stitch_queues_after_every_sibling_is_written(
 
     def capture_queue(
         projects: Sequence[Path],
-        batcher_bin: str,
         progress: bool = True,
     ) -> None:
         for game in games:
@@ -1000,3 +1027,99 @@ def test_stitch_queues_after_every_sibling_is_written(
     assert {path.parent.parent.name for path in queued[0]} == {
         f"{game.name}-panos" for game in games
     }
+
+
+def test_crop_black_canvas_drops_the_border(tmp_path: Path) -> None:
+    """The cropped JPEG is the bounding box of the non-black pixels."""
+    source = tmp_path / "guessed_pano01_20Sep2025_090012-090018.png"
+    image = Image.new("RGB", (40, 30), (0, 0, 0))
+    image.paste(Image.new("RGB", (10, 8), (20, 140, 60)), (5, 7))
+    image.save(source)
+    destination = tmp_path / "guessed_pano01_20Sep2025_090012-090018_cropped.jpg"
+
+    with Image.open(source) as opened:
+        assert content_box(opened) == (5, 7, 15, 15)
+    box = crop_black_canvas(source, destination)
+
+    assert box == (5, 7, 15, 15)
+    with Image.open(destination) as cropped:
+        assert cropped.size == (10, 8)
+        pixel = cropped.getpixel((5, 4))
+        assert isinstance(pixel, tuple)
+        expected = (20, 140, 60)
+        for channel, target in zip(pixel, expected):
+            assert abs(int(channel) - target) <= 2
+
+
+def test_crop_directory_prefers_jpeg_and_ignores_cropped_files(tmp_path: Path) -> None:
+    """A loose JPEG wins over the TIFF in the folder. The crop is not recropped."""
+    name = "guessed_pano02_20Sep2025_090012-090018"
+    folder = tmp_path / name
+    folder.mkdir()
+    loose = tmp_path / f"{name}.jpg"
+    inner = folder / f"{name}.tif"
+    _canvas(loose, (80, 40), (10, 6, 30, 22), (200, 40, 40))
+    _canvas(inner, (200, 100), (0, 0, 200, 100), (10, 10, 200))
+
+    written = crop_panorama_directory(tmp_path, progress=False)
+    again = crop_panorama_directory(tmp_path, progress=False)
+
+    cropped = tmp_path / f"{name}_cropped.jpg"
+    assert written == [cropped]
+    assert again == [cropped]
+    assert not (tmp_path / f"{name}_cropped_cropped.jpg").exists()
+    with Image.open(cropped) as image:
+        assert image.size[0] < 80
+        assert abs(image.size[0] - 20) <= 2
+        assert abs(image.size[1] - 16) <= 2
+
+
+def test_all_black_stitch_is_not_cropped(tmp_path: Path) -> None:
+    """A frame with no picture does not produce a cropped file."""
+    source = tmp_path / "known_pano03_20Sep2025_090012-090018.jpg"
+    Image.new("RGB", (12, 8), (0, 0, 0)).save(source, "JPEG")
+    assert crop_black_canvas(source, tmp_path / "out.jpg") is None
+    assert crop_panorama_directory(tmp_path, progress=False) == []
+
+
+def test_cli_can_turn_stitch_and_crop_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--no-stitch`` and ``--no-crop`` are the opt-out flags."""
+    seen: Dict[str, PanoConfig] = {}
+
+    def fake_find(*args: object, **kwargs: object) -> PanoResult:
+        config = args[1]
+        assert isinstance(config, PanoConfig)
+        seen["config"] = config
+        return PanoResult(
+            frames=[],
+            groups=[],
+            marker_runs=[],
+            skipped_no_exif=0,
+            skipped_undecodable=0,
+        )
+
+    monkeypatch.setattr(pano_mod, "find_action_panos", fake_find)
+    result = CliRunner().invoke(
+        pano, ["--no-stitch", "--no-crop", str(tmp_path)]
+    )
+    assert result.exit_code == 0, result.output
+    assert seen["config"].stitch is False
+    assert seen["config"].crop is False
+
+
+def _canvas(
+    path: Path,
+    size: Tuple[int, int],
+    box: Tuple[int, int, int, int],
+    color: Tuple[int, int, int],
+) -> None:
+    """Save a black frame with one solid rectangle. ``box`` is a crop box."""
+    image = Image.new("RGB", size, (0, 0, 0))
+    left, top, right, bottom = box
+    image.paste(Image.new("RGB", (right - left, bottom - top), color), (left, top))
+    if path.suffix.lower() in {".jpg", ".jpeg"}:
+        image.save(path, "JPEG", quality=100)
+    else:
+        image.save(path)

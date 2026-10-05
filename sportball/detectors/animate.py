@@ -392,32 +392,23 @@ def plan_animation(
     )
 
 
-def find_ffmpeg(ffmpeg_bin: Optional[str] = None) -> str:
+def find_ffmpeg() -> str:
     """
-    Locate an ffmpeg executable.
-
-    Parameters
-    ----------
-    ffmpeg_bin : str, optional
-        Explicit path or command name.
+    Locate ffmpeg on ``PATH``.
 
     Returns
     -------
     str
-        Absolute path or command name that exists on PATH.
+        Absolute path returned by ``shutil.which``.
 
     Raises
     ------
     RuntimeError
-        If ffmpeg cannot be found.
+        If ffmpeg is not on ``PATH``.
     """
-    candidate = ffmpeg_bin or "ffmpeg"
-    resolved = shutil.which(candidate)
+    resolved = shutil.which("ffmpeg")
     if resolved is None:
-        raise RuntimeError(
-            "ffmpeg is required for game animation. Install ffmpeg and "
-            "ensure it is on PATH, or pass --ffmpeg /path/to/ffmpeg."
-        )
+        raise RuntimeError("ffmpeg was not found on PATH. Install ffmpeg.")
     return resolved
 
 
@@ -517,7 +508,6 @@ def build_ffmpeg_command(ffmpeg: str, list_path: Path, plan: AnimatePlan) -> Lis
 def encode_game_video(
     plan: AnimatePlan,
     *,
-    ffmpeg_bin: Optional[str] = None,
     force: bool = False,
     dry_run: bool = False,
 ) -> AnimateResult:
@@ -528,8 +518,6 @@ def encode_game_video(
     ----------
     plan : AnimatePlan
         Folder, photos, and FPS.
-    ffmpeg_bin : str, optional
-        ffmpeg executable override.
     force : bool
         Overwrite an existing ``.mp4``.
     dry_run : bool
@@ -559,7 +547,7 @@ def encode_game_video(
         )
 
     try:
-        ffmpeg = find_ffmpeg(ffmpeg_bin)
+        ffmpeg = find_ffmpeg()
     except RuntimeError as exc:
         return AnimateResult(
             game_dir=plan.game_dir,
@@ -619,7 +607,6 @@ def animate_games(
     workers: int = 2,
     force: bool = False,
     dry_run: bool = False,
-    ffmpeg_bin: Optional[str] = None,
     on_progress: Optional[ProgressCallback] = None,
 ) -> List[AnimateResult]:
     """
@@ -641,8 +628,6 @@ def animate_games(
         Overwrite existing videos.
     dry_run : bool
         Report plans without encoding.
-    ffmpeg_bin : str, optional
-        ffmpeg path override.
     on_progress : callable, optional
         Called as ``(game_name, status)`` when each job finishes.
 
@@ -684,7 +669,6 @@ def animate_games(
     def _run(plan: AnimatePlan) -> AnimateResult:
         return encode_game_video(
             plan,
-            ffmpeg_bin=ffmpeg_bin,
             force=force,
             dry_run=dry_run,
         )

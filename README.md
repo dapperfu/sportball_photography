@@ -110,28 +110,30 @@ Because the game folders are symlinks, ffmpeg reads the originals. You are not e
 
 ### 4. `sb pano` — action panoramas for Hugin
 
-Needs Hugin's `pto_gen`, `cpfind`, `pto_var`, and `autooptimiser` (`hugin-tools`). `--stitch` also needs `PTBatcherGUI` (the `hugin` package). Point it at a game folder or a dump of JPEGs. It does not crop or mask. You still choose the regions in Hugin.
+Needs Hugin's `pto_gen`, `cpfind`, `pto_var`, and `autooptimiser` (`hugin-tools`). Stitching also needs `PTBatcherGUI` (the `hugin` package) and is on by default. Point it at a game folder or a dump of JPEGs. The Hugin project is not cropped or masked. You still choose the regions in Hugin.
 
 Two kinds of folder, numbered together in capture order:
 
-- `known_pano01_20Sep2025_090012-090018/` — two black frames (lens covered) after a good pan. The folder is the run before those frames, cut at the largest gap that has no control-point overlap.
+- `known_pano01_20Sep2025_090012-090018/` — two nearly uniform frames (lens covered, sky, or a zoom into the ground) after a good pan. The folder is the run before those frames, cut at the largest gap that has no control-point overlap.
 - `guessed_pano02_20Sep2025_091440-091448/` — no marker. Neighbors overlap, and frames three apart do not, so the camera moved far enough to stitch.
 
-Five shots in 2.5 seconds and five shots in 10 seconds are the same test. A gap longer than 10 seconds is two different shots. A panorama needs at least 5 photos. Black frames are not copied into the folder. Each folder is symlinks plus a `.pto` whose control points were found on a preview and scaled back up.
+Five shots in 2.5 seconds and five shots in 10 seconds are the same test. A gap longer than 10 seconds is two different shots. A panorama needs at least 5 photos. Marker frames are not copied into the folder. Each folder is symlinks plus a `.pto` whose control points were found on a preview and scaled back up.
 
 Each input directory gets its own sibling folder. `Games/Game03_19Sep2026_120915-132501` writes `Games/Game03_19Sep2026_120915-132501-panos/`. Five input folders produce five `-panos` folders, so each game's panoramas stay next to that game. Numbering starts at 01 inside every sibling.
 
-The median photo is the position and exposure anchor: the 3rd of 5, the 2nd of 4. Every project is then optimized for yaw, pitch, roll, and field of view (`y, p, r, v`) and nothing else. `--stitch` is the last step. After every sibling has been written, the projects are added to Hugin's batch processor with the same name as the `.pto`. The batch is not started.
+The median photo is the position and exposure anchor: the 3rd of 5, the 2nd of 4. Every project is then optimized for yaw, pitch, roll, and field of view (`y, p, r, v`) and nothing else. Stitching is the next step, unless you pass `--no-stitch`. After every sibling has been written, the projects are added to Hugin's batch processor with the same name as the `.pto`. The batch is not started.
+
+Cropping is also on unless you pass `--no-crop`. After the stitched image exists (`guessed_pano01_20Sep2025_090012-090018.jpg`, or the same name as a TIFF inside the panorama folder), Sportball writes `guessed_pano01_20Sep2025_090012-090018_cropped.jpg` next to the panorama folders. That file is the bounding box of everything that is not black canvas. The full stitch stays, so you can still see the black border and clean it up by hand.
 
 ```bash
 sb pano Games/Game03_19Sep2026_120915-132501
 sb pano Game01 Game02 Game03 Game04 Game05
-sb pano --stitch Games/Game03_19Sep2026_120915-132501
+sb pano --no-stitch --no-crop Games/Game03_19Sep2026_120915-132501
 sb pano --dry-run Games/Game03_19Sep2026_120915-132501
-sb pano --black-mse 80 --split-points 0 --overlap-points 15 Games
+sb pano --marker-var 80 --split-points 0 --overlap-points 15 Games
 ```
 
-`--dry-run` prints a tqdm bar and a line per frame while it scores, then every frame's blackness score and the control-point count on each link. Nothing is written. `--quiet` hides the progress. Use the report to set `--black-mse`, `--split-points`, `--overlap-points`, and `--far-points`.
+`--dry-run` prints a tqdm bar and a line per frame while it scores, then every frame's grayscale mean and variance and the control-point count on each link. Nothing is written. `--quiet` hides the progress. Use the report to set `--marker-var`, `--split-points`, `--overlap-points`, and `--far-points`. A marker is a frame whose pixels barely vary around their mean gray level, so a covered lens, a shot of sky, and a zoom into the ground all qualify.
 
 ## How a “game” is decided
 
