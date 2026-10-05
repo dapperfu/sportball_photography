@@ -97,8 +97,8 @@ STATUS: Implemented
 [REQUIREMENT]
 UID: AP-009
 TITLE: Inline Stitch
-STATEMENT: Stitching SHALL be on by default. After all panorama folders have been written, Sportball SHALL run hugin_executor --stitching on each optimized project, one after another, and SHALL NOT open PTBatcherGUI. The output prefix SHALL be the project path without the .pto suffix, in that panorama folder. ``--no-stitch`` SHALL skip stitching. The stitched image SHALL exist before the cropped copy is written.
-RATIONALE: An inline stitch needs no batch window and leaves an image for the crop in the same run. The command works headless.
+STATEMENT: Stitching SHALL be on by default. After all panorama folders have been written, Sportball SHALL run hugin_executor --stitching on each optimized project, one after another, and SHALL NOT open PTBatcherGUI. The stitched image SHALL be a JPEG named like the project, in that panorama folder. ``--no-stitch`` SHALL skip stitching. The JPEG SHALL exist before the cropped copy is written.
+RATIONALE: An inline JPEG stitch needs no batch window and leaves an image for the crop in the same run. The command works headless.
 PRIORITY: Medium
 STATUS: Implemented
 

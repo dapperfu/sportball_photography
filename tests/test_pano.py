@@ -384,6 +384,8 @@ def test_render_and_parse_pto_round_trip(tmp_path: Path) -> None:
     assert points[0].y_right == pytest.approx(4.75)
     assert 'n"a.jpg"' in text
     assert "black" not in text
+    assert "#hugin_outputImageType jpg" in text
+    assert "#hugin_outputJPEGQuality 95" in text
 
 
 def test_write_folders_skip_marker_frames_and_symlink(tmp_path: Path) -> None:
@@ -722,9 +724,12 @@ projects = [arg for arg in args if arg.endswith(".pto")]
 if prefix is None or not projects:
     raise SystemExit("missing prefix or project")
 project = Path(projects[0])
-if "# AUTO" not in project.read_text(encoding="utf-8"):
+text = project.read_text(encoding="utf-8")
+if "# AUTO" not in text:
     raise SystemExit("stitched before optimisation")
-Path(prefix).with_suffix(".tif").write_bytes(b"stitched")
+if "#hugin_outputImageType jpg" not in text:
+    raise SystemExit("stitch output is not jpeg")
+Path(prefix).with_suffix(".jpg").write_bytes(b"stitched")
 log = Path(__file__).resolve().with_name("stitched.txt")
 with log.open("a", encoding="utf-8") as handle:
     handle.write("\\n".join(args) + "\\n")
@@ -785,8 +790,10 @@ def test_correction_uses_the_median_and_stitch_matches_the_pto(
         assert " -n " in auto
         assert " -m " not in auto
         assert " -a " not in auto
-        stitched = project.with_suffix(".tif")
+        stitched = project.with_suffix(".jpg")
         assert stitched.is_file()
+        assert not project.with_suffix(".tif").exists()
+        assert "#hugin_outputImageType jpg" in text
         log = (bin_dir / "stitched.txt").read_text(encoding="utf-8")
         assert "--stitching" in log
         assert str(project.resolve()) in log
