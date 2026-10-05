@@ -121,9 +121,9 @@ Five shots in 2.5 seconds and five shots in 10 seconds are the same test. A gap 
 
 Each input directory gets its own sibling folder. `Games/Game03_19Sep2026_120915-132501` writes `Games/Game03_19Sep2026_120915-132501-panos/`. Five input folders produce five `-panos` folders, so each game's panoramas stay next to that game. Numbering starts at 01 inside every sibling.
 
-The median photo is the position and exposure anchor: the 3rd of 5, the 2nd of 4. Every project is then optimized for yaw, pitch, roll, and field of view (`y, p, r, v`) and nothing else. Stitching is the next step, unless you pass `--no-stitch`. After every sibling has been written, `hugin_executor` stitches each project in process. The image is named like the `.pto` and lands in that panorama folder. Nothing is queued, and no batch window opens.
+The median photo is the position and exposure anchor: the 3rd of 5, the 2nd of 4. Every project is then optimized for yaw, pitch, roll, and field of view (`y, p, r, v`) and nothing else. Stitching is the next step, unless you pass `--no-stitch`. After every sibling has been written, `hugin_executor` stitches each project in process. The image is a JPEG named like the `.pto` and lands in that panorama folder. Nothing is queued, and no batch window opens.
 
-Cropping is also on unless you pass `--no-crop`. After the stitched image exists (`guessed_pano01_20Sep2025_090012-090018.jpg`, or the same name as a TIFF inside the panorama folder), Sportball writes `guessed_pano01_20Sep2025_090012-090018_cropped.jpg` next to the panorama folders. That file is the bounding box of everything that is not black canvas. The full stitch stays, so you can still see the black border and clean it up by hand.
+Cropping is also on unless you pass `--no-crop`. After the stitched JPEG exists (`guessed_pano01_20Sep2025_090012-090018.jpg`), Sportball writes `guessed_pano01_20Sep2025_090012-090018_cropped.jpg` next to the panorama folders. That file is the bounding box of everything that is not black canvas. The full stitch stays, so you can still see the black border and clean it up by hand.
 
 ```bash
 sb pano Games/Game03_19Sep2026_120915-132501
