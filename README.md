@@ -110,7 +110,7 @@ Because the game folders are symlinks, ffmpeg reads the originals. You are not e
 
 ### 4. `sb pano` — action panoramas for Hugin
 
-Needs Hugin's `pto_gen`, `cpfind`, `pto_var`, `autooptimiser` (`hugin-tools`), and `hugin_executor` (the `hugin` package). Stitching is on by default and runs in process, with no batch window. Point it at a game folder or a dump of JPEGs. The Hugin project is not cropped or masked. You still choose the regions in Hugin.
+Needs Hugin's `pto_gen`, `cpfind`, `pto_var`, `autooptimiser`, `pano_modify` (`hugin-tools`), and `hugin_executor` (the `hugin` package). Stitching is on by default and runs in process, with no batch window. Point it at a game folder or a dump of JPEGs. The Hugin project is not cropped or masked. You still choose the regions in Hugin.
 
 Two kinds of folder, numbered together in capture order:
 
@@ -121,9 +121,15 @@ Five shots in 2.5 seconds and five shots in 10 seconds are the same test. A gap 
 
 Each input directory gets its own sibling folder. `Games/Game03_19Sep2026_120915-132501` writes `Games/Game03_19Sep2026_120915-132501-panos/`. Five input folders produce five `-panos` folders, so each game's panoramas stay next to that game. Numbering starts at 01 inside every sibling.
 
-The median photo is the position and exposure anchor: the 3rd of 5, the 2nd of 4. Every project is then optimized for yaw, pitch, roll, and field of view (`y, p, r, v`) and nothing else. Stitching is the next step, unless you pass `--no-stitch`. After every sibling has been written, `hugin_executor` stitches each project in process. The image is a JPEG named like the `.pto` and lands in that panorama folder. Nothing is queued, and no batch window opens. If Hugin cannot stitch one project (enblend sometimes rejects a pan, for example with "excessive image overlap"), that panorama is skipped and listed under "Not stitched" at the end. The other panoramas are still stitched and cropped, and the skipped folder keeps its `.pto` so you can fix it in Hugin.
+The median photo is the position and exposure anchor: the 3rd of 5, the 2nd of 4. Every project is then optimized for yaw, pitch, roll, and field of view (`y, p, r, v`) and nothing else. Stitching is the next step, unless you pass `--no-stitch`. After every sibling has been written, `hugin_executor` stitches each project in process, once for each Hugin panorama option. Nothing is queued, and no batch window opens. The three JPEGs land in that panorama folder:
 
-Cropping is also on unless you pass `--no-crop`. After the stitched JPEG exists (`guessed_pano01_20Sep2025_090012-090018/guessed_pano01_20Sep2025_090012-090018.jpg`), Sportball writes `guessed_pano01_20Sep2025_090012-090018_cropped.jpg` next to it, in the same panorama folder. That file is the bounding box of everything that is not black canvas. The full stitch stays, so you can still see the black border and clean it up by hand.
+- `guessed_pano01_20Sep2025_090012-090018_exposure_corrected.jpg` — Exposure corrected, low dynamic range
+- `guessed_pano01_20Sep2025_090012-090018_fused_stacks.jpg` — Exposure fused from stacks
+- `guessed_pano01_20Sep2025_090012-090018_fused_any_arrangement.jpg` — Exposure fused from any arrangement
+
+Each option is its own stitch. Enblend sometimes rejects one of them (for example with "excessive image overlap") while another option of the same pan succeeds. A failed option is skipped and listed under "Panorama option failed". The other options, and the other panoramas, are still stitched and cropped. A panorama whose every option fails is listed under "Not stitched". The folder and its `.pto` stay so you can fix it in Hugin.
+
+Cropping is also on unless you pass `--no-crop`. After a stitched JPEG exists, Sportball writes a `_cropped.jpg` beside it, in the same panorama folder. `guessed_pano01_20Sep2025_090012-090018_exposure_corrected.jpg` gains `guessed_pano01_20Sep2025_090012-090018_exposure_corrected_cropped.jpg`, and the same for the other two options when those stitches exist. The crop is the bounding box of everything that is not black canvas. The full stitch stays, so you can still see the black border and clean it up by hand.
 
 ```bash
 sb pano Games/Game03_19Sep2026_120915-132501
@@ -203,7 +209,7 @@ sb split --min-gap 0.25 --min-rate 100 04_Apr 05_May
 
 ## Install
 
-Python 3.10+, a virtual environment, and Rust (EXIF reads go through [fast-exif-rs-py](https://github.com/dapperfu/fast-exif-rs-py); there is no fallback). `sb animate` also needs `ffmpeg`. `sb pano` also needs Hugin (`hugin-tools`: `pto_gen`, `cpfind`, `pto_var`, `autooptimiser`; stitching uses `hugin_executor` from the `hugin` package).
+Python 3.10+, a virtual environment, and Rust (EXIF reads go through [fast-exif-rs-py](https://github.com/dapperfu/fast-exif-rs-py); there is no fallback). `sb animate` also needs `ffmpeg`. `sb pano` also needs Hugin (`hugin-tools`: `pto_gen`, `cpfind`, `pto_var`, `autooptimiser`, `pano_modify`; stitching uses `hugin_executor` from the `hugin` package).
 
 ```bash
 git clone <this-repo>

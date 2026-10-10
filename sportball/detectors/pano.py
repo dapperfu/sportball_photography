@@ -10,10 +10,11 @@ not. Hugin's ``cpfind`` supplies the control points.
 The command writes symlink folders and a ``.pto`` project. Every project
 is optimized for yaw, pitch, roll, and field of view only. Stitching
 and a black-canvas crop are on by default. ``hugin_executor`` stitches
-each project to a JPEG in process, with no batch window. A project it
-cannot stitch is skipped, and the rest still run. ``--crop`` then
-writes ``<pano_name>_cropped.jpg`` beside each stitched panorama, in
-the same folder, with the black canvas removed.
+each project in process, with no batch window, once for each Hugin
+panorama option: exposure corrected, fused from stacks, and fused from
+any arrangement. A blend that fails is skipped and the other blends
+still run. ``--crop`` then writes ``<stitch>_cropped.jpg`` beside each
+stitched image, in the same folder, with the black canvas removed.
 
 Author: Claude Sonnet 4 (claude-3-5-sonnet-20241022)
 Generated via Cursor IDE (cursor.sh) with AI assistance
@@ -58,6 +59,52 @@ DEFAULT_JPEG_QUALITY = 95
 PANOS_SUFFIX = "-panos"
 _STITCH_SUFFIXES = (".jpg", ".jpeg", ".tif", ".tiff")
 _PANO_STEM_RE = re.compile(r"^(?:known_pano|guessed_pano)\d+_.+")
+
+
+@dataclass(frozen=True)
+class StitchBlend:
+    """
+    One checkbox in Hugin's panorama stitcher.
+
+    Parameters
+    ----------
+    output_type : str
+        Value passed to ``pano_modify --output-type``.
+    slug : str
+        Filename piece that names this option.
+    hugin_suffix : str
+        Stem Hugin appends to the prefix. Empty for the exposure-corrected
+        blend, which is written as ``<prefix>.jpg``.
+    label : str
+        The checkbox label in Hugin.
+    """
+
+    output_type: str
+    slug: str
+    hugin_suffix: str
+    label: str
+
+
+STITCH_BLENDS: Tuple[StitchBlend, ...] = (
+    StitchBlend(
+        "NORMAL",
+        "exposure_corrected",
+        "",
+        "Exposure corrected, low dynamic range",
+    ),
+    StitchBlend(
+        "STACKSFUSEDBLENDED",
+        "fused_stacks",
+        "_fused",
+        "Exposure fused from stacks",
+    ),
+    StitchBlend(
+        "EXPOSURELAYERSFUSED",
+        "fused_any_arrangement",
+        "_blended_fused",
+        "Exposure fused from any arrangement",
+    ),
+)
 
 _IMAGE_LINE_RE = re.compile(r'^i\b.*\bn"([^"]*)"')
 _CONTROL_POINT_RE = re.compile(
@@ -105,10 +152,11 @@ class PanoConfig:
     write_pto : bool
         Write a Hugin project next to the photos.
     stitch : bool
-        After every project is optimized, stitch it to a JPEG with
-        ``hugin_executor``. No batch window is opened.
+        After every project is optimized, stitch each Hugin panorama
+        option to its own JPEG with ``hugin_executor``. No batch window
+        is opened.
     crop : bool
-        After the panoramas exist, write ``<pano_name>_cropped.jpg``
+        After the panoramas exist, write ``<stitch>_cropped.jpg``
         beside each stitched image, dropping the black canvas.
     dry_run : bool
         Score and match, but do not create folders.
@@ -303,11 +351,14 @@ class PanoResult:
         Sibling directories that receive each input's panoramas. Listed
         even on a dry run, when nothing is created.
     cropped : list of Path
-        ``<pano_name>_cropped.jpg`` files, each beside the stitched
-        panorama it was cut from.
+        ``<stitch>_cropped.jpg`` files, each beside the stitched image
+        it was cut from.
     unstitched : list of Path
-        Projects that ``hugin_executor`` could not stitch. Their folders
+        Projects for which every panorama option failed. Their folders
         and ``.pto`` files are kept.
+    blend_failures : list of tuple of Path and str
+        A project and the Hugin option that failed, when another option
+        for that same project did stitch.
     """
 
     frames: List[Frame]
@@ -318,6 +369,7 @@ class PanoResult:
     output_dirs: List[Path] = field(default_factory=list)
     cropped: List[Path] = field(default_factory=list)
     unstitched: List[Path] = field(default_factory=list)
+    blend_failures: List[Tuple[Path, str]] = field(default_factory=list)
 
 
 SurveyFn = Callable[[Sequence[Frame], int], PairSurvey]
@@ -1210,6 +1262,68 @@ def crop_black_canvas(
     return box
 
 
+def blend_jpeg(project: Path, blend: StitchBlend) -> Path:
+    """
+    Return the JPEG written for one panorama option.
+
+    Parameters
+    ----------
+    project : Path
+        Optimized ``.pto`` file.
+    blend : StitchBlend
+        Hugin panorama option.
+
+    Returns
+    -------
+    Path
+        ``<pano_name>_<slug>.jpg`` beside the project.
+    """
+    return project.with_name(f"{project.stem}_{blend.slug}.jpg")
+
+
+def _panorama_stitch_stems(pano_name: str) -> List[str]:
+    """
+    Return the image stems that belong to one panorama folder.
+
+    Parameters
+    ----------
+    pano_name : str
+        Folder name, which is also the project stem.
+
+    Returns
+    -------
+    list of str
+        The project stem, then one stem per Hugin panorama option.
+    """
+    return [pano_name, *[f"{pano_name}_{blend.slug}" for blend in STITCH_BLENDS]]
+
+
+def _project_pto_for_stitch(image: Path) -> Path:
+    """
+    Return the project that produced a stitched image.
+
+    Parameters
+    ----------
+    image : Path
+        A blend JPEG, or a legacy stitch named like the project.
+
+    Returns
+    -------
+    Path
+        Resolved ``.pto`` path beside ``image``.
+    """
+    stem = image.stem
+    for blend in STITCH_BLENDS:
+        suffix = f"_{blend.slug}"
+        if not stem.endswith(suffix):
+            continue
+        candidate = stem[: -len(suffix)]
+        if _PANO_STEM_RE.fullmatch(candidate):
+            stem = candidate
+            break
+    return image.with_name(f"{stem}.pto").resolve()
+
+
 def _stitch_rank(panos_dir: Path, path: Path) -> Tuple[int, int]:
     """
     Prefer a JPEG in the panorama directory over a TIFF inside a folder.
@@ -1236,8 +1350,9 @@ def stitched_panorama_images(panos_dir: Path) -> List[Path]:
     Find one stitched image per panorama name.
 
     A loose ``guessed_pano*.jpg`` or ``known_pano*.jpg`` in ``panos_dir``
-    wins over ``<name>/<name>.tif`` inside the folder. Files already
-    named ``_cropped`` are not sources.
+    wins over a TIFF of the same stem inside the folder. Each Hugin
+    panorama option is its own image. Files already named ``_cropped``
+    are not sources.
 
     Parameters
     ----------
@@ -1259,10 +1374,11 @@ def stitched_panorama_images(panos_dir: Path) -> List[Path]:
             continue
         if not path.is_dir() or _PANO_STEM_RE.fullmatch(path.name) is None:
             continue
-        for suffix in _STITCH_SUFFIXES:
-            inner = path / f"{path.name}{suffix}"
-            if inner.is_file():
-                candidates.append(inner)
+        for stem in _panorama_stitch_stems(path.name):
+            for suffix in _STITCH_SUFFIXES:
+                inner = path / f"{stem}{suffix}"
+                if inner.is_file():
+                    candidates.append(inner)
     for path in candidates:
         current = chosen.get(path.stem)
         if current is None or _stitch_rank(panos_dir, path) < _stitch_rank(
@@ -1299,10 +1415,11 @@ def crop_panorama_directory(
     progress: bool = True,
 ) -> List[Path]:
     """
-    Write ``<pano_name>_cropped.jpg`` beside each stitched panorama.
+    Write ``<stitch>_cropped.jpg`` beside each stitched panorama.
 
     The full image is left in place. The cropped file goes in the same
     folder as the image it was cut from, and drops the black canvas.
+    Each Hugin panorama option is cropped on its own.
 
     Parameters
     ----------
@@ -1391,6 +1508,7 @@ def find_action_panos(
         matcher = survey
     if config.stitch and not config.dry_run:
         resolve_hugin_tool("hugin_executor")
+        resolve_hugin_tool("pano_modify")
 
     all_frames: List[Frame] = []
     all_groups: List[PanoGroup] = []
@@ -1445,19 +1563,23 @@ def find_action_panos(
     )
     cropped: List[Path] = []
     unstitched: List[Path] = []
+    blend_failures: List[Tuple[Path, str]] = []
     if config.dry_run:
         _say("Dry run: panorama folders will not be written", show)
     else:
         if config.stitch:
-            stitched = {
-                image.with_suffix("")
-                for image in stitch_projects(projects, progress=show)
-            }
+            written = stitch_projects(projects, progress=show)
+            produced = {_project_pto_for_stitch(image) for image in written}
             unstitched = [
-                project
-                for project in projects
-                if project.resolve().with_suffix("") not in stitched
+                project for project in projects if project.resolve() not in produced
             ]
+            for project in projects:
+                if project.resolve() in {path.resolve() for path in unstitched}:
+                    continue
+                for blend in STITCH_BLENDS:
+                    if blend_jpeg(project, blend).is_file():
+                        continue
+                    blend_failures.append((project, blend.label))
         if config.crop:
             for directory in output_dirs:
                 cropped.extend(crop_panorama_directory(directory, progress=show))
@@ -1470,6 +1592,7 @@ def find_action_panos(
         output_dirs=output_dirs,
         cropped=cropped,
         unstitched=unstitched,
+        blend_failures=blend_failures,
     )
 
 
@@ -1571,8 +1694,9 @@ def write_pano_folders(
     When a project is written and ``optimize`` is true, yaw, pitch, roll,
     and field of view are optimized with the median image as the position
     and exposure anchor. ``stitch`` runs ``hugin_executor`` on those
-    projects after every folder in this call has been written. The
-    stitch is a JPEG. No batch window is opened.
+    projects after every folder in this call has been written, once
+    per Hugin panorama option. Each option is its own JPEG. No batch
+    window is opened.
 
     Parameters
     ----------
@@ -1615,6 +1739,7 @@ def write_pano_folders(
         resolve_hugin_tool("autooptimiser")
     if stitch:
         resolve_hugin_tool("hugin_executor")
+        resolve_hugin_tool("pano_modify")
     total = len(accepted)
     output_dir.mkdir(parents=True, exist_ok=True)
     projects: List[Path] = []
@@ -2046,12 +2171,13 @@ def stitch_projects(
     progress: bool = True,
 ) -> List[Path]:
     """
-    Stitch each project to a JPEG with ``hugin_executor``.
+    Stitch each Hugin panorama option for every project.
 
-    Projects run one after another. The output is ``<project>.jpg`` in
-    that panorama folder. No batch window is opened, so the JPEG
-    exists before cropping starts. A project that Hugin cannot stitch
-    is reported and skipped, and the remaining projects still run.
+    The three options are exposure corrected (low dynamic range),
+    exposure fused from stacks, and exposure fused from any
+    arrangement. Each option is its own ``hugin_executor --stitching``
+    run, so a blend Hugin rejects does not skip the other two. No
+    batch window is opened. The JPEGs exist before cropping starts.
 
     Parameters
     ----------
@@ -2063,96 +2189,143 @@ def stitch_projects(
     Returns
     -------
     list of Path
-        Stitched images, in project order. A project that failed has
-        no entry.
+        Stitched images. A blend that failed has no entry. The saved
+        ``.pto`` is left as the optimized project.
 
     Raises
     ------
     RuntimeError
-        If ``hugin_executor`` is not on ``PATH``.
+        If ``hugin_executor`` or ``pano_modify`` is not on ``PATH``.
     """
     written: List[Path] = []
     if not projects:
         _say("No projects to stitch", progress)
         return written
     resolve_hugin_tool("hugin_executor")
-    _say(f"Stitching {len(projects)} project(s) with hugin_executor", progress)
-    with _bar(len(projects), "Stitching", progress, unit="pano") as bar:
+    resolve_hugin_tool("pano_modify")
+    _say(
+        f"Stitching {len(projects)} project(s), "
+        f"{len(STITCH_BLENDS)} panorama options each",
+        progress,
+    )
+    with _bar(
+        len(projects) * len(STITCH_BLENDS), "Stitching", progress, unit="blend"
+    ) as bar:
         for project in projects:
-            try:
-                written.append(_stitch_one_project(project, progress))
-            except RuntimeError as exc:
-                logger.warning(f"Could not stitch {project}: {exc}")
-                _echo_tool(str(exc), progress)
-                _say(f"  skip stitch {project.name}", progress)
-            bar.update(1)
+            for blend in STITCH_BLENDS:
+                bar.set_postfix_str(f"{project.stem} {blend.slug}")
+                try:
+                    written.append(_stitch_one_blend(project, blend, progress))
+                except RuntimeError as exc:
+                    logger.warning(
+                        f"Could not stitch {blend.label} for {project}: {exc}"
+                    )
+                    _echo_tool(str(exc), progress)
+                    _say(f"  skip stitch {blend.label}: {project.name}", progress)
+                bar.update(1)
     return written
 
 
-def _stitch_one_project(project: Path, progress: bool) -> Path:
+def _stitch_one_blend(project: Path, blend: StitchBlend, progress: bool) -> Path:
     """
-    Run ``hugin_executor --stitching`` on one project.
+    Stitch one Hugin panorama option and name the JPEG after it.
+
+    ``pano_modify`` writes a temporary project with that option alone.
+    The optimized ``.pto`` in the panorama folder is left in place.
+    Hugin's own suffix (``_fused``, ``_blended_fused``) is renamed to
+    the option slug.
 
     Parameters
     ----------
     project : Path
         Optimized ``.pto`` file.
+    blend : StitchBlend
+        Panorama option to emit.
     progress : bool
         Print the command and the tool log.
 
     Returns
     -------
     Path
-        The stitched JPEG beside the project.
+        ``<pano_name>_<slug>.jpg`` beside the project.
 
     Raises
     ------
     RuntimeError
-        If the tool is missing, fails, or writes no image.
+        If a tool is missing, fails, or writes no image.
     """
     project = project.resolve()
-    prefix = project.with_suffix("")
     folder = project.parent
-    _say(f"  hugin_executor --stitching {project.name}", progress)
-    log = _run_hugin(
-        [
-            resolve_hugin_tool("hugin_executor"),
-            "--stitching",
-            f"--prefix={prefix}",
-            str(project),
-        ],
-        cwd=folder,
-    )
-    _echo_tool(log, progress)
-    return _stitched_image(prefix)
+    desired = blend_jpeg(project, blend)
+    prefix = desired.with_suffix("")
+    modified = folder / f".{project.stem}.{blend.slug}.pto"
+    _say(f"  {blend.label}: hugin_executor --stitching {project.name}", progress)
+    try:
+        modify_log = _run_hugin(
+            [
+                resolve_hugin_tool("pano_modify"),
+                f"--output-type={blend.output_type}",
+                "--ldr-file=JPG",
+                f"--ldr-compression={DEFAULT_JPEG_QUALITY}",
+                "-o",
+                str(modified),
+                str(project),
+            ],
+            cwd=folder,
+        )
+        _echo_tool(modify_log, progress)
+        stitch_log = _run_hugin(
+            [
+                resolve_hugin_tool("hugin_executor"),
+                "--stitching",
+                f"--prefix={prefix}",
+                str(modified),
+            ],
+            cwd=folder,
+        )
+        _echo_tool(stitch_log, progress)
+        produced = _hugin_blend_output(prefix, blend)
+    finally:
+        modified.unlink(missing_ok=True)
+    if produced.resolve() != desired.resolve():
+        produced.replace(desired)
+    return desired
 
 
-def _stitched_image(prefix: Path) -> Path:
+def _hugin_blend_output(prefix: Path, blend: StitchBlend) -> Path:
     """
-    Return the JPEG ``hugin_executor`` wrote for ``prefix``.
+    Return the JPEG Hugin wrote for ``prefix`` and this option.
 
     Parameters
     ----------
     prefix : Path
-        Project path without the ``.pto`` suffix.
+        ``--prefix`` passed to ``hugin_executor``, without an extension.
+    blend : StitchBlend
+        Panorama option that was requested.
 
     Returns
     -------
     Path
-        ``prefix.jpg``, or ``prefix.jpeg`` if that is what was written.
+        The file Hugin wrote.
 
     Raises
     ------
     RuntimeError
-        If the JPEG is missing.
+        If that file is missing.
     """
-    for suffix in (".jpg", ".jpeg"):
-        image = prefix.with_suffix(suffix)
-        if image.is_file():
-            return image
-    raise RuntimeError(
-        f"hugin_executor finished but did not write {prefix.name}.jpg"
+    for extension in (".jpg", ".jpeg"):
+        if blend.hugin_suffix:
+            candidate = Path(f"{prefix}{blend.hugin_suffix}{extension}")
+        else:
+            candidate = prefix.with_suffix(extension)
+        if candidate.is_file():
+            return candidate
+    expected = (
+        f"{prefix.name}{blend.hugin_suffix}.jpg"
+        if blend.hugin_suffix
+        else f"{prefix.name}.jpg"
     )
+    raise RuntimeError(f"hugin_executor finished but did not write {expected}")
 
 
 def _say(message: str, enabled: bool) -> None:

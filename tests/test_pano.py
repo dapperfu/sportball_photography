@@ -28,8 +28,10 @@ from sportball.detectors.pano import (
     PanoConfig,
     PanoGroup,
     PanoResult,
+    STITCH_BLENDS,
     SurveyFn,
     anchor_index,
+    blend_jpeg,
     classify_burst_ranges,
     cut_known_start,
     content_box,
@@ -709,6 +711,29 @@ out = Path(args[args.index("-o") + 1])
 src = Path(args[-1])
 out.write_text(src.read_text() + "\\n# AUTO " + " ".join(args) + "\\n")
 """,
+        "pano_modify": """#!/usr/bin/env python3
+import sys
+from pathlib import Path
+args = sys.argv[1:]
+if "--ldr-file=JPG" not in args:
+    raise SystemExit("ldr file was not jpg")
+output_type = next(
+    (arg.split("=", 1)[1] for arg in args if arg.startswith("--output-type=")),
+    "",
+)
+allowed = {"NORMAL", "STACKSFUSEDBLENDED", "EXPOSURELAYERSFUSED"}
+if output_type not in allowed:
+    raise SystemExit("unexpected output type: " + output_type)
+out = Path(args[args.index("-o") + 1])
+src = Path(args[-1])
+text = src.read_text(encoding="utf-8")
+if "#hugin_outputImageType jpg" not in text:
+    raise SystemExit("stitch output is not jpeg")
+out.write_text(text + "\\n# sportball-blend " + output_type + "\\n", encoding="utf-8")
+log = Path(__file__).resolve().with_name("modified.txt")
+with log.open("a", encoding="utf-8") as handle:
+    handle.write("\\n".join(args) + "\\n")
+""",
         "hugin_executor": """#!/usr/bin/env python3
 import os
 import shutil
@@ -732,15 +757,30 @@ if "# AUTO" not in text:
     raise SystemExit("stitched before optimisation")
 if "#hugin_outputImageType jpg" not in text:
     raise SystemExit("stitch output is not jpeg")
+marker = "# sportball-blend "
+kind = ""
+for line in text.splitlines():
+    if line.startswith(marker):
+        kind = line[len(marker):].strip()
+suffixes = {
+    "NORMAL": ".jpg",
+    "STACKSFUSEDBLENDED": "_fused.jpg",
+    "EXPOSURELAYERSFUSED": "_blended_fused.jpg",
+}
+if kind not in suffixes:
+    raise SystemExit("stitch project has no panorama option")
 fail = os.environ.get("FAKE_STITCH_FAIL")
-if fail and fail in Path(prefix).name:
+fail_type = os.environ.get("FAKE_STITCH_FAIL_TYPE")
+if (fail and fail in Path(prefix).name) or (fail_type and fail_type == kind):
     print("enblend: excessive image overlap detected", file=sys.stderr)
     raise SystemExit(1)
+suffix = suffixes[kind]
+dest = Path(str(prefix) + suffix) if suffix.startswith("_") else Path(prefix).with_suffix(suffix)
 image = os.environ.get("FAKE_STITCH_IMAGE")
 if image:
-    shutil.copyfile(image, Path(prefix).with_suffix(".jpg"))
+    shutil.copyfile(image, dest)
 else:
-    Path(prefix).with_suffix(".jpg").write_bytes(b"stitched")
+    dest.write_bytes(b"stitched")
 log = Path(__file__).resolve().with_name("stitched.txt")
 with log.open("a", encoding="utf-8") as handle:
     handle.write("\\n".join(args) + "\\n")
@@ -801,16 +841,23 @@ def test_correction_uses_the_median_and_stitch_matches_the_pto(
         assert " -n " in auto
         assert " -m " not in auto
         assert " -a " not in auto
-        stitched = project.with_suffix(".jpg")
-        assert stitched.is_file()
-        assert not project.with_suffix(".tif").exists()
         assert "#hugin_outputImageType jpg" in text
+        assert "# sportball-blend" not in text
+        assert list(folder.glob("*.pto")) == [project]
+        assert list(folder.glob(".*.pto")) == []
         log = (bin_dir / "stitched.txt").read_text(encoding="utf-8")
+        modified = (bin_dir / "modified.txt").read_text(encoding="utf-8")
         assert "--stitching" in log
-        assert str(project.resolve()) in log
-        assert f"--prefix={project.resolve().with_suffix('')}" in log
         assert "--batch" not in log
         assert "-b" not in log.split()
+        assert str(project.resolve()) not in log.split()
+        for blend in STITCH_BLENDS:
+            image = blend_jpeg(project, blend)
+            assert image.is_file()
+            assert image.suffix == ".jpg"
+            assert f"--output-type={blend.output_type}" in modified
+            assert f"--prefix={image.resolve().with_suffix('')}" in log
+        assert not project.with_suffix(".tif").exists()
         assert list(folder.glob("*.marked.pto")) == []
 
 
@@ -1091,15 +1138,71 @@ def test_failed_stitch_is_skipped_and_the_rest_are_cropped(
     sibling = tmp_path / f"{game.name}-panos"
     failed, kept = sorted(path for path in sibling.iterdir() if path.is_dir())
     assert failed.name.startswith("guessed_pano01_")
-    assert [path.resolve() for path in result.unstitched] == [
-        (failed / f"{failed.name}.pto").resolve()
-    ]
-    assert not (failed / f"{failed.name}.jpg").exists()
+    failed_project = failed / f"{failed.name}.pto"
+    kept_project = kept / f"{kept.name}.pto"
+    assert [path.resolve() for path in result.unstitched] == [failed_project.resolve()]
+    assert result.blend_failures == []
+    for blend in STITCH_BLENDS:
+        assert not blend_jpeg(failed_project, blend).exists()
     assert list(failed.glob("*_cropped.jpg")) == []
-    assert (kept / f"{kept.name}.jpg").is_file()
-    cropped = kept / f"{kept.name}_cropped.jpg"
-    assert [path.resolve() for path in result.cropped] == [cropped.resolve()]
+    images = sorted(
+        (blend_jpeg(kept_project, blend) for blend in STITCH_BLENDS),
+        key=lambda path: path.name,
+    )
+    for image in images:
+        assert image.is_file()
+    crops = [image.with_name(f"{image.stem}_cropped.jpg") for image in images]
+    assert [path.resolve() for path in result.cropped] == [
+        path.resolve() for path in crops
+    ]
     assert list(sibling.glob("*_cropped.jpg")) == []
+
+
+def test_one_panorama_option_can_fail_while_the_others_stitch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A blend Hugin rejects does not drop the other two options."""
+    bin_dir = tmp_path / "bin"
+    _install_fake_hugin(bin_dir)
+    _prefer_tools(monkeypatch, bin_dir)
+    canvas = tmp_path / "canvas.jpg"
+    _canvas(canvas, (80, 40), (10, 6, 30, 22), (200, 40, 40))
+    monkeypatch.setenv("FAKE_STITCH_IMAGE", str(canvas))
+    monkeypatch.setenv("FAKE_STITCH_FAIL_TYPE", "NORMAL")
+    game = tmp_path / "Game03_19Sep2026_120915-132501"
+    game.mkdir()
+    _stub_detection(
+        monkeypatch,
+        {game: [_accepted_group(game, "guessed", "a.jpg", 0.0)]},
+    )
+
+    result = find_action_panos(
+        [str(game)], PanoConfig(stitch=True, crop=True, progress=False)
+    )
+
+    sibling = tmp_path / f"{game.name}-panos"
+    folder = next(path for path in sibling.iterdir() if path.is_dir())
+    project = folder / f"{folder.name}.pto"
+    by_slug = {blend.slug: blend for blend in STITCH_BLENDS}
+    assert not blend_jpeg(project, by_slug["exposure_corrected"]).exists()
+    kept = [
+        blend_jpeg(project, by_slug["fused_stacks"]),
+        blend_jpeg(project, by_slug["fused_any_arrangement"]),
+    ]
+    for image in kept:
+        assert image.is_file()
+        assert image.with_name(f"{image.stem}_cropped.jpg").is_file()
+    assert not (folder / f"{folder.name}_fused_stacks_fused.jpg").exists()
+    hugin_name = f"{folder.name}_fused_any_arrangement_blended_fused.jpg"
+    assert not (folder / hugin_name).exists()
+    assert result.unstitched == []
+    assert [(path.resolve(), label) for path, label in result.blend_failures] == [
+        (project.resolve(), "Exposure corrected, low dynamic range")
+    ]
+    assert {path.name for path in result.cropped} == {
+        f"{image.stem}_cropped.jpg" for image in kept
+    }
+    assert list(folder.glob(".*.pto")) == []
 
 
 def test_stitch_without_hugin_executor_still_raises(
@@ -1240,6 +1343,30 @@ def test_report_lists_crops_and_projects_that_did_not_stitch(
     quiet = CliRunner().invoke(pano, [str(tmp_path)], obj={"quiet": True})
     assert quiet.exit_code == 0, quiet.output
     assert "1 not stitched" in quiet.output
+    failed_blend = (
+        Path("g-panos/guessed_pano03_z/guessed_pano03_z.pto"),
+        "Exposure fused from stacks",
+    )
+
+    def fake_partial(*args: object, **kwargs: object) -> PanoResult:
+        return PanoResult(
+            frames=[],
+            groups=[],
+            marker_runs=[],
+            skipped_no_exif=0,
+            skipped_undecodable=0,
+            blend_failures=[failed_blend],
+        )
+
+    monkeypatch.setattr(pano_mod, "find_action_panos", fake_partial)
+    partial = CliRunner().invoke(pano, [str(tmp_path)])
+    assert partial.exit_code == 0, partial.output
+    assert "Panorama option failed" in partial.output
+    assert "Exposure fused from stacks" in partial.output
+    assert str(failed_blend[0]) in partial.output
+    quiet_partial = CliRunner().invoke(pano, [str(tmp_path)], obj={"quiet": True})
+    assert quiet_partial.exit_code == 0, quiet_partial.output
+    assert "1 blend failed" in quiet_partial.output
 
 
 def _canvas(

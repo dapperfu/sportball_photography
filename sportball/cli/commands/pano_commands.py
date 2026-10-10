@@ -5,8 +5,9 @@ Action-panorama commands.
 panoramas (neighbor overlap, no overlap a few frames away), then writes
 symlink folders and a Hugin project optimized for yaw, pitch, roll, and
 field of view. Stitching and a black-canvas crop are on by default.
-``--no-stitch`` skips the inline stitch. ``--no-crop`` skips
-``<pano_name>_cropped.jpg``.
+``--no-stitch`` skips the inline stitch. Each stitch writes three
+JPEGs: exposure corrected, fused from stacks, and fused from any
+arrangement. ``--no-crop`` skips ``<stitch>_cropped.jpg``.
 
 Author: Claude Sonnet 4 (claude-3-5-sonnet-20241022)
 Generated via Cursor IDE (cursor.sh) with AI assistance
@@ -186,8 +187,9 @@ def _get_table() -> Any:
     default=True,
     show_default=True,
     help=(
-        "After every project is optimized, stitch it to a JPEG with "
-        "hugin_executor. No batch window is opened."
+        "After every project is optimized, stitch each Hugin panorama "
+        "option to its own JPEG: exposure corrected, fused from stacks, "
+        "and fused from any arrangement. No batch window is opened."
     ),
 )
 @click.option(
@@ -195,7 +197,7 @@ def _get_table() -> Any:
     default=True,
     show_default=True,
     help=(
-        "Write <pano_name>_cropped.jpg beside each stitched panorama, "
+        "Write <stitch>_cropped.jpg beside each stitched panorama, "
         "with the black canvas removed."
     ),
 )
@@ -248,14 +250,19 @@ def pano(
     (5 photos: the 3rd; 4 photos: the 2nd). The project is optimized
     for yaw, pitch, roll, and field of view, and nothing else.
     Stitching is on unless ``--no-stitch`` is passed. Each project is
-    stitched to a JPEG in process with ``hugin_executor``, named like
-    the ``.pto``, with no batch window. A project Hugin cannot stitch
-    is skipped and listed at the end, and the others still run.
-    Cropping is on unless ``--no-crop`` is passed. After those images
-    exist it writes ``<pano_name>_cropped.jpg`` beside the full stitch,
-    in the same panorama folder, with the black canvas removed. The
-    full image stays, so the black border can still be cleaned up by
-    hand.
+    stitched in process with ``hugin_executor``, once for each Hugin
+    panorama option, with no batch window. The JPEGs sit in that
+    panorama folder:
+    ``<pano_name>_exposure_corrected.jpg``,
+    ``<pano_name>_fused_stacks.jpg``, and
+    ``<pano_name>_fused_any_arrangement.jpg``.
+    An option Hugin cannot stitch is skipped and the other options
+    still run. A project whose every option fails is listed at the
+    end. Cropping is on unless ``--no-crop`` is passed. After those
+    images exist it writes ``<stitch>_cropped.jpg`` beside each full
+    stitch, in the same panorama folder, with the black canvas
+    removed. The full image stays, so the black border can still be
+    cleaned up by hand.
 
     Examples:
 
@@ -305,6 +312,10 @@ def pano(
         summary = f"{len(accepted)} panoramas, {len(result.frames)} photos"
         if result.unstitched:
             summary += f", {len(result.unstitched)} not stitched"
+        if result.blend_failures:
+            count = len(result.blend_failures)
+            noun = "blend" if count == 1 else "blends"
+            summary += f", {count} {noun} failed"
         _get_console().print(summary)
 
 
@@ -366,9 +377,17 @@ def display_pano_result(result: PanoResult, config: PanoConfig) -> None:
             console.print(f"  {path}")
 
     if result.unstitched:
-        console.print("\nNot stitched (Hugin failed; the folder and .pto are kept):")
+        console.print(
+            "\nNot stitched (every panorama option failed; "
+            "the folder and .pto are kept):"
+        )
         for path in result.unstitched:
             console.print(f"  {path}", style="yellow")
+
+    if result.blend_failures:
+        console.print("\nPanorama option failed:")
+        for path, label in result.blend_failures:
+            console.print(f"  {label}: {path}", style="yellow")
 
     if not result.groups:
         console.print("\nNo panorama candidates.")

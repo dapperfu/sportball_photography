@@ -97,8 +97,8 @@ STATUS: Implemented
 [REQUIREMENT]
 UID: AP-009
 TITLE: Inline Stitch
-STATEMENT: Stitching SHALL be on by default. After all panorama folders have been written, Sportball SHALL run hugin_executor --stitching on each optimized project, one after another, and SHALL NOT open PTBatcherGUI. The stitched image SHALL be a JPEG named like the project, in that panorama folder. ``--no-stitch`` SHALL skip stitching. The JPEG SHALL exist before the cropped copy is written. A project that hugin_executor cannot stitch SHALL be reported and skipped, the remaining projects SHALL still be stitched and cropped, and the skipped folder and its .pto SHALL be kept. A missing hugin_executor SHALL still stop the command.
-RATIONALE: An inline JPEG stitch needs no batch window and leaves an image for the crop in the same run. The command works headless. One pan that Hugin rejects does not cost the rest of the game its panoramas.
+STATEMENT: Stitching SHALL be on by default. After all panorama folders have been written, Sportball SHALL run hugin_executor --stitching once for each of the three Hugin panorama options, and SHALL NOT open PTBatcherGUI. The options are Exposure corrected, low dynamic range; Exposure fused from stacks; and Exposure fused from any arrangement. Each successful image SHALL be a JPEG in that panorama folder, named <pano_name>_exposure_corrected.jpg, <pano_name>_fused_stacks.jpg, and <pano_name>_fused_any_arrangement.jpg. Each option SHALL be stitched on its own, so a failure of one option SHALL NOT skip the other options of that project. An option that hugin_executor cannot stitch SHALL be reported, and the remaining options and projects SHALL still be stitched and cropped. A project for which every option fails SHALL be reported as not stitched, and its folder and .pto SHALL be kept. ``--no-stitch`` SHALL skip stitching. Each JPEG SHALL exist before its cropped copy is written. A missing hugin_executor or pano_modify SHALL stop the command.
+RATIONALE: An inline JPEG stitch needs no batch window and leaves an image for the crop in the same run. The command works headless. One panorama option that Hugin rejects does not cost the other options, or the rest of the game, their panoramas. Some pans only stitch under one of the three options.
 PRIORITY: Medium
 STATUS: Implemented
 
@@ -113,7 +113,7 @@ STATUS: Implemented
 [REQUIREMENT]
 UID: AP-011
 TITLE: Cropped Stitch
-STATEMENT: Cropping SHALL be on by default and SHALL be pure Python. After the panorama directory exists, Sportball SHALL write one <pano_name>_cropped.jpg for each stitched panorama it finds there, in the same folder as that stitched image. The crop box SHALL be the bounding box of pixels that are not black canvas. The full stitch SHALL be left in place. --no-crop SHALL skip that file. A dry run SHALL NOT write it. A frame that is entirely black SHALL NOT produce a cropped file. A file already named _cropped SHALL NOT be cropped again.
-RATIONALE: The full stitch shows the black canvas and whether the edges can be cleaned up by hand. The cropped file is the picture without that canvas.
+STATEMENT: Cropping SHALL be on by default and SHALL be pure Python. After the panorama directory exists, Sportball SHALL write one <stitch>_cropped.jpg beside each stitched image it finds there, including each of the three panorama options when that option was written. The crop box SHALL be the bounding box of pixels that are not black canvas. The full stitch SHALL be left in place. --no-crop SHALL skip that file. A dry run SHALL NOT write it. A frame that is entirely black SHALL NOT produce a cropped file. A file already named _cropped SHALL NOT be cropped again.
+RATIONALE: The full stitch shows the black canvas and whether the edges can be cleaned up by hand. The cropped file is the picture without that canvas. Each panorama option is cropped on its own because a pan may have succeeded under only one option.
 PRIORITY: High
 STATUS: Implemented
